@@ -1,0 +1,33 @@
+refsprogs
+=========
+
+The purpose of this project is to provide utilities for accessing data on ReFS
+volumes. As ReFS lacks documentation the utilites are dependent on independent
+exploration of the on-disk format, and thus cannot yet be relied upon.
+
+Currently the following utilities exist:
+
+redb
+----
+A utility that prints the ReFS tree data, as much as we currently understand it.
+
+refscat
+-------
+A utility that prints the data of a file on an ReFS volume. This utility is
+currently very limited and can only print the first extent of a file (or if
+you're unlucky, nothing at all).
+
+refsinfo
+--------
+A utility that prints information about a specific file or directory or about
+the whole volume. The '-v' option provides more verbose output.
+
+refslabel
+--------
+A utility that prints the label of an ReFS volume.
+
+refsls
+------
+A utility that lists files on an ReFS volume. The '-R' switch allows recursive
+listing, while '-a' shows hidden files and '-l' uses a long format including
+timestamps.
