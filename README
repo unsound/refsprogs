@@ -31,3 +31,8 @@ refsls
 A utility that lists files on an ReFS volume. The '-R' switch allows recursive
 listing, while '-a' shows hidden files and '-l' uses a long format including
 timestamps.
+
+refs-fuse
+---------
+A FUSE driver interface to librefs allowing direct access to ReFS volumes by
+mounting them in the filesystem.

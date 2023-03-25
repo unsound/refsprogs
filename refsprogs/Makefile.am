@@ -28,6 +28,18 @@ redb_CFLAGS = \
 redb_SOURCES = \
 	redb.c
 
+bin_PROGRAMS += refs-fuse
+refs_fuse_LDADD = \
+	-lfuse \
+	$(refs_common_libs)
+refs_fuse_LDFLAGS = \
+	$(refs_common_ldflags)
+refs_fuse_CFLAGS = \
+        -D_FILE_OFFSET_BITS=64 \
+	$(refs_common_cflags)
+refs_fuse_SOURCES = \
+	refs-fuse.c
+
 bin_PROGRAMS += refscat
 refscat_LDADD = \
 	$(refs_common_libs)
