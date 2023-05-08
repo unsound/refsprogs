@@ -80,9 +80,9 @@ static int refscat_node_file_extent(
 		(refscat_print_data_ctx*) _context;
 
 	int err = 0;
+	char *buf = NULL;
 
 	if(context->name_matches) {
-		char *buf = NULL;
 		u64 extent_size = block_count * block_index_unit;
 		u64 valid_extent_size =
 			sys_min(extent_size, context->remaining_bytes);
@@ -151,6 +151,10 @@ static int refscat_node_file_extent(
 		}
 	}
 out:
+	if(buf) {
+		sys_free(&buf);
+	}
+
 	return err;
 }
 
@@ -181,14 +185,6 @@ static int refscat_node_file_entry(
 	(void) allocated_size;
 	(void) record;
 	(void) record_size;
-
-	{
-		char *cstr = NULL;
-		size_t cstr_length = 0;
-
-		sys_unistr_decode(file_name, file_name_length, &cstr,
-			&cstr_length);
-	}
 
 	if(context->name_matches) {
 		/* We have found our match, so break here. */
@@ -409,6 +405,14 @@ int main(int argc, char **argv)
 
 	ret = (EXIT_SUCCESS);
 out:
+	if(context.name) {
+		sys_free(&context.name);
+	}
+
+	if(vol) {
+		refs_volume_destroy(&vol);
+	}
+
 	if(dev_open) {
 		sys_device_close(&dev);
 	}
