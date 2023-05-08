@@ -23,7 +23,7 @@ A utility that prints information about a specific file or directory or about
 the whole volume. The '-v' option provides more verbose output.
 
 refslabel
---------
+---------
 A utility that prints the label of an ReFS volume.
 
 refsls
