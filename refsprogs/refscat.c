@@ -53,7 +53,7 @@ static struct refscat_options {
 static void print_help(FILE *out, const char *invoke_cmd)
 {
 	fprintf(out, BINARY_NAME " %s\n", VERSION);
-	fprintf(out, "usage: " BINARY_NAME " <device|file>\n");
+	fprintf(out, "usage: " BINARY_NAME " -p <file path> <device|file>\n");
 }
 
 static void print_about(FILE *out)
