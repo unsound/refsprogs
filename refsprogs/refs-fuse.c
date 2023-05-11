@@ -26,8 +26,14 @@
 #include "sys.h"
 #include "volume.h"
 
+#ifndef FUSE_STAT
+/* The FUSE_STAT declaration is Dokan-specific, so for non-Dokan builds we
+ * simply define it to 'stat'. */
+#define FUSE_STAT stat
+#endif
+
 static int refs_fuse_fill_stat(
-		struct stat *stbuf,
+		struct FUSE_STAT *stbuf,
 		sys_bool is_directory,
 		u32 file_flags,
 		u64 create_time,
@@ -111,12 +117,12 @@ static int refs_fuse_filldir(
 		u64 allocated_size)
 {
 	int err = 0;
-	struct stat stbuf;
+	struct FUSE_STAT stbuf;
 	char *cname = NULL;
 	size_t cname_length = 0;
 
 	err = refs_fuse_fill_stat(
-		/* struct stat *stbuf */
+		/* struct FUSE_STAT *stbuf */
 		&stbuf,
 		/* sys_bool is_directory */
 		is_directory,
@@ -157,7 +163,7 @@ static int refs_fuse_filldir(
 		context->dirbuf,
 		/* const char *name */
 		cname,
-		/* const struct stat *stbuf */
+		/* const struct FUSE_STAT *stbuf */
 		&stbuf,
 		/* off_t off */
 		0))
@@ -193,7 +199,7 @@ static int refs_fuse_op_getattr_visit_directory_entry(
 
 	return refs_fuse_fill_stat(
 		/* struct stat *stbuf */
-		(struct stat*) context,
+		(struct FUSE_STAT*) context,
 		/* sys_bool is_directory */
 		SYS_TRUE,
 		/* u32 file_flags */
@@ -233,7 +239,7 @@ static int refs_fuse_op_getattr_visit_file_entry(
 
 	return refs_fuse_fill_stat(
 		/* struct stat *stbuf */
-		(struct stat*) context,
+		(struct FUSE_STAT*) context,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u32 file_flags */
@@ -252,7 +258,7 @@ static int refs_fuse_op_getattr_visit_file_entry(
 		allocated_size);
 }
 
-static int refs_fuse_op_getattr(const char *path, struct stat *stbuf)
+static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 {
 	refs_volume *const vol =
 		(refs_volume*) fuse_get_context()->private_data;
@@ -779,7 +785,7 @@ out:
 }
 
 struct fuse_operations refs_fuse_operations = {
-	/* int (*getattr) (const char *, struct stat *) */
+	/* int (*getattr) (const char *, struct FUSE_STAT *) */
 	.getattr = refs_fuse_op_getattr,
 	/* int (*open) (const char *, struct fuse_file_info *) */
 	.open = refs_fuse_op_open,
