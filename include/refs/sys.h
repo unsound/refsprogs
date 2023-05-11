@@ -42,6 +42,9 @@
 #ifdef __APPLE__
 #include <sys/disk.h>
 #endif
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -438,7 +441,7 @@ static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 static inline int sys_device_get_sector_size(sys_device *const dev,
 		u32 *out_sector_size)
 {
-	int err = 0;
+	int err = ENOTSUP;
 
 #ifdef __linux__
 	int sector_size = 0;
@@ -447,6 +450,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 		err = errno;
 	}
 	else {
+		err = 0;
 		*out_sector_size = sector_size;
 	}
 #endif
@@ -458,7 +462,76 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 		err = errno;
 	}
 	else {
+		err = 0;
 		*out_sector_size = block_size;
+	}
+#endif
+
+#ifdef _WIN32
+	BYTE buf[sizeof(DISK_GEOMETRY) + sizeof(DISK_PARTITION_INFO) +
+		sizeof(DISK_DETECTION_INFO) + 512];
+	DWORD bytes_returned = 0;
+
+	if(DeviceIoControl(
+		/* _In_        HANDLE       hDevice */
+		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+		/* _In_        DWORD        dwIoControlCode */
+		IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+		/* _In_opt_    LPVOID       lpInBuffer */
+		NULL,
+		/* _In_        DWORD        nInBufferSize */
+		0,
+		/* _Out_opt_   LPVOID       lpOutBuffer */
+		buf,
+		/* _In_        DWORD        nOutBufferSize */
+		sizeof(buf),
+		/* _Out_opt_   LPDWORD      lpBytesReturned */
+		&bytes_returned,
+		/* _Inout_opt_ LPOVERLAPPED lpOverlapped */
+		NULL))
+	{
+		const DISK_GEOMETRY_EX *const geom =
+			(const DISK_GEOMETRY_EX*) buf;
+
+		if(offsetof(DISK_GEOMETRY_EX, Geometry.BytesPerSector) +
+			sizeof(DWORD) > bytes_returned)
+		{
+			err = EIO;
+		}
+		else {
+			*out_sector_size = geom->Geometry.BytesPerSector;
+			err = 0;
+		}
+	}
+	else {
+		err = EIO;
+	}
+
+	if(err);
+	else if(DeviceIoControl(
+		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+		IOCTL_DISK_GET_DRIVE_GEOMETRY,
+		NULL,
+		0,
+		buf,
+		sizeof(buf),
+		&bytes_returned,
+		NULL))
+	{
+		const DISK_GEOMETRY *const geom = (const DISK_GEOMETRY*) buf;
+
+		if(offsetof(DISK_GEOMETRY, BytesPerSector) + sizeof(DWORD) >
+			bytes_returned)
+		{
+			err = EIO;
+		}
+		else {
+			*out_sector_size = geom->BytesPerSector;
+			err = 0;
+		}
+	}
+	else {
+		err = EIO;
 	}
 #endif
 
@@ -468,7 +541,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 static inline int sys_device_get_size(sys_device *const dev,
 		u64 *out_size)
 {
-	int err = 0;
+	int err = ENOTSUP;
 	struct stat st;
 
 	if(!fstat((int) ((intptr_t) dev), &st) &&
@@ -486,6 +559,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 		err = errno;
 	}
 	else {
+		err = 0;
 		*out_size = device_size;
 	}
 #endif
@@ -505,8 +579,34 @@ static inline int sys_device_get_size(sys_device *const dev,
 			err = errno;
 		}
 		else {
+			err = 0;
 			*out_size = block_size * block_count;
 		}
+	}
+#endif
+
+#ifdef _WIN32
+	GET_LENGTH_INFORMATION info = { 0 };
+	DWORD bytes_returned = 0;
+
+	if(!DeviceIoControl(
+		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+		IOCTL_DISK_GET_LENGTH_INFO,
+		NULL,
+		0,
+		&info,
+		sizeof(info),
+		&bytes_returned,
+		NULL))
+	{
+		err = EIO;
+	}
+	else if(bytes_returned != sizeof(info)) {
+		err = EIO;
+	}
+	else {
+		err = 0;
+		*out_size = (u64) info.Length.QuadPart;
 	}
 #endif
 
