@@ -30,12 +30,12 @@ redb_SOURCES = \
 
 bin_PROGRAMS += refs-fuse
 refs_fuse_LDADD = \
-	-lfuse \
+	$(FUSE_MODULE_LIBS) \
 	$(refs_common_libs)
 refs_fuse_LDFLAGS = \
 	$(refs_common_ldflags)
 refs_fuse_CFLAGS = \
-        -D_FILE_OFFSET_BITS=64 \
+	$(FUSE_MODULE_CFLAGS) \
 	$(refs_common_cflags)
 refs_fuse_SOURCES = \
 	refs-fuse.c

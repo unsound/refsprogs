@@ -26,6 +26,9 @@ ifdef(
 
 AC_PROG_INSTALL
 
+PKG_PROG_PKG_CONFIG
+
+# Checks for header files.
 AC_CHECK_HEADERS([ \
 	errno.h \
 	fcntl.h \
@@ -80,10 +83,36 @@ mingw*)
 	;;
 esac
 
+# Checks for FUSE library.
+FUSE_MODULE_CFLAGS=""
+FUSE_MODULE_LIBS=""
+
+case "$target_os" in
+netbsd*)
+	# Use librefuse.
+	FUSE_MODULE_LIBS="-lrefuse"
+	;;
+mingw*)
+	# Dokan is used. Currently the user needs to specify libfuse include and
+	# library paths manually.
+	;;
+*)
+	# Other platforms (Linux, FreeBSD, ...) use pkg-config.
+	PKG_CHECK_MODULES(
+		[FUSE_MODULE],
+		[fuse >= 2.6.0],
+		[],
+		[]
+	)
+	;;
+esac
+
 AC_SYS_LARGEFILE
 
 # Settings
 AC_SUBST([LIBREFS_VERSION])
+AC_SUBST([FUSE_MODULE_CFLAGS])
+AC_SUBST([FUSE_MODULE_LIBS])
 AM_CONDITIONAL([INSTALL_LIBRARY], [test "${enable_library}" = "yes"])
 AM_CONDITIONAL([ENABLE_NFCONV], [test "${enable_nfconv}" = "yes"])
 
