@@ -59,18 +59,26 @@ AC_CHECK_FUNCS([ \
 	strtoull \
 ])
 
-AC_CHECK_FUNC(
-	[iconv_open],
-	[],
-	[
-		AC_CHECK_LIB(
-			[iconv],
-			[iconv_open],
-			,
-			AC_MSG_ERROR([[Unable to locate iconv library.]])
-		)
-	]
-)
+# Checks for character conversion libraries.
+case "$target_os" in
+mingw*)
+	# No action needed, we use Win32 character conversion APIs.
+	;;
+*)
+	AC_CHECK_FUNC(
+		[iconv_open],
+		[],
+		[
+			AC_CHECK_LIB(
+				[iconv],
+				[iconv_open],
+				[],
+				AC_MSG_ERROR([[Unable to locate iconv library.]])
+			)
+		]
+	)
+	;;
+esac
 
 AC_SYS_LARGEFILE
 
