@@ -46,6 +46,9 @@
 #include <sys/disklabel.h>
 #include <sys/dkio.h>
 #endif
+#if defined(__DragonFly__)
+#include <sys/diskslice.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -471,7 +474,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	}
 #endif
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__DragonFly__)
 	size_t sector_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DIOCGSECTORSIZE, &sector_size)) {
@@ -615,7 +618,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 	}
 #endif
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__DragonFly__)
 	size_t media_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DIOCGMEDIASIZE, &media_size)) {
