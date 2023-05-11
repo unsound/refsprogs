@@ -19,9 +19,16 @@
  * Foundation,Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+/* Headers - Autoconf-generated config.h, if present. */
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+/* Headers - libfuse. */
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
 
+/* Headers - librefs. */
 #include "node.h"
 #include "sys.h"
 #include "volume.h"
