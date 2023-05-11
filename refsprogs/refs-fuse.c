@@ -24,6 +24,12 @@
 #include "config.h"
 #endif
 
+#if _WIN32
+/* Fix for incompatible mode_t typedefs in mingw-w64 and Visual Studio. */
+#define _MODE_T_
+typedef unsigned int mode_t;
+#endif
+
 /* Headers - libfuse. */
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
