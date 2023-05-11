@@ -42,6 +42,10 @@
 #if defined(__APPLE__) || defined(__FreeBSD__)
 #include <sys/disk.h>
 #endif
+#if defined(__OpenBSD__)
+#include <sys/disklabel.h>
+#include <sys/dkio.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -479,6 +483,20 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	}
 #endif
 
+#ifdef __OpenBSD__
+	struct disklabel dl;
+
+	memset(&dl, 0, sizeof(dl));
+
+	if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
+		err = errno;
+	}
+	else {
+		*out_sector_size = (u32) dl.d_secsize;
+		err = 0;
+	}
+#endif
+
 #ifdef _WIN32
 	BYTE buf[sizeof(DISK_GEOMETRY) + sizeof(DISK_PARTITION_INFO) +
 		sizeof(DISK_DETECTION_INFO) + 512];
@@ -605,6 +623,30 @@ static inline int sys_device_get_size(sys_device *const dev,
 	}
 	else {
 		*out_size = media_size;
+		err = 0;
+	}
+#endif
+
+#ifdef __OpenBSD__
+	struct stat stbuf;
+	struct disklabel dl;
+
+	memset(&dl, 0, sizeof(dl));
+
+	if(fstat((int) ((intptr_t) dev), &stbuf)) {
+		err = errno;
+	}
+	else if(!S_ISBLK(stbuf.st_mode) && !S_ISCHR(stbuf.st_mode)) {
+		err = EINVAL;
+	}
+	else if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
+		err = errno;
+	}
+	else {
+		const struct partition *const part =
+			&dl.d_partitions[DISKPART(stbuf.st_rdev)];
+
+		*out_size = (u64) (DL_GETPSIZE(part)) * (u32) dl.d_secsize;
 		err = 0;
 	}
 #endif
