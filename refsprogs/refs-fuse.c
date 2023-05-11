@@ -32,6 +32,10 @@ typedef unsigned int mode_t;
 
 /* Headers - libfuse. */
 #define FUSE_USE_VERSION 26
+#if defined(__NetBSD__)
+/* Work around librefuse compile error due to missing kernel types. */
+#define _KERNTYPES 1
+#endif
 #include <fuse.h>
 
 /* Headers - librefs. */
