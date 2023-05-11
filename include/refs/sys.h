@@ -32,7 +32,9 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#ifdef HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
+#endif
 #include <sys/stat.h>
 #ifdef __linux__
 #include <linux/fs.h>
