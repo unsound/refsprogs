@@ -351,7 +351,12 @@ static inline int sys_device_open(sys_device **const dev,
 	int err = 0;
 	int fd = -1;
 
-	fd = open(path, O_RDONLY);
+	fd = open(
+		path,
+#ifdef O_BINARY
+		O_BINARY |
+#endif
+		O_RDONLY);
 	if(fd == -1) {
 		err = errno;
 	}
