@@ -39,7 +39,7 @@
 #ifdef __linux__
 #include <linux/fs.h>
 #endif
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__FreeBSD__)
 #include <sys/disk.h>
 #endif
 #ifdef _WIN32
@@ -467,6 +467,18 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	}
 #endif
 
+#ifdef __FreeBSD__
+	size_t sector_size = 0;
+
+	if(ioctl((int) ((intptr_t) dev), DIOCGSECTORSIZE, &sector_size)) {
+		err = errno;
+	}
+	else {
+		*out_sector_size = (u32) sector_size;
+		err = 0;
+	}
+#endif
+
 #ifdef _WIN32
 	BYTE buf[sizeof(DISK_GEOMETRY) + sizeof(DISK_PARTITION_INFO) +
 		sizeof(DISK_DETECTION_INFO) + 512];
@@ -582,6 +594,18 @@ static inline int sys_device_get_size(sys_device *const dev,
 			err = 0;
 			*out_size = block_size * block_count;
 		}
+	}
+#endif
+
+#ifdef __FreeBSD__
+	size_t media_size = 0;
+
+	if(ioctl((int) ((intptr_t) dev), DIOCGMEDIASIZE, &media_size)) {
+		err = errno;
+	}
+	else {
+		*out_size = media_size;
+		err = 0;
 	}
 #endif
 
