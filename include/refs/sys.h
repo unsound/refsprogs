@@ -383,6 +383,33 @@ static inline int sys_device_close(sys_device **const dev)
 	return err;
 }
 
+#ifdef _WIN32
+/* As Win32 doesn't have pread and pwrite we provide seek + read|write
+ * fallbacks. Watch out for multithreaded use, we'll need a mutex for that. */
+
+static inline ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset)
+{
+	if(lseek(fd, offset, SEEK_SET) != offset ||
+		read(fd, buf, nbyte) != (ssize_t) nbyte)
+	{
+		return errno ? errno : EIO;
+	}
+
+	return (ssize_t) nbyte;
+}
+
+static inline ssize_t pwrite(int fd, void *buf, size_t nbyte, off_t offset)
+{
+	if(lseek(fd, offset, SEEK_SET) != offset ||
+		write(fd, buf, nbyte) != (ssize_t) nbyte)
+	{
+		return errno ? errno : EIO;
+	}
+
+	return (ssize_t) nbyte;
+}
+#endif /* defined(_WIN32) */
+
 static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 		const size_t nbytes, void *const buf)
 {
