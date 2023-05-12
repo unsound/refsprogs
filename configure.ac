@@ -13,6 +13,17 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AM_MAINTAINER_MODE
 
+# Options.
+AC_ARG_ENABLE(
+	[library],
+	[AS_HELP_STRING(
+		[--disable-library],
+		[do not install librefs but link it statically into the binaries]
+	)],
+	[],
+	[enable_library="yes"]
+)
+
 # Programs
 AC_PROG_CC(gcc cc)
 AC_PROG_LN_S
