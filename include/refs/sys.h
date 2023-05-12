@@ -49,6 +49,9 @@
 #if defined(__DragonFly__)
 #include <sys/diskslice.h>
 #endif
+#if defined(sun) || defined(__sun)
+#include <sys/dkio.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -500,6 +503,28 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	}
 #endif
 
+#if defined(sun) || defined(__sun)
+	struct dk_minfo_ext minfo_ext;
+
+	if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFOEXT, &minfo_ext) == -1)
+	{
+		struct dk_minfo minfo;
+
+		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO, &minfo) == -1)
+		{
+			err = errno;
+		}
+		else {
+			*out_sector_size = (u32) minfo.dki_lbsize;
+			err = 0;
+		}
+	}
+	else {
+		*out_sector_size = (u32) minfo_ext.dki_lbsize;
+		err = 0;
+	}
+#endif
+
 #ifdef _WIN32
 	BYTE buf[sizeof(DISK_GEOMETRY) + sizeof(DISK_PARTITION_INFO) +
 		sizeof(DISK_DETECTION_INFO) + 512];
@@ -650,6 +675,32 @@ static inline int sys_device_get_size(sys_device *const dev,
 			&dl.d_partitions[DISKPART(stbuf.st_rdev)];
 
 		*out_size = (u64) (DL_GETPSIZE(part)) * (u32) dl.d_secsize;
+		err = 0;
+	}
+#endif
+
+#if defined(sun) || defined(__sun)
+	struct dk_minfo_ext minfo_ext;
+
+	if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFOEXT, &minfo_ext) == -1)
+	{
+		struct dk_minfo minfo;
+
+		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO, &minfo) == -1)
+		{
+			err = errno;
+		}
+		else {
+			*out_size =
+				((u64) minfo.dki_capacity) *
+				(u32) minfo.dki_lbsize;
+			err = 0;
+		}
+	}
+	else {
+		*out_size =
+			((u64) minfo_ext.dki_capacity) *
+			(u32) minfo_ext.dki_lbsize;
 		err = 0;
 	}
 #endif
