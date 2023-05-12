@@ -277,6 +277,9 @@ static int refs_fuse_op_getattr_visit_file_entry(
 
 static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 {
+	static const s64 filetime_offset =
+		((s64) (369 * 365 + 89)) * 24 * 3600 * 10000000;
+
 	refs_volume *const vol =
 		(refs_volume*) fuse_get_context()->private_data;
 	int err = 0;
@@ -310,7 +313,29 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 	}
 
 	visitor.context = stbuf;
-	if(directory_object_id) {
+	if(!record && directory_object_id) {
+		/* Root directory. */
+		err = refs_fuse_fill_stat(
+			/* struct stat *stbuf */
+		        stbuf,
+			/* sys_bool is_directory */
+			SYS_TRUE,
+			/* u32 file_flags */
+			0,
+			/* u64 create_time */
+			filetime_offset,
+			/* u64 last_access_time */
+			filetime_offset,
+			/* u64 last_write_time */
+			filetime_offset,
+			/* u64 last_mft_change_time */
+			filetime_offset,
+			/* u64 file_size */
+			0,
+			/* u64 allocated_size */
+			0);
+	}
+	else if(directory_object_id) {
 		visitor.node_directory_entry =
 			refs_fuse_op_getattr_visit_directory_entry;
 		err = parse_level3_directory_value(
