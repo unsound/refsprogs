@@ -79,18 +79,28 @@ mingw*)
 	# No action needed, we use Win32 character conversion APIs.
 	;;
 *)
-	AC_CHECK_FUNC(
+	NO_ICONV=0
+	AC_SEARCH_LIBS(
 		[iconv_open],
+		[iconv],
 		[],
-		[
-			AC_CHECK_LIB(
-				[iconv],
-				[iconv_open],
-				[],
-				AC_MSG_ERROR([[Unable to locate iconv library.]])
-			)
-		]
+		[NO_ICONV=1],
+		[]
 	)
+
+	if test $NO_ICONV -eq 1; then
+		NO_ICONV=0
+		AC_CHECK_LIB(
+			[iconv],
+			[libiconv_open],
+			[],
+			[NO_ICONV=1]
+		)
+	fi
+
+	if test $NO_ICONV -eq 1; then
+		AC_MSG_ERROR([[Unable to locate iconv library.]])
+	fi
 	;;
 esac
 
