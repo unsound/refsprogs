@@ -19,15 +19,38 @@
  * Foundation,Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+/* Headers - Autoconf-generated config.h, if present. */
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#if _WIN32
+/* Fix for incompatible mode_t typedefs in mingw-w64 and Visual Studio. */
+#define _MODE_T_
+typedef unsigned int mode_t;
+#endif
+
+/* Headers - libfuse. */
 #define FUSE_USE_VERSION 26
+#if defined(__NetBSD__)
+/* Work around librefuse compile error due to missing kernel types. */
+#define _KERNTYPES 1
+#endif
 #include <fuse.h>
 
+/* Headers - librefs. */
 #include "node.h"
 #include "sys.h"
 #include "volume.h"
 
+#ifndef FUSE_STAT
+/* The FUSE_STAT declaration is Dokan-specific, so for non-Dokan builds we
+ * simply define it to 'stat'. */
+#define FUSE_STAT stat
+#endif
+
 static int refs_fuse_fill_stat(
-		struct stat *stbuf,
+		struct FUSE_STAT *stbuf,
 		sys_bool is_directory,
 		u32 file_flags,
 		u64 create_time,
@@ -111,12 +134,12 @@ static int refs_fuse_filldir(
 		u64 allocated_size)
 {
 	int err = 0;
-	struct stat stbuf;
+	struct FUSE_STAT stbuf;
 	char *cname = NULL;
 	size_t cname_length = 0;
 
 	err = refs_fuse_fill_stat(
-		/* struct stat *stbuf */
+		/* struct FUSE_STAT *stbuf */
 		&stbuf,
 		/* sys_bool is_directory */
 		is_directory,
@@ -157,7 +180,7 @@ static int refs_fuse_filldir(
 		context->dirbuf,
 		/* const char *name */
 		cname,
-		/* const struct stat *stbuf */
+		/* const struct FUSE_STAT *stbuf */
 		&stbuf,
 		/* off_t off */
 		0))
@@ -193,7 +216,7 @@ static int refs_fuse_op_getattr_visit_directory_entry(
 
 	return refs_fuse_fill_stat(
 		/* struct stat *stbuf */
-		(struct stat*) context,
+		(struct FUSE_STAT*) context,
 		/* sys_bool is_directory */
 		SYS_TRUE,
 		/* u32 file_flags */
@@ -233,7 +256,7 @@ static int refs_fuse_op_getattr_visit_file_entry(
 
 	return refs_fuse_fill_stat(
 		/* struct stat *stbuf */
-		(struct stat*) context,
+		(struct FUSE_STAT*) context,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u32 file_flags */
@@ -252,8 +275,11 @@ static int refs_fuse_op_getattr_visit_file_entry(
 		allocated_size);
 }
 
-static int refs_fuse_op_getattr(const char *path, struct stat *stbuf)
+static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 {
+	static const s64 filetime_offset =
+		((s64) (369 * 365 + 89)) * 24 * 3600 * 10000000;
+
 	refs_volume *const vol =
 		(refs_volume*) fuse_get_context()->private_data;
 	int err = 0;
@@ -287,7 +313,29 @@ static int refs_fuse_op_getattr(const char *path, struct stat *stbuf)
 	}
 
 	visitor.context = stbuf;
-	if(directory_object_id) {
+	if(!record && directory_object_id) {
+		/* Root directory. */
+		err = refs_fuse_fill_stat(
+			/* struct stat *stbuf */
+		        stbuf,
+			/* sys_bool is_directory */
+			SYS_TRUE,
+			/* u32 file_flags */
+			0,
+			/* u64 create_time */
+			filetime_offset,
+			/* u64 last_access_time */
+			filetime_offset,
+			/* u64 last_write_time */
+			filetime_offset,
+			/* u64 last_mft_change_time */
+			filetime_offset,
+			/* u64 file_size */
+			0,
+			/* u64 allocated_size */
+			0);
+	}
+	else if(directory_object_id) {
 		visitor.node_directory_entry =
 			refs_fuse_op_getattr_visit_directory_entry;
 		err = parse_level3_directory_value(
@@ -779,7 +827,7 @@ out:
 }
 
 struct fuse_operations refs_fuse_operations = {
-	/* int (*getattr) (const char *, struct stat *) */
+	/* int (*getattr) (const char *, struct FUSE_STAT *) */
 	.getattr = refs_fuse_op_getattr,
 	/* int (*open) (const char *, struct fuse_file_info *) */
 	.open = refs_fuse_op_open,

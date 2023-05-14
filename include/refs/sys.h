@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <limits.h>
 #include <string.h>
 #include <errno.h>
@@ -32,13 +33,28 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#ifdef HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
+#endif
 #include <sys/stat.h>
 #ifdef __linux__
 #include <linux/fs.h>
 #endif
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__FreeBSD__)
 #include <sys/disk.h>
+#endif
+#if defined(__OpenBSD__)
+#include <sys/disklabel.h>
+#include <sys/dkio.h>
+#endif
+#if defined(__DragonFly__)
+#include <sys/diskslice.h>
+#endif
+#if defined(sun) || defined(__sun)
+#include <sys/dkio.h>
+#endif
+#ifdef _WIN32
+#include <windows.h>
 #endif
 
 typedef uint8_t u8;
@@ -351,7 +367,12 @@ static inline int sys_device_open(sys_device **const dev,
 	int err = 0;
 	int fd = -1;
 
-	fd = open(path, O_RDONLY);
+	fd = open(
+		path,
+#ifdef O_BINARY
+		O_BINARY |
+#endif
+		O_RDONLY);
 	if(fd == -1) {
 		err = errno;
 	}
@@ -375,6 +396,33 @@ static inline int sys_device_close(sys_device **const dev)
 
 	return err;
 }
+
+#ifdef _WIN32
+/* As Win32 doesn't have pread and pwrite we provide seek + read|write
+ * fallbacks. Watch out for multithreaded use, we'll need a mutex for that. */
+
+static inline ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset)
+{
+	if(lseek(fd, offset, SEEK_SET) != offset ||
+		read(fd, buf, nbyte) != (ssize_t) nbyte)
+	{
+		return errno ? errno : EIO;
+	}
+
+	return (ssize_t) nbyte;
+}
+
+static inline ssize_t pwrite(int fd, void *buf, size_t nbyte, off_t offset)
+{
+	if(lseek(fd, offset, SEEK_SET) != offset ||
+		write(fd, buf, nbyte) != (ssize_t) nbyte)
+	{
+		return errno ? errno : EIO;
+	}
+
+	return (ssize_t) nbyte;
+}
+#endif /* defined(_WIN32) */
 
 static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 		const size_t nbytes, void *const buf)
@@ -404,7 +452,7 @@ static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 static inline int sys_device_get_sector_size(sys_device *const dev,
 		u32 *out_sector_size)
 {
-	int err = 0;
+	int err = ENOTSUP;
 
 #ifdef __linux__
 	int sector_size = 0;
@@ -413,6 +461,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 		err = errno;
 	}
 	else {
+		err = 0;
 		*out_sector_size = sector_size;
 	}
 #endif
@@ -424,7 +473,124 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 		err = errno;
 	}
 	else {
+		err = 0;
 		*out_sector_size = block_size;
+	}
+#endif
+
+#if defined(__FreeBSD__) || defined(__DragonFly__)
+	size_t sector_size = 0;
+
+	if(ioctl((int) ((intptr_t) dev), DIOCGSECTORSIZE, &sector_size)) {
+		err = errno;
+	}
+	else {
+		*out_sector_size = (u32) sector_size;
+		err = 0;
+	}
+#endif
+
+#ifdef __OpenBSD__
+	struct disklabel dl;
+
+	memset(&dl, 0, sizeof(dl));
+
+	if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
+		err = errno;
+	}
+	else {
+		*out_sector_size = (u32) dl.d_secsize;
+		err = 0;
+	}
+#endif
+
+#if defined(sun) || defined(__sun)
+	struct dk_minfo_ext minfo_ext;
+
+	if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFOEXT, &minfo_ext) == -1)
+	{
+		struct dk_minfo minfo;
+
+		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO, &minfo) == -1)
+		{
+			err = errno;
+		}
+		else {
+			*out_sector_size = (u32) minfo.dki_lbsize;
+			err = 0;
+		}
+	}
+	else {
+		*out_sector_size = (u32) minfo_ext.dki_lbsize;
+		err = 0;
+	}
+#endif
+
+#ifdef _WIN32
+	BYTE buf[sizeof(DISK_GEOMETRY) + sizeof(DISK_PARTITION_INFO) +
+		sizeof(DISK_DETECTION_INFO) + 512];
+	DWORD bytes_returned = 0;
+
+	if(DeviceIoControl(
+		/* _In_        HANDLE       hDevice */
+		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+		/* _In_        DWORD        dwIoControlCode */
+		IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+		/* _In_opt_    LPVOID       lpInBuffer */
+		NULL,
+		/* _In_        DWORD        nInBufferSize */
+		0,
+		/* _Out_opt_   LPVOID       lpOutBuffer */
+		buf,
+		/* _In_        DWORD        nOutBufferSize */
+		sizeof(buf),
+		/* _Out_opt_   LPDWORD      lpBytesReturned */
+		&bytes_returned,
+		/* _Inout_opt_ LPOVERLAPPED lpOverlapped */
+		NULL))
+	{
+		const DISK_GEOMETRY_EX *const geom =
+			(const DISK_GEOMETRY_EX*) buf;
+
+		if(offsetof(DISK_GEOMETRY_EX, Geometry.BytesPerSector) +
+			sizeof(DWORD) > bytes_returned)
+		{
+			err = EIO;
+		}
+		else {
+			*out_sector_size = geom->Geometry.BytesPerSector;
+			err = 0;
+		}
+	}
+	else {
+		err = EIO;
+	}
+
+	if(err);
+	else if(DeviceIoControl(
+		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+		IOCTL_DISK_GET_DRIVE_GEOMETRY,
+		NULL,
+		0,
+		buf,
+		sizeof(buf),
+		&bytes_returned,
+		NULL))
+	{
+		const DISK_GEOMETRY *const geom = (const DISK_GEOMETRY*) buf;
+
+		if(offsetof(DISK_GEOMETRY, BytesPerSector) + sizeof(DWORD) >
+			bytes_returned)
+		{
+			err = EIO;
+		}
+		else {
+			*out_sector_size = geom->BytesPerSector;
+			err = 0;
+		}
+	}
+	else {
+		err = EIO;
 	}
 #endif
 
@@ -434,7 +600,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 static inline int sys_device_get_size(sys_device *const dev,
 		u64 *out_size)
 {
-	int err = 0;
+	int err = ENOTSUP;
 	struct stat st;
 
 	if(!fstat((int) ((intptr_t) dev), &st) &&
@@ -452,6 +618,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 		err = errno;
 	}
 	else {
+		err = 0;
 		*out_size = device_size;
 	}
 #endif
@@ -471,8 +638,96 @@ static inline int sys_device_get_size(sys_device *const dev,
 			err = errno;
 		}
 		else {
+			err = 0;
 			*out_size = block_size * block_count;
 		}
+	}
+#endif
+
+#if defined(__FreeBSD__) || defined(__DragonFly__)
+	size_t media_size = 0;
+
+	if(ioctl((int) ((intptr_t) dev), DIOCGMEDIASIZE, &media_size)) {
+		err = errno;
+	}
+	else {
+		*out_size = media_size;
+		err = 0;
+	}
+#endif
+
+#ifdef __OpenBSD__
+	struct stat stbuf;
+	struct disklabel dl;
+
+	memset(&dl, 0, sizeof(dl));
+
+	if(fstat((int) ((intptr_t) dev), &stbuf)) {
+		err = errno;
+	}
+	else if(!S_ISBLK(stbuf.st_mode) && !S_ISCHR(stbuf.st_mode)) {
+		err = EINVAL;
+	}
+	else if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
+		err = errno;
+	}
+	else {
+		const struct partition *const part =
+			&dl.d_partitions[DISKPART(stbuf.st_rdev)];
+
+		*out_size = (u64) (DL_GETPSIZE(part)) * (u32) dl.d_secsize;
+		err = 0;
+	}
+#endif
+
+#if defined(sun) || defined(__sun)
+	struct dk_minfo_ext minfo_ext;
+
+	if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFOEXT, &minfo_ext) == -1)
+	{
+		struct dk_minfo minfo;
+
+		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO, &minfo) == -1)
+		{
+			err = errno;
+		}
+		else {
+			*out_size =
+				((u64) minfo.dki_capacity) *
+				(u32) minfo.dki_lbsize;
+			err = 0;
+		}
+	}
+	else {
+		*out_size =
+			((u64) minfo_ext.dki_capacity) *
+			(u32) minfo_ext.dki_lbsize;
+		err = 0;
+	}
+#endif
+
+#ifdef _WIN32
+	GET_LENGTH_INFORMATION info = { 0 };
+	DWORD bytes_returned = 0;
+
+	if(!DeviceIoControl(
+		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+		IOCTL_DISK_GET_LENGTH_INFO,
+		NULL,
+		0,
+		&info,
+		sizeof(info),
+		&bytes_returned,
+		NULL))
+	{
+		err = EIO;
+	}
+	else if(bytes_returned != sizeof(info)) {
+		err = EIO;
+	}
+	else {
+		err = 0;
+		*out_size = (u64) info.Length.QuadPart;
 	}
 #endif
 

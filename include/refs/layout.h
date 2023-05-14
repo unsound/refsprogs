@@ -52,7 +52,7 @@ typedef struct {
 	le16 data2;
 	le16 data3;
 	unsigned char data4[8];
-} GUID;
+} REFS_GUID;
 
 /**
  * The boot sector of a ReFS volume.
@@ -110,7 +110,7 @@ typedef struct {
 	le64 reserved24;                              /* offset = 0x18     24 */
 	le64 reserved32;                              /* offset = 0x20     32 */
 	le64 reserved40;                              /* offset = 0x28     40 */
-	GUID block_guid;                              /* offset = 0x30     48 */
+	REFS_GUID block_guid;                         /* offset = 0x30     48 */
 	le64 reserved64;                              /* offset = 0x40     64 */
 	le64 reserved72;                              /* offset = 0x48     72 */
 	le32 level1_blocks_offset;                    /* offset = 0x50     80 */
@@ -172,7 +172,7 @@ typedef struct {
 	/**
 	 * 128-bit stream of bytes that seem random. Looks like a GUID.
 	 */
-	GUID block_guid;                              /* offset = 0x50     80 */
+	REFS_GUID block_guid;                         /* offset = 0x50     80 */
 
 	/**
 	 * Unknown field. Observed values: 0

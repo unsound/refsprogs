@@ -579,11 +579,15 @@ static int read_and_print_boot_sector(sys_device *const dev,
 {
 	int err = 0;
 	u64 sector_offset = 0;
-	REFS_BOOT_SECTOR bs;
+	REFS_BOOT_SECTOR *bs = NULL;
 
-	memset(&bs, 0, sizeof(bs));
+	err = sys_calloc(sizeof(*bs), &bs);
+	if(err) {
+		sys_log_perror(err, "Error while allocating boot sector buffer");
+		goto out;
+	}
 
-	err = sys_device_pread(dev, sector_offset, sizeof(bs), &bs);
+	err = sys_device_pread(dev, sector_offset, sizeof(*bs), bs);
 	if(err) {
 		fprintf(stderr, "Error while reading %sboot sector from "
 			"device: %s\n",
@@ -601,12 +605,12 @@ static int read_and_print_boot_sector(sys_device *const dev,
 		u32 sector_size = 0;
 		u64 device_size = 0;
 
-		if(memcmp(bs.signature, "FSRS", 4)) {
+		if(memcmp(bs->signature, "FSRS", 4)) {
 			boot_sector_valid = SYS_FALSE;
 		}
-		else if(!le32_to_cpu(bs.bytes_per_sector) ||
-			!le32_to_cpu(bs.sectors_per_cluster) ||
-			!le64_to_cpu(bs.num_sectors))
+		else if(!le32_to_cpu(bs->bytes_per_sector) ||
+			!le32_to_cpu(bs->sectors_per_cluster) ||
+			!le64_to_cpu(bs->num_sectors))
 		{
 			boot_sector_valid = SYS_FALSE;
 		}
@@ -622,7 +626,7 @@ static int read_and_print_boot_sector(sys_device *const dev,
 				goto out;
 			}
 
-			sector_size = le32_to_cpu(bs.bytes_per_sector);
+			sector_size = le32_to_cpu(bs->bytes_per_sector);
 		}
 
 		err = sys_device_get_size(dev, &device_size);
@@ -646,16 +650,16 @@ static int read_and_print_boot_sector(sys_device *const dev,
 		}
 		else {
 			sector_offset =
-				(le64_to_cpu(bs.num_sectors) - 1) *
-				le32_to_cpu(bs.bytes_per_sector);
+				(le64_to_cpu(bs->num_sectors) - 1) *
+				le32_to_cpu(bs->bytes_per_sector);
 		}
 
 		fprintf(stderr, "Reading backup boot sector from byte offset "
 			"%" PRIu64 "...\n", PRAu64(sector_offset));
 
-		memset(&bs, 0, sizeof(bs));
+		memset(bs, 0, sizeof(*bs));
 
-		err = sys_device_pread(dev, sector_offset, sizeof(bs), &bs);
+		err = sys_device_pread(dev, sector_offset, sizeof(*bs), bs);
 		if(err) {
 			fprintf(stderr, "Error while reading %sboot sector "
 				"from device: %s\n",
@@ -666,12 +670,16 @@ static int read_and_print_boot_sector(sys_device *const dev,
 	}
 
 	emitln("%s sector:", is_backup ? "Backup boot" : "Boot");
-	print_boot_sector(&bs);
+	print_boot_sector(bs);
 
 	if(out_bs) {
-		*out_bs = bs;
+		*out_bs = *bs;
 	}
 out:
+	if(bs) {
+		sys_free(&bs);
+	}
+
 	return err;
 }
 

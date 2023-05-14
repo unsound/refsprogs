@@ -13,6 +13,17 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AM_MAINTAINER_MODE
 
+# Options.
+AC_ARG_ENABLE(
+	[library],
+	[AS_HELP_STRING(
+		[--disable-library],
+		[do not install librefs but link it statically into the binaries]
+	)],
+	[],
+	[enable_library="yes"]
+)
+
 # Programs
 AC_PROG_CC(gcc cc)
 AC_PROG_LN_S
@@ -26,6 +37,9 @@ ifdef(
 
 AC_PROG_INSTALL
 
+PKG_PROG_PKG_CONFIG
+
+# Checks for header files.
 AC_CHECK_HEADERS([ \
 	errno.h \
 	fcntl.h \
@@ -59,23 +73,67 @@ AC_CHECK_FUNCS([ \
 	strtoull \
 ])
 
-AC_CHECK_FUNC(
-	[iconv_open],
-	[],
-	[
+# Checks for character conversion libraries.
+case "$target_os" in
+mingw*)
+	# No action needed, we use Win32 character conversion APIs.
+	;;
+*)
+	NO_ICONV=0
+	AC_SEARCH_LIBS(
+		[iconv_open],
+		[iconv],
+		[],
+		[NO_ICONV=1],
+		[]
+	)
+
+	if test $NO_ICONV -eq 1; then
+		NO_ICONV=0
 		AC_CHECK_LIB(
 			[iconv],
-			[iconv_open],
-			,
-			AC_MSG_ERROR([[Unable to locate iconv library.]])
+			[libiconv_open],
+			[],
+			[NO_ICONV=1]
 		)
-	]
-)
+	fi
+
+	if test $NO_ICONV -eq 1; then
+		AC_MSG_ERROR([[Unable to locate iconv library.]])
+	fi
+	;;
+esac
+
+# Checks for FUSE library.
+FUSE_MODULE_CFLAGS=""
+FUSE_MODULE_LIBS=""
+
+case "$target_os" in
+netbsd*)
+	# Use librefuse.
+	FUSE_MODULE_LIBS="-lrefuse"
+	;;
+mingw*)
+	# Dokan is used. Currently the user needs to specify libfuse include and
+	# library paths manually.
+	;;
+*)
+	# Other platforms (Linux, FreeBSD, ...) use pkg-config.
+	PKG_CHECK_MODULES(
+		[FUSE_MODULE],
+		[fuse >= 2.6.0],
+		[],
+		[]
+	)
+	;;
+esac
 
 AC_SYS_LARGEFILE
 
 # Settings
 AC_SUBST([LIBREFS_VERSION])
+AC_SUBST([FUSE_MODULE_CFLAGS])
+AC_SUBST([FUSE_MODULE_LIBS])
 AM_CONDITIONAL([INSTALL_LIBRARY], [test "${enable_library}" = "yes"])
 AM_CONDITIONAL([ENABLE_NFCONV], [test "${enable_nfconv}" = "yes"])
 
