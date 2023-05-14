@@ -25,16 +25,24 @@
 
 #include "sys.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <iconv.h>
 
 static iconv_t iconv_decode_handle = (iconv_t) -1;
 static iconv_t iconv_encode_handle = (iconv_t) -1;
+#endif
 
 int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 		char **const outs, size_t *const outs_len)
 {
 	int err = 0;
+#ifdef _WIN32
+	int res = 0;
+#else
 	iconv_t handle = (iconv_t) -1;
+#endif
 	size_t ins_remaining = 0;
 	size_t outs_capacity = 0;
 	size_t outs_remaining = 0;
@@ -50,11 +58,13 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 	}
 #endif
 
+#ifndef _WIN32
 	handle = iconv_open("UTF-8", "UTF-16LE");
 	if(handle == (iconv_t) -1) {
 		err = errno;
 		goto out;
 	}
+#endif
 
 	if(!*outs) {
 		/* Allocate a worst-case string, which is 3 times the number of
@@ -77,6 +87,25 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 
 	ins_remaining = ins_len * sizeof(refschar);
 
+#ifdef _WIN32
+	res = WideCharToMultiByte(
+		CP_UTF8,
+		0,
+		ins,
+		ins_len,
+		outs_tmp,
+		outs_remaining,
+		NULL,
+		NULL);
+	if(res <= 0) {
+		err = EILSEQ;
+		goto out;
+	}
+
+	ins_remaining = 0; /* No way of getting this info, so assume all was read. */
+	outs_tmp = &outs_tmp[res];
+	outs_remaining -= (unsigned int) res;
+#else
 	if(iconv(
 		/* iconv_t cd */
 		handle,
@@ -92,7 +121,9 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 		err = errno;
 		goto out;
 	}
-	else if(ins_remaining || (outs_capacity && !outs_remaining)) {
+#endif
+
+	if(ins_remaining || (outs_capacity && !outs_remaining)) {
 		/* There should be remaining capacity for a NULL terminator
 		 * given our worst case allocation. */
 		sys_log_critical("Unexpected: Incomplete decoding with no "
@@ -121,9 +152,11 @@ out:
 		}
 	}
 
+#ifndef _WIN32
 	if(handle != (iconv_t) -1) {
 		iconv_close(handle);
 	}
+#endif
 
 	return err;
 }
@@ -132,18 +165,24 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 		refschar **outs, size_t *outs_len)
 {
 	int err = 0;
+#ifdef _WIN32
+	int res = 0;
+#else
 	iconv_t handle = (iconv_t) -1;
+#endif
 	const char *ins_tmp = ins;
 	size_t ins_remaining = ins_len;
 	size_t outs_capacity = 0;
 	size_t outs_remaining = 0;
 	refschar *outs_tmp = NULL;
 
+#ifndef _WIN32
 	handle = iconv_open("UTF-16LE", "UTF-8");
 	if(handle == (iconv_t) -1) {
 		err = errno;
 		goto out;
 	}
+#endif
 
 	if(!*outs) {
 		/* Allocate a worst-case string, which is 3 times the number of
@@ -164,6 +203,23 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 		outs_remaining = *outs_len * sizeof(refschar);
 	}
 
+#ifdef _WIN32
+	res = MultiByteToWideChar(
+		CP_UTF8,
+		MB_PRECOMPOSED,
+		ins,
+		ins_len,
+		outs_tmp,
+		(int) (outs_remaining / sizeof(refschar)));
+	if(res <= 0) {
+		err = EILSEQ;
+		goto out;
+	}
+
+	ins_remaining = 0; /* No way of getting this info, so assume all was read. */
+	outs_tmp = &outs_tmp[res];
+	outs_remaining -= (unsigned int) res;
+#else
 	if(iconv(
 		/* iconv_t cd */
 		handle,
@@ -179,7 +235,9 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 		err = errno;
 		goto out;
 	}
-	else if(ins_remaining || (outs_capacity && !outs_remaining)) {
+#endif
+
+	if(ins_remaining || (outs_capacity && !outs_remaining)) {
 		/* There should be remaining capacity for a NULL terminator
 		 * given our worst case allocation. */
 		sys_log_critical("Unexpected: Incomplete encoding with no "
@@ -210,9 +268,11 @@ out:
 		}
 	}
 
+#ifndef _WIN32
 	if(handle != (iconv_t) -1) {
 		iconv_close(handle);
 	}
+#endif
 
 	return err;
 }
