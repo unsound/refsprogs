@@ -19,6 +19,7 @@ refs_common_cflags = \
 
 
 bin_PROGRAMS += redb
+man_MANS += redb.8
 redb_LDADD = \
 	$(refs_common_libs)
 redb_LDFLAGS = \
@@ -29,6 +30,7 @@ redb_SOURCES = \
 	redb.c
 
 bin_PROGRAMS += refs-fuse
+man_MANS += refs-fuse.8
 refs_fuse_LDADD = \
 	$(FUSE_MODULE_LIBS) \
 	$(refs_common_libs)
@@ -41,6 +43,7 @@ refs_fuse_SOURCES = \
 	refs-fuse.c
 
 bin_PROGRAMS += refscat
+man_MANS += refscat.8
 refscat_LDADD = \
 	$(refs_common_libs)
 refscat_LDFLAGS = \
@@ -51,6 +54,7 @@ refscat_SOURCES = \
 	refscat.c
 
 bin_PROGRAMS += refsinfo
+man_MANS += refsinfo.8
 refsinfo_LDADD = \
 	$(refs_common_libs)
 refsinfo_LDFLAGS = \
@@ -61,6 +65,7 @@ refsinfo_SOURCES = \
 	refsinfo.c
 
 bin_PROGRAMS += refslabel
+man_MANS += refslabel.8
 refslabel_LDADD = \
 	$(refs_common_libs)
 refslabel_LDFLAGS = \
@@ -71,6 +76,7 @@ refslabel_SOURCES = \
 	refslabel.c
 
 bin_PROGRAMS += refsls
+man_MANS += refsls.8
 refsls_LDADD = \
 	$(refs_common_libs)
 refsls_LDFLAGS = \
