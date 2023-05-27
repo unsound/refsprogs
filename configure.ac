@@ -145,6 +145,12 @@ AC_CONFIG_FILES([
 	librefs/Makefile
 	librefs/librefs.pc
 	refsprogs/Makefile
+	refsprogs/redb.8
+	refsprogs/refs-fuse.8
+	refsprogs/refscat.8
+	refsprogs/refsinfo.8
+	refsprogs/refslabel.8
+	refsprogs/refsls.8
 ])
 AC_OUTPUT
 

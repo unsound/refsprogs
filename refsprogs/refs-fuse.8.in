@@ -1,0 +1,49 @@
+.\" Copyright (c) 2022-2023 Erik Larsson
+.\"
+.TH REFS\-FUSE 8 "May 2023" "refsprogs @VERSION@"
+.SH NAME
+refs\-fuse \- Mount an ReFS volume as a filesystem backed by a FUSE daemon
+.SH SYNOPSIS
+.B refs\-fuse
+\fIdevice\fR \fImountpoint\fR [\fIFUSE options...\fR]
+.SH DESCRIPTION
+.B refs\-fuse
+will mount an ReFS volume in the filesystem tree at \fImountpoint\fR for
+read-only access.
+.SH OPTIONS
+.B refs\-fuse
+accepts most of the options that can be supplied when mounting FUSE filesystems.
+.br
+Examples (see \fBmount.fuse(8)\fR for more):
+.TP
+\fB\-f\fR
+Foreground mode. Suppresses daemonizing the filesystem when the mount is
+successful.
+.TP
+\fB\-o\fR MOUNT OPTIONS...
+A comma-separated list of options to modify the mount. E.g. \fI\-odebug\fR for
+enabling debug output, \fI\-ononempty\fR to allow mounting over a non-empty
+directory.
+.SH BUGS
+.BR refs\-fuse
+is currently unable to reliably read file data for many files especially on
+newer ReFS versions due to insufficient information about the volume format.
+This is being worked on.
+
+It is also limited to read-only operation, which isn't technically a bug but a
+design limitation for now.
+
+If you find a bug, then please report it to the refsprogs bug tracker on github:
+https://github.com/unsound/refsprogs/issues
+.hy
+.SH AUTHORS
+.B refs\-fuse
+was written by Erik Larsson
+.SH AVAILABILITY
+.B refs\-fuse
+is part of the
+.B refsprogs
+package.
+.hy
+.SH SEE ALSO
+.BR mount.fuse (8)
