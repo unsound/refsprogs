@@ -29,6 +29,7 @@ redb_CFLAGS = \
 redb_SOURCES = \
 	redb.c
 
+if ENABLE_REFS_FUSE
 bin_PROGRAMS += refs-fuse
 man_MANS += refs-fuse.8
 refs_fuse_LDADD = \
@@ -41,6 +42,7 @@ refs_fuse_CFLAGS = \
 	$(refs_common_cflags)
 refs_fuse_SOURCES = \
 	refs-fuse.c
+endif # ENABLE_REFS_FUSE
 
 bin_PROGRAMS += refscat
 man_MANS += refscat.8
