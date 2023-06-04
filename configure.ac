@@ -24,6 +24,26 @@ AC_ARG_ENABLE(
 	[enable_library="yes"]
 )
 
+AC_ARG_ENABLE(
+	[refs-fuse],
+	[AS_HELP_STRING(
+		[--disable-refs-fuse],
+		[do not build the FUSE driver (eliminates libfuse dependency)]
+	)],
+	[case $enableval in
+	yes)
+		enable_refs_fuse="yes"
+		;;
+	no)
+		enable_refs_fuse="no"
+		;;
+	*)
+		AC_MSG_ERROR([[Unknown option to --enable-refs-fuse: $enableval]])
+		;;
+	esac],
+	[enable_refs_fuse="yes"]
+)
+
 # Programs
 AC_PROG_CC(gcc cc)
 AC_PROG_LN_S
@@ -104,29 +124,31 @@ mingw*)
 	;;
 esac
 
-# Checks for FUSE library.
-FUSE_MODULE_CFLAGS=""
-FUSE_MODULE_LIBS=""
+if test "x$enable_refs_fuse" == "xyes"; then
+	# Checks for FUSE library.
+	FUSE_MODULE_CFLAGS=""
+	FUSE_MODULE_LIBS=""
 
-case "$target_os" in
-netbsd*)
-	# Use librefuse.
-	FUSE_MODULE_LIBS="-lrefuse"
-	;;
-mingw*)
-	# Dokan is used. Currently the user needs to specify libfuse include and
-	# library paths manually.
-	;;
-*)
-	# Other platforms (Linux, FreeBSD, ...) use pkg-config.
-	PKG_CHECK_MODULES(
-		[FUSE_MODULE],
-		[fuse >= 2.6.0],
-		[],
-		[]
-	)
-	;;
-esac
+	case "$target_os" in
+	netbsd*)
+		# Use librefuse.
+		FUSE_MODULE_LIBS="-lrefuse"
+		;;
+	mingw*)
+		# Dokan is used. Currently the user needs to specify libfuse include and
+		# library paths manually.
+		;;
+	*)
+		# Other platforms (Linux, FreeBSD, ...) use pkg-config.
+		PKG_CHECK_MODULES(
+			[FUSE_MODULE],
+			[fuse >= 2.6.0],
+			[],
+			[]
+		)
+		;;
+	esac
+fi
 
 AC_SYS_LARGEFILE
 
@@ -136,6 +158,7 @@ AC_SUBST([FUSE_MODULE_CFLAGS])
 AC_SUBST([FUSE_MODULE_LIBS])
 AM_CONDITIONAL([INSTALL_LIBRARY], [test "${enable_library}" = "yes"])
 AM_CONDITIONAL([ENABLE_NFCONV], [test "${enable_nfconv}" = "yes"])
+AM_CONDITIONAL([ENABLE_REFS_FUSE], [test "x${enable_refs_fuse}" = "xyes"])
 
 # generate files
 AC_CONFIG_FILES([
@@ -145,6 +168,12 @@ AC_CONFIG_FILES([
 	librefs/Makefile
 	librefs/librefs.pc
 	refsprogs/Makefile
+	refsprogs/redb.8
+	refsprogs/refs-fuse.8
+	refsprogs/refscat.8
+	refsprogs/refsinfo.8
+	refsprogs/refslabel.8
+	refsprogs/refsls.8
 ])
 AC_OUTPUT
 
