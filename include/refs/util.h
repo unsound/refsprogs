@@ -749,7 +749,12 @@ static inline void _print_filetime(
 	const s32 time_100nsec = (filetime - filetime_offset) % 10000000;
 	const char *ctime_string = get_ctime(time_sec);
 
-	if(print_visitor && print_visitor->verbose) {
+	if(!ctime_string) {
+		emit(prefix, indent, "%s: <invalid timestamp> (%" PRId64 ")",
+			identifier,
+			PRAd64(filetime));
+	}
+	else if(print_visitor && print_visitor->verbose) {
 		emit(prefix, indent, "%s: %" PRIbs ".%" PRI0PAD(7) PRId64
 			"%" PRIbs " (%" PRId64 ")",
 			identifier,

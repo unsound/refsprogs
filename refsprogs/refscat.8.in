@@ -1,0 +1,45 @@
+.\" Copyright (c) 2022-2023 Erik Larsson
+.\"
+.TH REFSCAT 8 "May 2023" "refsprogs @VERSION@"
+.SH NAME
+refscat \- Print the data of a file to standard output
+.SH SYNOPSIS
+.B refscat
+[\fIoptions\fR] \fIdevice\fR
+.SH DESCRIPTION
+.B refscat
+looks up a file on an ReFS volume and, if it exists, writes the data to standard
+output.
+
+Run refscat without arguments for a full list of options.
+.SH OPTIONS
+Below is a summary of all the options that
+.B refscat
+accepts.  Nearly all options have two equivalent names.  The short name is
+preceded by
+.B \-
+and the long name is preceded by
+.BR \-\- .
+.TP
+\fB\-p\fR, \fB\-\-path\fR PATH
+The path to the file that should be retrieved from the ReFS volume (must be a
+POSIX\-style absolute path, i.e. starting with a '/').
+.SH BUGS
+This utility is currently unable to look up all the extents of a file.
+Exploration of the metadata related to file extents is still ongoing, and this
+utility will improve as we learn more.
+
+If you find a bug, then please report it to the refsprogs bug tracker on github:
+https://github.com/unsound/refsprogs/issues
+.hy
+.SH AUTHORS
+.B refscat
+was written by Erik Larsson
+.SH AVAILABILITY
+.B refscat
+is part of the
+.B refsprogs
+package.
+.hy
+.SH SEE ALSO
+.BR refs\-fuse (8)

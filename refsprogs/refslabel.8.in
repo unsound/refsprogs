@@ -1,0 +1,30 @@
+.\" Copyright (c) 2022-2023 Erik Larsson
+.\"
+.TH REFSLABEL 8 "May 2023" "refsprogs @VERSION@"
+.SH NAME
+refslabel \- Print the volume label of an ReFS volume.
+.SH SYNOPSIS
+.B refslabel
+\fIdevice\fR
+.SH DESCRIPTION
+.B refslabel
+displays the volume label of an ReFS volume.
+.SH OPTIONS
+\fBrefslabel\fR currently has no options
+.SH BUGS
+There are no known problems with
+.BR refslabel .
+If you find a bug, then please report it to the refsprogs bug tracker on github:
+https://github.com/unsound/refsprogs/issues
+.hy
+.SH AUTHORS
+.B refslabel
+was written by Erik Larsson
+.SH AVAILABILITY
+.B refslabel
+is part of the
+.B refsprogs
+package.
+.hy
+.SH SEE ALSO
+.BR refs\-fuse (8)

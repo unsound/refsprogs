@@ -1,0 +1,58 @@
+.\" Copyright (c) 2022-2023 Erik Larsson
+.\"
+.TH REFSINFO 8 "May 2023" "refsprogs @VERSION@"
+.SH NAME
+refsinfo - Display information about a ReFS volume
+.SH SYNOPSIS
+.B refsinfo
+[\fIoptions\fR] \fIdevice\fR
+.SH DESCRIPTION
+.B refsinfo
+will dump information about an ReFS volume. When no options are specified,
+information about the entire volume is printed.
+
+Run refsinfo without arguments for a full list of options.
+.SH OPTIONS
+Below is a summary of all the options that
+.B refsinfo
+accepts.  Nearly all options have two equivalent names.  The short name is
+preceded by
+.B \-
+and the long name is preceded by
+.BR \-\- .
+.TP
+\fB\-a\fR, \fB\-\-backup\-boot\-sector\fR
+Dump backup boot sector without parsing the volume further.
+.TP
+\fB\-b\fR, \fB\-\-boot\-sector\fR
+Dump primary boot sector without parsing the volume further.
+.TP
+\fB\-n\fR, \fB\-\-node\-number\fR NODE NUMBER
+Show information about the tree node with the specified block number.
+.TP
+\fB\-o\fR, \fB\-\-object\-id\fR OBJECT ID
+Show information about the tree node with the specified object ID.
+.TP
+\fB\-p\fR, \fB\-\-path\fR PATH
+Show information about the file or directory entry at the specified path
+\fBPATH\fR (must be a POSIX-style absolute path, i.e. starting with a '/').
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Show more information than in regular mode.
+.SH BUGS
+There are no known problems with
+.BR refsinfo .
+If you find a bug, then please report it to the refsprogs bug tracker on github:
+https://github.com/unsound/refsprogs/issues
+.hy
+.SH AUTHORS
+.B refsinfo
+was written by Erik Larsson
+.SH AVAILABILITY
+.B refsinfo
+is part of the
+.B refsprogs
+package.
+.hy
+.SH SEE ALSO
+.BR refs\-fuse (8)

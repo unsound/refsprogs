@@ -1,0 +1,53 @@
+.\" Copyright (c) 2022-2023 Erik Larsson
+.\"
+.TH REFSLS 8 "May 2023" "refsprogs @VERSION@"
+.SH NAME
+refsls \- List files on an ReFS volume.
+.SH SYNOPSIS
+.B refsls
+[\fIoptions\fR] \fIdevice\fR
+.SH DESCRIPTION
+.B refsls
+allows listing files on an ReFS volume, in either short or long format and
+optionally in a recursive manner.
+
+Run refsls without arguments for a full list of options.
+.SH OPTIONS
+Below is a summary of all the options that
+.B refsls
+accepts.  Nearly all options have two equivalent names.  The short name is
+preceded by
+.B \-
+and the long name is preceded by
+.BR \-\- .
+.TP
+\fB\-a\fR, \fB\-\-show\-all\fR
+Show all files, including hidden files.
+.TP
+\fB\-l\fR, \fB\-\-long\-format\fR
+Use long format when listing files, including file sizes and flags.
+.TP
+\fB\-p\fR, \fB\-\-path\fR PATH
+Path to the directory to list (must be a POSIX\-style absolute path, i.e.
+starting with a '/').
+.TP
+\fB\-R\fR, \fB\-\-recursive\fR
+List files recursively starting at the specified path, i.e. all subdirectories
+and its files will be listed.
+.SH BUGS
+There are no known problems with
+.BR refsls .
+If you find a bug, then please report it to the refsprogs bug tracker on github:
+https://github.com/unsound/refsprogs/issues
+.hy
+.SH AUTHORS
+.B refsls
+was written by Erik Larsson
+.SH AVAILABILITY
+.B refsls
+is part of the
+.B refsprogs
+package.
+.hy
+.SH SEE ALSO
+.BR refs\-fuse (8)
