@@ -58,10 +58,12 @@ jobs:
       run: |
         sudo apt update
         sudo apt install mingw-w64 libfuse-dev
+    - name: Download and extract Dokan library
+      run: curl -L -O 'https://github.com/dokan-dev/dokany/releases/download/v2.0.6.1000/dokan.zip' && ( mkdir dokan && cd dokan && unzip ../dokan.zip )
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure --host=i686-w64-mingw32 --disable-shared --disable-refs-fuse
+      run: ./configure --host=i686-w64-mingw32 --disable-shared CFLAGS="-I`pwd`/dokan/Win32/Msys2/include/fuse" LDFLAGS="-L`pwd`/dokan/Win32/Release -ldokanfuse2"
     - name: make
       run: make
     - name: make check
@@ -79,10 +81,12 @@ jobs:
       run: |
         sudo apt update
         sudo apt install mingw-w64 libfuse-dev
+    - name: Download and extract Dokan library
+      run: curl -L -O 'https://github.com/dokan-dev/dokany/releases/download/v2.0.6.1000/dokan.zip' && ( mkdir dokan && cd dokan && unzip ../dokan.zip )
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure --host=x86_64-w64-mingw32 --disable-shared --disable-refs-fuse
+      run: ./configure --host=x86_64-w64-mingw32 --disable-shared CFLAGS="-I`pwd`/dokan/x64/Msys2/include/fuse" LDFLAGS="-L`pwd`/dokan/x64/Release -ldokanfuse2"
     - name: make
       run: make
     - name: make check
