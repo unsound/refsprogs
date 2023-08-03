@@ -826,6 +826,172 @@ out:
 	return err;
 }
 
+#if defined(_WIN32)
+static int refs_fuse_op_win_get_attributes_visit_directory_entry(
+		void *context,
+		const refschar *file_name,
+		u16 file_name_length,
+		u32 file_flags,
+		u64 object_id,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		const u8 *record,
+		size_t record_size)
+{
+	(void) file_name;
+	(void) file_name_length;
+	(void) object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) record;
+	(void) record_size;
+
+	*((uint32_t*) context) =
+		file_flags | 0x10 /* FILE_ATTRIBUTE_DIRECTORY */;
+
+	return 0;
+}
+
+static int refs_fuse_op_win_get_attributes_visit_file_entry(
+		void *context,
+		const le16 *file_name,
+		u16 file_name_length,
+		u32 file_flags,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		u64 file_size,
+		u64 allocated_size,
+		const u8 *record,
+		size_t record_size)
+{
+	(void) file_name;
+	(void) file_name_length;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+	(void) record;
+	(void) record_size;
+
+	*((uint32_t*) context) = file_flags;
+
+	return 0;
+}
+
+uint32_t refs_fuse_op_win_get_attributes(const char *path)
+{
+	refs_volume *const vol =
+		(refs_volume*) fuse_get_context()->private_data;
+	int err = 0;
+	u64 parent_directory_object_id = 0;
+	u64 directory_object_id = 0;
+	u8 *record = NULL;
+	size_t record_size = 0;
+	refs_node_walk_visitor visitor;
+	uint32_t attributes = 0;
+
+	memset(&visitor, 0, sizeof(visitor));
+
+	err = refs_volume_lookup_by_posix_path(
+		/* refs_volume *vol */
+		vol,
+		/* const char *path */
+		path,
+		/* u64 *out_parent_directory_object_id */
+		&parent_directory_object_id,
+		/* u64 *out_directory_object_id */
+		&directory_object_id,
+		/* u8 **out_record */
+		&record,
+		/* size_t *out_record_size */
+		&record_size);
+	if(err) {
+		sys_log_perror(err, "Error while looking up entry by path");
+		goto out;
+	}
+	else if(!parent_directory_object_id) {
+		err = ENOENT;
+		goto out;
+	}
+
+	visitor.context = &attributes;
+	if(!record && directory_object_id) {
+		/* Root directory. */
+		attributes =
+			0x04 /* FILE_ATTRIBUTE_SYSTEM */ |
+			0x10 /* FILE_ATTRIBUTE_DIRECTORY */ |
+			0x20 /* FILE_ATTRIBUTE_ARCHIVE */;
+	}
+	else if(directory_object_id) {
+		visitor.node_directory_entry =
+			refs_fuse_op_win_get_attributes_visit_directory_entry;
+		err = parse_level3_directory_value(
+			/* refs_node_walk_visitor *visitor */
+			&visitor,
+			/* const char *prefix */
+			"",
+			/* size_t indent */
+			1,
+			/* sys_bool is_v3 */
+			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
+			/* const u8 *key */
+			NULL,
+			/* u16 key_size */
+			0,
+			/* const u8 *value */
+			record,
+			/* u16 value_offset */
+			0,
+			/* u16 value_size */
+			record_size,
+			/* void *context */
+			NULL);
+	}
+	else {
+		visitor.node_file_entry =
+			refs_fuse_op_win_get_attributes_visit_file_entry;
+		err = parse_level3_file_value(
+			/* refs_node_walk_visitor *visitor */
+			&visitor,
+			/* const char *prefix */
+			"",
+			/* size_t indent */
+			1,
+			/* u32 block_index_unit */
+			(vol->bs->version_major == 1) ? 16384 :
+			vol->cluster_size,
+			/* sys_bool is_v3 */
+			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
+			/* const u8 *key */
+			NULL,
+			/* u16 key_size */
+			0,
+			/* const u8 *value */
+			record,
+			/* u16 value_offset */
+			0,
+			/* u16 value_size */
+			record_size,
+			/* void *context */
+			NULL);
+	}
+
+	if(err) {
+		sys_log_perror(err, "Error while parsing entry data");
+	}
+out:
+	return attributes;
+}
+#endif /* defined(_WIN32) */
+
 struct fuse_operations refs_fuse_operations = {
 	/* int (*getattr) (const char *, struct FUSE_STAT *) */
 	.getattr = refs_fuse_op_getattr,
@@ -841,6 +1007,10 @@ struct fuse_operations refs_fuse_operations = {
 	/* int (*readdir) (const char *, void *, fuse_fill_dir_t, off_t,
 	 *         struct fuse_file_info *) */
 	.readdir = refs_fuse_op_readdir,
+#ifdef _WIN32
+	/* uint32_t (*win_get_attributes) (const char *fn) */
+	.win_get_attributes = refs_fuse_op_win_get_attributes,
+#endif
 };
 
 int main(int argc, char **argv)
