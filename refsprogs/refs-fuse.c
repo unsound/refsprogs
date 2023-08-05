@@ -292,6 +292,9 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 
 	memset(&visitor, 0, sizeof(visitor));
 
+	sys_log_debug("%s(path=\"%s\", stbuf=%p)",
+		__FUNCTION__, path, stbuf);
+
 	err = refs_volume_lookup_by_posix_path(
 		/* refs_volume *vol */
 		vol,
@@ -396,6 +399,9 @@ out:
 		sys_free(&record);
 	}
 
+	sys_log_debug("%s(path=\"%s\", stbuf=%p): %d (%s)",
+		__FUNCTION__, path, stbuf, -err, strerror(err));
+
 	return -err;
 }
 
@@ -406,6 +412,9 @@ static int refs_fuse_op_open(const char *path, struct fuse_file_info *fi)
 	int err = 0;
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
+
+	sys_log_debug("%s(path=\"%s\", fi=%p)",
+		__FUNCTION__, path, fi);
 
 	err = refs_volume_lookup_by_posix_path(
 		/* refs_volume *vol */
@@ -434,6 +443,9 @@ static int refs_fuse_op_open(const char *path, struct fuse_file_info *fi)
 		goto out;
 	}
 out:
+	sys_log_debug("%s(path=\"%s\", fi=%p): %d (%s)",
+		__FUNCTION__, path, fi, -err, strerror(err));
+
 	return -err;
 }
 
@@ -591,6 +603,10 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	memset(&context, 0, sizeof(context));
 	memset(&visitor, 0, sizeof(visitor));
 
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ", "
+		"offset=%" PRId64 ", fi=%p)",
+		__FUNCTION__, path, buf, PRAuz(size), PRAd64(offset), fi);
+
 	err = refs_volume_lookup_by_posix_path(
 		/* refs_volume *vol */
 		vol,
@@ -661,19 +677,40 @@ out:
 		sys_free(&record);
 	}
 
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ", "
+		"offset=%" PRId64 ", fi=%p): %" PRIdz " (%s)",
+		__FUNCTION__, path, buf, PRAuz(size), PRAd64(offset), fi,
+		PRAdz(err ? -err : (size - context.size)), strerror(err));
+
 	return err ? -err : (size - context.size);
 }
 
 static int refs_fuse_op_statfs(const char *path, struct statvfs *stvbuf)
 {
+	int err = 0;
+
+	sys_log_debug("%s(path=\"%s\", stvbuf=%p)",
+		__FUNCTION__, path, stvbuf);
+
 	memset(stvbuf, 0, sizeof(*stvbuf));
 
-	return 0;
+	sys_log_debug("%s(path=\"%s\", stvbuf=%p): %d (%s)",
+		__FUNCTION__, path, stvbuf, -err, strerror(err));
+
+	return -err;
 }
 
 static int refs_fuse_op_release(const char *path, struct fuse_file_info *fi)
 {
-	return 0;
+	int err = 0;
+
+	sys_log_debug("%s(path=\"%s\", fi=%p)",
+		__FUNCTION__, path, fi);
+
+	sys_log_debug("%s(path=\"%s\", fi=%p): %d (%s)",
+		__FUNCTION__, path, fi, -err, strerror(err));
+
+	return -err;
 }
 
 static int refs_fuse_op_readdir_visit_directory_entry(
@@ -774,6 +811,10 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 	memset(&context, 0, sizeof(context));
 	memset(&visitor, 0, sizeof(visitor));
 
+	sys_log_debug("%s(path=\"%s\", dirbuf=%p, filler=%p, "
+		"offset=%" PRId64 ", fi=%p)",
+		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi);
+
 	err = refs_volume_lookup_by_posix_path(
 		/* refs_volume *vol */
 		vol,
@@ -840,6 +881,11 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 		goto out;
 	}
 out:
+	sys_log_debug("%s(path=\"%s\", dirbuf=%p, filler=%p, "
+		"offset=%" PRId64 ", fi=%p): %d (%s)",
+		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi, err,
+		strerror(err));
+
 	return err;
 }
 
@@ -919,6 +965,8 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 	uint32_t attributes = 0;
 
 	memset(&visitor, 0, sizeof(visitor));
+
+	sys_log_debug("%s(path=\"%s\")", __FUNCTION__, path);
 
 	err = refs_volume_lookup_by_posix_path(
 		/* refs_volume *vol */
@@ -1010,6 +1058,9 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 		sys_log_perror(err, "Error while parsing entry data");
 	}
 out:
+	sys_log_debug("%s(path=\"%s\"): %" PRIu32 " (%s)",
+		__FUNCTION__, path, PRAu32(attributes), strerror(0));
+
 	return attributes;
 }
 #endif /* defined(_WIN32) */
