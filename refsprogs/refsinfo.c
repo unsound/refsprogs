@@ -230,6 +230,7 @@ static int print_leaf_by_path(
 
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
+	sys_bool is_short_entry = SYS_FALSE;
 	u8 *record = NULL;
 	size_t record_size = 0;
 	refs_node_walk_visitor visitor;
@@ -247,10 +248,14 @@ static int print_leaf_by_path(
 		vol,
 		/* const char *path */
 		path,
+		/* const u64 *start_object_id */
+		NULL,
 		/* u64 *out_parent_directory_object_id */
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
 		/* u8 **out_record */
 		&record,
 		/* size_t *out_record_size */
@@ -278,8 +283,8 @@ static int print_leaf_by_path(
 			PRAu64(directory_object_id),
 			PRAX64(directory_object_id));
 	}
-	else if(directory_object_id) {
-		err = parse_level3_directory_value(
+	else if(is_short_entry) {
+		err = parse_level3_short_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
@@ -301,13 +306,13 @@ static int print_leaf_by_path(
 			/* void *context */
 			NULL);
 		if(err) {
-			sys_log_pwarning(err, "Error while parsing directory "
+			sys_log_pwarning(err, "Error while parsing short "
 				"value");
 			err = 0;
 		}
 	}
 	else {
-		err = parse_level3_file_value(
+		err = parse_level3_long_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
@@ -332,7 +337,7 @@ static int print_leaf_by_path(
 			/* void *context */
 			NULL);
 		if(err) {
-			sys_log_pwarning(err, "Error while parsing file value");
+			sys_log_pwarning(err, "Error while parsing long value");
 			err = 0;
 		}
 	}

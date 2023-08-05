@@ -3871,7 +3871,13 @@ static int parse_level3_key(
 	return err;
 }
 
-int parse_level3_file_value(
+/**
+ * Parse a long level 3 tree entry value.
+ *
+ * Long values (type 1) are in all known instances files or links/reparse
+ * points.
+ */
+int parse_level3_long_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -3916,8 +3922,8 @@ int parse_level3_file_value(
 
 	(void) context;
 
-	if(visitor && visitor->node_file_entry) {
-		err = visitor->node_file_entry(
+	if(visitor && visitor->node_long_entry) {
+		err = visitor->node_long_entry(
 			/* void *context */
 			visitor->context,
 			/* const refschar *file_name */
@@ -4318,7 +4324,16 @@ out:
 	return err;
 }
 
-int parse_level3_directory_value(
+/**
+ * Parse a short level 3 tree entry value.
+ *
+ * Short values (type 2) are usually directories, but occasionally we have found
+ * files that are represented by short values. Whether or not it's a file
+ * depends on the value of the file flags bit 0x10000000. If it's set then it's
+ * a directory. If it's not set it's a file and the allocated size/file size
+ * fields describe its allocation state.
+ */
+int parse_level3_short_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -4341,8 +4356,12 @@ int parse_level3_directory_value(
 		(value_size < 32 + 8) ? 0 : read_le64(&value[32]);
 	const u64 last_access_time =
 		(value_size < 40 + 8) ? 0 : read_le64(&value[40]);
+	const u64 allocated_size =
+		(value_size < 48 + 8) ? 0 : read_le64(&value[48]);
+	const u64 file_size =
+		(value_size < 56 + 8) ? 0 : read_le64(&value[56]);
 	const u32 file_flags =
-		(value_size < 64 + 8) ? 0 : read_le32(&value[64]);
+		(value_size < 64 + 4) ? 0 : read_le32(&value[64]);
 
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -4351,32 +4370,65 @@ int parse_level3_directory_value(
 
 	(void) context;
 
-	if(visitor && visitor->node_directory_entry) {
-		err = visitor->node_directory_entry(
-			/* void *context */
-			visitor->context,
-			/* const refschar *file_name */
-			(const refschar*) &key[4],
-			/* u16 file_name_length */
-			(key_size - 4) / sizeof(refschar),
-			/* u32 file_flags */
-			file_flags,
-			/* u64 object_id */
-			object_id,
-			/* u64 create_time */
-			creation_time,
-			/* u64 last_access_time */
-			last_access_time,
-			/* u64 last_write_time */
-			last_data_modification_time,
-			/* u64 last_mft_change_time */
-			last_mft_modification_time,
-			/* const u8 *record */
-			value,
-			/* size_t record_size */
-			value_size);
-		if(err) {
-			goto out;
+	if(visitor) {
+		if((file_flags & 0x10000000) && visitor->node_short_entry) {
+			err = visitor->node_short_entry(
+				/* void *context */
+				visitor->context,
+				/* const refschar *file_name */
+				(const refschar*) &key[4],
+				/* u16 file_name_length */
+				(key_size - 4) / sizeof(refschar),
+				/* u32 file_flags */
+				file_flags,
+				/* u64 object_id */
+				object_id,
+				/* u64 create_time */
+				creation_time,
+				/* u64 last_access_time */
+				last_access_time,
+				/* u64 last_write_time */
+				last_data_modification_time,
+				/* u64 last_mft_change_time */
+				last_mft_modification_time,
+				/* const u8 *record */
+				value,
+				/* size_t record_size */
+				value_size);
+			if(err) {
+				goto out;
+			}
+		}
+		else if(!(file_flags & 0x10000000) && visitor->node_long_entry)
+		{
+			err = visitor->node_long_entry(
+				/* void *context */
+				visitor->context,
+				/* const refschar *file_name */
+				(const refschar*) &key[4],
+				/* u16 file_name_length */
+				(key_size - 4) / sizeof(refschar),
+				/* u32 file_flags */
+				file_flags,
+				/* u64 create_time */
+				creation_time,
+				/* u64 last_access_time */
+				last_access_time,
+				/* u64 last_write_time */
+				last_data_modification_time,
+				/* u64 last_mft_change_time */
+				last_mft_modification_time,
+				/* u64 file_size */
+				file_size,
+				/* u64 allocated_size */
+				allocated_size,
+				/* const u8 *record */
+				value,
+				/* size_t record_size */
+				value_size);
+			if(err) {
+				goto out;
+			}
 		}
 	}
 
@@ -4410,8 +4462,8 @@ int parse_level3_directory_value(
 		last_mft_modification_time);
 	print_filetime(prefix, indent, "Last access time",
 		last_access_time);
-	print_unknown64(prefix, indent, value, &value[48]);
-	print_unknown64(prefix, indent, value, &value[56]);
+	print_le64_dechex("Allocated size", prefix, indent, value, &value[48]);
+	print_le64_dechex("File size", prefix, indent, value, &value[56]);
 	emit(prefix, indent, "File flags: 0x%" PRIX32,
 		PRAX32(file_flags));
 	print_unknown32(prefix, indent, value, &value[68]);
@@ -4520,7 +4572,7 @@ static int parse_level3_leaf_value(
 
 	if(key_type == 0x30 && dirent_type == 0x1) {
 		/* File. */
-		err = parse_level3_file_value(
+		err = parse_level3_long_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -4549,7 +4601,7 @@ static int parse_level3_leaf_value(
 	}
 	else if(key_type == 0x30 && dirent_type == 0x2) {
 		/* Directory. */
-		err = parse_level3_directory_value(
+		err = parse_level3_short_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */

@@ -192,13 +192,14 @@ typedef struct {
 	refschar *name;
 	size_t name_length;
 	sys_bool found;
+	sys_bool is_short_entry;
 	sys_bool is_directory;
 	u64 directory_object_id;
 	u8 **record;
 	size_t *record_size;
 } refs_volume_lookup_context;
 
-static int refs_volume_lookup_node_file_entry(
+static int refs_volume_lookup_node_long_entry(
 		void *_context,
 		const refschar *file_name,
 		u16 file_name_length,
@@ -230,6 +231,7 @@ static int refs_volume_lookup_node_file_entry(
 		file_name_length * sizeof(refschar)))
 	{
 		context->found = SYS_TRUE;
+		context->is_short_entry = SYS_FALSE;
 		context->is_directory = SYS_FALSE;
 
 		if(context->record) {
@@ -249,7 +251,7 @@ out:
 	return err;
 }
 
-static int refs_volume_lookup_node_directory_entry(
+static int refs_volume_lookup_node_short_entry(
 		void *_context,
 		const refschar *file_name,
 		u16 file_name_length,
@@ -278,8 +280,11 @@ static int refs_volume_lookup_node_directory_entry(
 		file_name_length * sizeof(refschar)))
 	{
 		context->found = SYS_TRUE;
-		context->is_directory = SYS_TRUE;
-		context->directory_object_id = object_id;
+		context->is_short_entry = SYS_TRUE;
+		context->is_directory =
+			(file_flags & 0x10000000) ? SYS_TRUE : SYS_FALSE;
+		context->directory_object_id =
+			(file_flags & 0x10000000) ? object_id : 0;
 
 		if(context->record) {
 			err = sys_malloc(record_size, context->record);
@@ -397,8 +402,10 @@ out:
 static int refs_volume_lookup(
 		refs_volume *const vol,
 		const void *const path,
+		const u64 *const start_object_id,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
+		sys_bool *const out_is_short_entry,
 		u8 **const out_record,
 		size_t *const out_record_size)
 {
@@ -409,7 +416,7 @@ static int refs_volume_lookup(
 	refs_volume_lookup_context context;
 	const void *cur_path = path;
 	size_t cur_path_length = path_size;
-	u64 cur_object_id = 0x600;
+	u64 cur_object_id = start_object_id ? *start_object_id : 0x600;
 	refschar *cur_element = NULL;
 	size_t cur_element_capacity = 255;
 	size_t cur_element_length = 0;
@@ -421,14 +428,15 @@ static int refs_volume_lookup(
 		goto out;
 	}
 
-	visitor.node_file_entry = refs_volume_lookup_node_file_entry;
-	visitor.node_directory_entry = refs_volume_lookup_node_directory_entry;
+	visitor.node_long_entry = refs_volume_lookup_node_long_entry;
+	visitor.node_short_entry = refs_volume_lookup_node_short_entry;
 	visitor.context = &context;
 
 	while(1) {
-
 		cur_element_length = cur_element_capacity;
 
+		sys_log_debug("Processing path element \"%.*s\"...",
+			(int) cur_path_length, cur_path);
 		err = next_path_element(
 			/* const void **path */
 			&cur_path,
@@ -446,7 +454,6 @@ static int refs_volume_lookup(
 
 		cur_path_length =
 			path_size - ((size_t) cur_path - (size_t) path);
-
 
 		memset(&context, 0, sizeof(context));
 		context.name = cur_element;
@@ -488,6 +495,10 @@ static int refs_volume_lookup(
 			goto out;
 		}
 
+		sys_log_debug("    %sound in object ID 0x%" PRIX64 ".",
+			context.found ? "F" : "Not f",
+			PRAX64(cur_object_id));
+
 		if(!context.found) {
 			break;
 		}
@@ -502,6 +513,10 @@ static int refs_volume_lookup(
 				*out_directory_object_id =
 					context.is_directory ?
 					context.directory_object_id : 0;
+			}
+
+			if(out_is_short_entry) {
+				*out_is_short_entry = context.is_short_entry;
 			}
 
 			break;
@@ -524,8 +539,10 @@ out:
 int refs_volume_lookup_by_posix_path(
 		refs_volume *const vol,
 		const char *const path,
+		const u64 *const start_object_id,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
+		sys_bool *const out_is_short_entry,
 		u8 **const out_record,
 		size_t *const out_record_size)
 {
@@ -568,10 +585,14 @@ int refs_volume_lookup_by_posix_path(
 		vol,
 		/* const void *path */
 		cur_path,
+		/* const u64 *start_object_id */
+		start_object_id,
 		/* u64 *out_parent_directory_object_id */
 		out_parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		out_directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		out_is_short_entry,
 		/* u8 **out_record */
 		out_record,
 		/* size_t *out_record_size */

@@ -228,8 +228,8 @@ static int refsls_print_dirent(
 		subdir_ctx.prefix[prev_prefix_length + cstr_len] = '\0';
 
 		subdir_visitor.context = &subdir_ctx;
-		subdir_visitor.node_file_entry = refsls_node_file_entry;
-		subdir_visitor.node_directory_entry =
+		subdir_visitor.node_long_entry = refsls_node_file_entry;
+		subdir_visitor.node_short_entry =
 			refsls_node_directory_entry;
 
 		err = refs_node_walk(
@@ -469,10 +469,14 @@ int main(int argc, char **argv)
 		vol,
 		/* const char *path */
 		options.path ? options.path : "/",
+		/* const u64 *start_object_id */
+		NULL,
 		/* u64 *out_parent_directory_object_id */
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		NULL,
 		/* u8 **out_record */
 		NULL,
 		/* size_t *out_record_size */
@@ -496,8 +500,8 @@ int main(int argc, char **argv)
 	context.vol = vol;
 	context.long_format = options.long_format;
 	visitor.context = &context;
-	visitor.node_file_entry = refsls_node_file_entry;
-	visitor.node_directory_entry = refsls_node_directory_entry;
+	visitor.node_long_entry = refsls_node_file_entry;
+	visitor.node_short_entry = refsls_node_directory_entry;
 
 	err = refs_node_walk(
 		/* sys_device *dev */

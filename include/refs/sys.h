@@ -331,10 +331,12 @@ static inline void _sys_free(void **out_ptr)
 #define sys_free(out_ptr) \
 	_sys_free((void**) (out_ptr))
 
+#define PRIdz "zd"
 #define PRIuz "zu"
 #define PRIXz "zX"
 #define PRIbs ".*s"
 
+#define PRAdz(arg) ((ssize_t) (arg))
 #define PRAuz(arg) ((size_t) (arg))
 #define PRAXz(arg) ((size_t) (arg))
 #define PRAbs(precision, arg) ((int) (precision)), ((const char*) (arg))

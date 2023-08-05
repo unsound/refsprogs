@@ -49,6 +49,345 @@ typedef unsigned int mode_t;
 #define FUSE_STAT stat
 #endif
 
+#include "rb_tree.h"
+
+typedef struct refs_fuse_node refs_fuse_node;
+
+struct refs_fuse_node {
+	char *path;
+	size_t path_length;
+	u64 parent_directory_object_id;
+	u64 directory_object_id;
+	sys_bool is_short_entry;
+	u8 *record;
+	size_t record_size;
+
+	refs_fuse_node *prev;
+	refs_fuse_node *next;
+};
+
+static struct rb_tree *cache_tree = NULL;
+static size_t cached_nodes_count = 0;
+static const size_t cached_nodes_max = 1024;
+static refs_fuse_node *cached_nodes_list = NULL;
+
+static void refs_fuse_add_cached_node_to_list(
+		refs_fuse_node *const cached_node)
+{
+	cached_node->next =
+		cached_nodes_list ? cached_nodes_list : cached_node;
+	cached_node->prev =
+		cached_nodes_list ? cached_nodes_list->prev : cached_node;
+	if(cached_nodes_list) {
+		cached_nodes_list->prev->next = cached_node;
+		cached_nodes_list->prev = cached_node;
+	}
+
+	cached_nodes_list = cached_node;
+}
+
+static void refs_fuse_remove_cached_node_from_list(
+		refs_fuse_node *const cached_node)
+{
+	/* Detach from the list. */
+	if(cached_node == cached_node->next) {
+		cached_nodes_list = NULL;
+	}
+	else {
+		cached_node->next->prev = cached_node->prev;
+		cached_node->prev->next = cached_node->next;
+
+		/* If we're removing the head of the list, replace the head of
+		 * the list with the next item. */
+		if(cached_node == cached_nodes_list) {
+			cached_nodes_list = cached_node->next;
+		}
+	}
+
+	cached_node->next = NULL;
+	cached_node->prev = NULL;
+}
+
+static int refs_fuse_lookup_by_posix_path_compare(
+		struct rb_tree *tree, struct rb_node *a, struct rb_node *b)
+{
+	const refs_fuse_node *const a_node = (refs_fuse_node*) a->value;
+	const refs_fuse_node *const b_node = (refs_fuse_node*) b->value;
+
+	int res;
+
+	sys_log_trace("Comparing strings \"%.*s\" and \"%.*s\"",
+		(int) a_node->path_length, a_node->path,
+		(int) b_node->path_length, b_node->path);
+	res = strncmp(a_node->path, b_node->path,
+		sys_min(a_node->path_length, b_node->path_length));
+	if(res) {
+		/* A difference was found in the common prefix. Just return
+		 * res. */
+	}
+	else if(a_node->path_length < b_node->path_length) {
+		res = -1;
+	}
+	else if(a_node->path_length > b_node->path_length) {
+		res = 1;
+	}
+
+	sys_log_trace("Compared strings \"%.*s\" and \"%.*s\": %d",
+		(int) a_node->path_length, a_node->path,
+		(int) b_node->path_length, b_node->path, res);
+
+	return res;
+}
+
+static int refs_fuse_lookup_by_posix_path(
+		refs_volume *vol,
+		const char *path,
+		u64 *out_parent_directory_object_id,
+		u64 *out_directory_object_id,
+		sys_bool *out_is_short_entry,
+		const u8 **out_record,
+		size_t *out_record_size)
+{
+	const size_t path_length = strlen(path);
+
+	int err = 0;
+	refs_fuse_node *cached_node = NULL;
+	refs_fuse_node *new_node = NULL;
+	u64 start_object_id = 0;
+	const char *lookup_path = NULL;
+
+	if(!cache_tree) {
+		cache_tree = rb_tree_create(
+			/* rb_tree_node_cmp_f cmp */
+			refs_fuse_lookup_by_posix_path_compare);
+	}
+	else {
+		refs_fuse_node search_node;
+
+		memset(&search_node, 0, sizeof(search_node));
+		search_node.path = (char*) path;
+		search_node.path_length = path_length;
+
+		cached_node = rb_tree_find(
+			/* struct rb_tree *self */
+			cache_tree,
+			/* void *value */
+			&search_node);
+		if(cached_node) {
+			sys_log_debug("Cache hit for path \"%s\": %p%s",
+				path, cached_node,
+				cached_node->parent_directory_object_id ? "" :
+				" (negative)");
+
+			/* Put the looked up node at the start of the list to
+			 * indicate recent use. */
+			refs_fuse_remove_cached_node_from_list(
+				/* refs_fuse_node *cached_node */
+				cached_node);
+			refs_fuse_add_cached_node_to_list(
+				/* refs_fuse_node *cached_node */
+				cached_node);
+		}
+		else if(search_node.path_length > 1) {
+			/* Check if there's a cache hit for its parent. */
+			refs_fuse_node *cached_parent_node = NULL;
+			size_t i;
+
+			for(i = search_node.path_length; i > 0;) {
+				if(search_node.path[--i] == '/') {
+					break;
+				}
+			}
+
+			search_node.path_length = i ? i : 1;
+
+			sys_log_debug("Cache miss for path \"%s\". Attempting "
+				"to find parent directory \"%.*s\" in cache...",
+				path,
+				(int) search_node.path_length,
+				search_node.path);
+
+			cached_parent_node = rb_tree_find(
+				/* struct rb_tree *self */
+				cache_tree,
+				/* void *value */
+				&search_node);
+			if(cached_parent_node) {
+				lookup_path = &path[i];
+				start_object_id =
+					cached_parent_node->directory_object_id;
+				sys_log_debug("Cache miss for path \"%s\" but "
+					"found parent directory in cache. "
+					"Starting lookup at object ID "
+					"0x%" PRIX64 " with subpath \"%s\"...",
+					path,
+					PRAu64(start_object_id),
+					lookup_path);
+
+				/* Put the looked up cached parent node at the
+				 * start of the list to indicate recent use. */
+				refs_fuse_remove_cached_node_from_list(
+					/* refs_fuse_node *cached_node */
+					cached_parent_node);
+				refs_fuse_add_cached_node_to_list(
+					/* refs_fuse_node *cached_node */
+					cached_parent_node);
+			}
+			else {
+				sys_log_debug("Cache miss for path \"%s\".",
+					path);
+			}
+		}
+		else {
+			sys_log_debug("Cache miss for path \"%s\".",
+				path);
+		}
+	}
+
+	if(!cached_node) {
+		if(cached_nodes_count >= cached_nodes_max) {
+			/* Reuse the existing node at the tail of the list, i.e.
+			 * the one that was used least recently. */
+			new_node = cached_nodes_list->prev;
+
+			sys_log_debug("Reusing node %p for \"%s\" since we "
+				"reached the maximum number of cached nodes "
+				"(%" PRIuz " >= %" PRIuz ").",
+				new_node,
+				path,
+				PRAuz(cached_nodes_count),
+				PRAuz(cached_nodes_max));
+
+			/* Remove node from search tree. */
+			if(!rb_tree_remove(cache_tree, new_node)) {
+				sys_log_debug("Failed to remove node %p "
+					"(path: \"%s\") from tree!",
+					new_node, new_node->path);
+			}
+
+			refs_fuse_remove_cached_node_from_list(
+				/* refs_fuse_node *cached_node */
+				new_node);
+			--cached_nodes_count;
+
+			/* Free resources of existing node and zero the
+			 * allocation. */
+			if(new_node->record) {
+				sys_log_debug("Freeing record %p.",
+					 new_node->record);
+				sys_free(&new_node->record);
+			}
+			sys_log_debug("Freeing path %p.", new_node->path);
+			sys_free(&new_node->path);
+			memset(new_node, 0, sizeof(*new_node));
+		}
+		else {
+			sys_log_debug("Allocating new node for \"%s\" since "
+				"we are below the maximum number of cached "
+				"nodes (%" PRIuz " < %" PRIuz ").",
+				path,
+				PRAuz(cached_nodes_count),
+				PRAuz(cached_nodes_max));
+
+			err = sys_calloc(sizeof(refs_fuse_node), &new_node);
+			if(err) {
+				goto out;
+			}
+		}
+
+		new_node->path = strdup(path);
+		if(!new_node->path) {
+			err = (err = errno) ? err : ENOMEM;
+			sys_log_perror(errno, "strdup error");
+			goto out;
+		}
+
+		new_node->path_length = path_length;
+
+		err = refs_volume_lookup_by_posix_path(
+			/* refs_volume *vol */
+			vol,
+			/* const char *path */
+			start_object_id ? lookup_path : path,
+			/* const u64 *start_object_id */
+			start_object_id ? &start_object_id : NULL,
+			/* u64 *out_parent_directory_object_id */
+			&new_node->parent_directory_object_id,
+			/* u64 *out_directory_object_id */
+			&new_node->directory_object_id,
+			/* sys_bool *out_is_short_entry */
+			&new_node->is_short_entry,
+			/* u8 **out_record */
+			&new_node->record,
+			/* size_t *out_record_size */
+			&new_node->record_size);
+		if(err) {
+			sys_log_perror(errno, "lookup error");
+			goto out;
+		}
+
+		sys_log_debug("Lookup result:");
+		sys_log_debug("    parent_directory_object_id: %" PRIu64,
+			PRAu64(new_node->parent_directory_object_id));
+		sys_log_debug("    directory_object_id: %" PRIu64,
+			PRAu64(new_node->directory_object_id));
+		sys_log_debug("    record: %p", new_node->record);
+		sys_log_debug("    record_size: %" PRIuz,
+			PRAuz(new_node->record_size));
+
+		if(!rb_tree_insert(
+			/* struct rb_tree *self */
+			cache_tree,
+			/* void *value */
+			new_node))
+		{
+			sys_log_error("insert error");
+			err = ENOMEM;
+			goto out;
+		}
+
+		/* Insert cached node as the head of the MRU list. */
+		refs_fuse_add_cached_node_to_list(
+			/* refs_fuse_node *cached_node */
+			new_node);
+		++cached_nodes_count;
+
+		cached_node = new_node;
+		new_node = NULL;
+	}
+
+	if(out_parent_directory_object_id) {
+		*out_parent_directory_object_id =
+			cached_node->parent_directory_object_id;
+	}
+	if(out_directory_object_id) {
+		*out_directory_object_id = cached_node->directory_object_id;
+	}
+	if(out_is_short_entry) {
+		*out_is_short_entry = cached_node->is_short_entry;
+	}
+	if(out_record) {
+		*out_record = cached_node->record;
+	}
+	if(out_record_size) {
+		*out_record_size = cached_node->record_size;
+	}
+out:
+	if(new_node) {
+		if(new_node->record) {
+			sys_free(&new_node->record);
+		}
+
+		if(new_node->path) {
+			sys_free(&new_node->path);
+		}
+
+		sys_free(&new_node);
+	}
+
+	return err;
+}
+
 static int refs_fuse_fill_stat(
 		struct FUSE_STAT *stbuf,
 		sys_bool is_directory,
@@ -195,7 +534,7 @@ out:
 	return err;
 }
 
-static int refs_fuse_op_getattr_visit_directory_entry(
+static int refs_fuse_op_getattr_visit_short_entry(
 		void *context,
 		const refschar *file_name,
 		u16 file_name_length,
@@ -218,9 +557,9 @@ static int refs_fuse_op_getattr_visit_directory_entry(
 		/* struct stat *stbuf */
 		(struct FUSE_STAT*) context,
 		/* sys_bool is_directory */
-		SYS_TRUE,
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u32 file_flags */
-		file_flags,
+		file_flags & ~((u32) 0x10000000UL),
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -235,7 +574,7 @@ static int refs_fuse_op_getattr_visit_directory_entry(
 		0);
 }
 
-static int refs_fuse_op_getattr_visit_file_entry(
+static int refs_fuse_op_getattr_visit_long_entry(
 		void *context,
 		const le16 *file_name,
 		u16 file_name_length,
@@ -283,7 +622,8 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 	refs_volume *const vol =
 		(refs_volume*) fuse_get_context()->private_data;
 	int err = 0;
-	u8 *record = NULL;
+	sys_bool is_short_entry = SYS_FALSE;
+	const u8 *record = NULL;
 	size_t record_size = 0;
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
@@ -291,7 +631,10 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 
 	memset(&visitor, 0, sizeof(visitor));
 
-	err = refs_volume_lookup_by_posix_path(
+	sys_log_debug("%s(path=\"%s\", stbuf=%p)",
+		__FUNCTION__, path, stbuf);
+
+	err = refs_fuse_lookup_by_posix_path(
 		/* refs_volume *vol */
 		vol,
 		/* const char *path */
@@ -300,11 +643,14 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
-		/* u8 **out_record */
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
+		/* const u8 **out_record */
 		&record,
 		/* size_t *out_record_size */
 		&record_size);
 	if(err) {
+		sys_log_perror(err, "Error during lookup");
 		goto out;
 	}
 	else if(!parent_directory_object_id) {
@@ -335,10 +681,10 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 			/* u64 allocated_size */
 			0);
 	}
-	else if(directory_object_id) {
-		visitor.node_directory_entry =
-			refs_fuse_op_getattr_visit_directory_entry;
-		err = parse_level3_directory_value(
+	else if(is_short_entry) {
+		visitor.node_short_entry =
+			refs_fuse_op_getattr_visit_short_entry;
+		err = parse_level3_short_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
@@ -361,9 +707,9 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 			NULL);
 	}
 	else {
-		visitor.node_file_entry =
-			refs_fuse_op_getattr_visit_file_entry;
-		err = parse_level3_file_value(
+		visitor.node_long_entry =
+			refs_fuse_op_getattr_visit_long_entry;
+		err = parse_level3_long_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
@@ -389,9 +735,8 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 			NULL);
 	}
 out:
-	if(record) {
-		sys_free(&record);
-	}
+	sys_log_debug("%s(path=\"%s\", stbuf=%p): %d (%s)",
+		__FUNCTION__, path, stbuf, -err, strerror(err));
 
 	return -err;
 }
@@ -404,7 +749,10 @@ static int refs_fuse_op_open(const char *path, struct fuse_file_info *fi)
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
 
-	err = refs_volume_lookup_by_posix_path(
+	sys_log_debug("%s(path=\"%s\", fi=%p)",
+		__FUNCTION__, path, fi);
+
+	err = refs_fuse_lookup_by_posix_path(
 		/* refs_volume *vol */
 		vol,
 		/* const char *path */
@@ -413,7 +761,9 @@ static int refs_fuse_op_open(const char *path, struct fuse_file_info *fi)
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
-		/* u8 **out_record */
+		/* sys_bool *out_is_short_entry */
+		NULL,
+		/* const u8 **out_record */
 		NULL,
 		/* size_t *out_record_size */
 		NULL);
@@ -429,6 +779,9 @@ static int refs_fuse_op_open(const char *path, struct fuse_file_info *fi)
 		goto out;
 	}
 out:
+	sys_log_debug("%s(path=\"%s\", fi=%p): %d (%s)",
+		__FUNCTION__, path, fi, -err, strerror(err));
+
 	return -err;
 }
 
@@ -575,7 +928,8 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	refs_volume *const vol =
 		(refs_volume*) fuse_get_context()->private_data;
 	int err = 0;
-	u8 *record = NULL;
+	sys_bool is_short_entry = SYS_FALSE;
+	const u8 *record = NULL;
 	size_t record_size = 0;
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
@@ -585,7 +939,11 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	memset(&context, 0, sizeof(context));
 	memset(&visitor, 0, sizeof(visitor));
 
-	err = refs_volume_lookup_by_posix_path(
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ", "
+		"offset=%" PRId64 ", fi=%p)",
+		__FUNCTION__, path, buf, PRAuz(size), PRAd64(offset), fi);
+
+	err = refs_fuse_lookup_by_posix_path(
 		/* refs_volume *vol */
 		vol,
 		/* const char *path */
@@ -594,7 +952,9 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
-		/* u8 **out_record */
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
+		/* const u8 **out_record */
 		&record,
 		/* size_t *out_record_size */
 		&record_size);
@@ -615,10 +975,17 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	context.size = size;
 	context.cur_offset = 0;
 	context.start_offset = offset;
+
+	if(is_short_entry) {
+		/* Don't know how to find extents for short entries yet. These
+		 * may be hard links and might need resolving in other ways. */
+		goto out;
+	}
+
 	visitor.context = &context;
 	visitor.node_file_extent = refs_fuse_op_read_visit_file_extent;
 
-	err = parse_level3_file_value(
+	err = parse_level3_long_value(
 		/* refs_node_walk_visitor *visitor */
 		&visitor,
 		/* const char *prefix */
@@ -642,23 +1009,40 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		/* void *context */
 		NULL);
 out:
-	if(record) {
-		sys_free(&record);
-	}
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ", "
+		"offset=%" PRId64 ", fi=%p): %" PRIdz " (%s)",
+		__FUNCTION__, path, buf, PRAuz(size), PRAd64(offset), fi,
+		PRAdz(err ? -err : (size - context.size)), strerror(err));
 
 	return err ? -err : (size - context.size);
 }
 
 static int refs_fuse_op_statfs(const char *path, struct statvfs *stvbuf)
 {
+	int err = 0;
+
+	sys_log_debug("%s(path=\"%s\", stvbuf=%p)",
+		__FUNCTION__, path, stvbuf);
+
 	memset(stvbuf, 0, sizeof(*stvbuf));
 
-	return 0;
+	sys_log_debug("%s(path=\"%s\", stvbuf=%p): %d (%s)",
+		__FUNCTION__, path, stvbuf, -err, strerror(err));
+
+	return -err;
 }
 
 static int refs_fuse_op_release(const char *path, struct fuse_file_info *fi)
 {
-	return 0;
+	int err = 0;
+
+	sys_log_debug("%s(path=\"%s\", fi=%p)",
+		__FUNCTION__, path, fi);
+
+	sys_log_debug("%s(path=\"%s\", fi=%p): %d (%s)",
+		__FUNCTION__, path, fi, -err, strerror(err));
+
+	return -err;
 }
 
 static int refs_fuse_op_readdir_visit_directory_entry(
@@ -759,7 +1143,11 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 	memset(&context, 0, sizeof(context));
 	memset(&visitor, 0, sizeof(visitor));
 
-	err = refs_volume_lookup_by_posix_path(
+	sys_log_debug("%s(path=\"%s\", dirbuf=%p, filler=%p, "
+		"offset=%" PRId64 ", fi=%p)",
+		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi);
+
+	err = refs_fuse_lookup_by_posix_path(
 		/* refs_volume *vol */
 		vol,
 		/* const char *path */
@@ -768,7 +1156,9 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
-		/* u8 **out_record */
+		/* sys_bool *out_is_short_entry */
+		NULL,
+		/* const u8 **out_record */
 		NULL,
 		/* size_t *out_record_size */
 		NULL);
@@ -795,8 +1185,8 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 	context.dirbuf = dirbuf;
 	context.filler = filler;
 	visitor.context = &context;
-	visitor.node_file_entry = refs_fuse_op_readdir_visit_file_entry;
-	visitor.node_directory_entry =
+	visitor.node_long_entry = refs_fuse_op_readdir_visit_file_entry;
+	visitor.node_short_entry =
 		refs_fuse_op_readdir_visit_directory_entry;
 
 	err = refs_node_walk(
@@ -823,8 +1213,189 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 		goto out;
 	}
 out:
-	return err;
+	sys_log_debug("%s(path=\"%s\", dirbuf=%p, filler=%p, "
+		"offset=%" PRId64 ", fi=%p): %d (%s)",
+		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi, -err,
+		strerror(err));
+
+	return -err;
 }
+
+#if defined(_WIN32)
+static int refs_fuse_op_win_get_attributes_visit_short_entry(
+		void *context,
+		const refschar *file_name,
+		u16 file_name_length,
+		u32 file_flags,
+		u64 object_id,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		const u8 *record,
+		size_t record_size)
+{
+	(void) file_name;
+	(void) file_name_length;
+	(void) object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) record;
+	(void) record_size;
+
+	*((uint32_t*) context) =
+		(file_flags & ~((uint32_t) 0x10000000UL)) |
+		((file_flags & 0x10000000UL) ?
+		0x10 /* FILE_ATTRIBUTE_DIRECTORY */ : 0);
+
+	return 0;
+}
+
+static int refs_fuse_op_win_get_attributes_visit_long_entry(
+		void *context,
+		const le16 *file_name,
+		u16 file_name_length,
+		u32 file_flags,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		u64 file_size,
+		u64 allocated_size,
+		const u8 *record,
+		size_t record_size)
+{
+	(void) file_name;
+	(void) file_name_length;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+	(void) record;
+	(void) record_size;
+
+	*((uint32_t*) context) = file_flags;
+
+	return 0;
+}
+
+uint32_t refs_fuse_op_win_get_attributes(const char *path)
+{
+	refs_volume *const vol =
+		(refs_volume*) fuse_get_context()->private_data;
+	int err = 0;
+	u64 parent_directory_object_id = 0;
+	u64 directory_object_id = 0;
+	sys_bool is_short_entry = SYS_FALSE;
+	const u8 *record = NULL;
+	size_t record_size = 0;
+	refs_node_walk_visitor visitor;
+	uint32_t attributes = 0;
+
+	memset(&visitor, 0, sizeof(visitor));
+
+	sys_log_debug("%s(path=\"%s\")", __FUNCTION__, path);
+
+	err = refs_fuse_lookup_by_posix_path(
+		/* refs_volume *vol */
+		vol,
+		/* const char *path */
+		path,
+		/* u64 *out_parent_directory_object_id */
+		&parent_directory_object_id,
+		/* u64 *out_directory_object_id */
+		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
+		/* const u8 **out_record */
+		&record,
+		/* size_t *out_record_size */
+		&record_size);
+	if(err) {
+		sys_log_perror(err, "Error while looking up entry by path");
+		goto out;
+	}
+	else if(!parent_directory_object_id) {
+		err = ENOENT;
+		goto out;
+	}
+
+	visitor.context = &attributes;
+	if(!record && directory_object_id) {
+		/* Root directory. */
+		attributes =
+			0x04 /* FILE_ATTRIBUTE_SYSTEM */ |
+			0x10 /* FILE_ATTRIBUTE_DIRECTORY */ |
+			0x20 /* FILE_ATTRIBUTE_ARCHIVE */;
+	}
+	else if(is_short_entry) {
+		visitor.node_short_entry =
+			refs_fuse_op_win_get_attributes_visit_short_entry;
+		err = parse_level3_short_value(
+			/* refs_node_walk_visitor *visitor */
+			&visitor,
+			/* const char *prefix */
+			"",
+			/* size_t indent */
+			1,
+			/* sys_bool is_v3 */
+			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
+			/* const u8 *key */
+			NULL,
+			/* u16 key_size */
+			0,
+			/* const u8 *value */
+			record,
+			/* u16 value_offset */
+			0,
+			/* u16 value_size */
+			record_size,
+			/* void *context */
+			NULL);
+	}
+	else {
+		visitor.node_long_entry =
+			refs_fuse_op_win_get_attributes_visit_long_entry;
+		err = parse_level3_long_value(
+			/* refs_node_walk_visitor *visitor */
+			&visitor,
+			/* const char *prefix */
+			"",
+			/* size_t indent */
+			1,
+			/* u32 block_index_unit */
+			(vol->bs->version_major == 1) ? 16384 :
+			vol->cluster_size,
+			/* sys_bool is_v3 */
+			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
+			/* const u8 *key */
+			NULL,
+			/* u16 key_size */
+			0,
+			/* const u8 *value */
+			record,
+			/* u16 value_offset */
+			0,
+			/* u16 value_size */
+			record_size,
+			/* void *context */
+			NULL);
+	}
+
+	if(err) {
+		sys_log_perror(err, "Error while parsing entry data");
+	}
+out:
+	sys_log_debug("%s(path=\"%s\"): %" PRIu32 " (%s)",
+		__FUNCTION__, path, PRAu32(attributes), strerror(0));
+
+	return attributes;
+}
+#endif /* defined(_WIN32) */
 
 struct fuse_operations refs_fuse_operations = {
 	/* int (*getattr) (const char *, struct FUSE_STAT *) */
@@ -841,6 +1412,10 @@ struct fuse_operations refs_fuse_operations = {
 	/* int (*readdir) (const char *, void *, fuse_fill_dir_t, off_t,
 	 *         struct fuse_file_info *) */
 	.readdir = refs_fuse_op_readdir,
+#ifdef _WIN32
+	/* uint32_t (*win_get_attributes) (const char *fn) */
+	.win_get_attributes = refs_fuse_op_win_get_attributes,
+#endif
 };
 
 int main(int argc, char **argv)
@@ -848,6 +1423,7 @@ int main(int argc, char **argv)
 	int err = 0;
 	sys_device *dev = NULL;
 	refs_volume *vol = NULL;
+	refs_fuse_node *cur_node = NULL;
 
 	if(argc < 3) {
 		fprintf(stderr, "usage: refs-fuse <device> <mountpoint> [fuse "
@@ -878,6 +1454,23 @@ int main(int argc, char **argv)
 
 	if(fuse_main(argc, argv, &refs_fuse_operations, vol)) {
 		err = EIO;
+	}
+
+	if(cached_nodes_list) {
+		/* Iterate over cached nodes and free all resources. */
+		cur_node = cached_nodes_list;
+		do {
+			refs_fuse_node *next_node = cur_node->next;
+
+			sys_free(&cur_node->record);
+			sys_free(&cur_node->path);
+			sys_free(&cur_node);
+
+			cur_node = next_node;
+		} while(cur_node != cached_nodes_list);
+
+		cached_nodes_count = 0;
+		cached_nodes_list = NULL;
 	}
 out:
 	if(vol) {
