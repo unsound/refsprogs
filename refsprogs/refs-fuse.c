@@ -650,6 +650,7 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 		/* size_t *out_record_size */
 		&record_size);
 	if(err) {
+		sys_log_perror(err, "Error during lookup");
 		goto out;
 	}
 	else if(!parent_directory_object_id) {
