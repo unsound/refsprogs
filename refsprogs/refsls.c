@@ -529,6 +529,10 @@ int main(int argc, char **argv)
 
 	ret = (EXIT_SUCCESS);
 out:
+	if(vol) {
+		refs_volume_destroy(&vol);
+	}
+
 	if(dev_open) {
 		sys_device_close(&dev);
 	}
