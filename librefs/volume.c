@@ -433,9 +433,10 @@ static int refs_volume_lookup(
 	visitor.context = &context;
 
 	while(1) {
-
 		cur_element_length = cur_element_capacity;
 
+		sys_log_debug("Processing path element \"%.*s\"...",
+			(int) cur_path_length, cur_path);
 		err = next_path_element(
 			/* const void **path */
 			&cur_path,
@@ -493,6 +494,10 @@ static int refs_volume_lookup(
 		if(err) {
 			goto out;
 		}
+
+		sys_log_debug("    %sound in object ID 0x%" PRIX64 ".",
+			context.found ? "F" : "Not f",
+			PRAX64(cur_object_id));
 
 		if(!context.found) {
 			break;
