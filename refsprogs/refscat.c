@@ -158,7 +158,7 @@ out:
 	return err;
 }
 
-static int refscat_node_file_entry(
+static int refscat_node_long_entry(
 		void *const _context,
 		const refschar *const file_name,
 		const u16 file_name_length,
@@ -308,10 +308,14 @@ int main(int argc, char **argv)
 		vol,
 		/* const char *path */
 		options.path ? options.path : "/",
+		/* const u64 *start_object_id */
+		NULL,
 		/* u64 *out_parent_directory_object_id */
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		NULL,
 		/* u8 **out_record */
 		NULL,
 		/* size_t *out_record_size */
@@ -360,7 +364,7 @@ int main(int argc, char **argv)
 	context.vol = vol;
 	context.name_length = (u16) name_length;
 	visitor.context = &context;
-	visitor.node_file_entry = refscat_node_file_entry;
+	visitor.node_long_entry = refscat_node_long_entry;
 	visitor.node_file_extent = refscat_node_file_extent;
 
 	err = refs_node_walk(

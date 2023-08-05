@@ -52,8 +52,10 @@ void refs_volume_destroy(
 int refs_volume_lookup_by_posix_path(
 		refs_volume *vol,
 		const char *path,
+		const u64 *start_object_id,
 		u64 *out_parent_directory_object_id,
 		u64 *out_directory_object_id,
+		sys_bool *out_is_short_entry,
 		u8 **out_record,
 		size_t *out_record_size);
 
