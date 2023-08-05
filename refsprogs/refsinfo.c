@@ -248,6 +248,8 @@ static int print_leaf_by_path(
 		vol,
 		/* const char *path */
 		path,
+		/* const u64 *start_object_id */
+		NULL,
 		/* u64 *out_parent_directory_object_id */
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
