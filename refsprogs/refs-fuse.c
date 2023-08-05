@@ -883,10 +883,10 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 out:
 	sys_log_debug("%s(path=\"%s\", dirbuf=%p, filler=%p, "
 		"offset=%" PRId64 ", fi=%p): %d (%s)",
-		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi, err,
+		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi, -err,
 		strerror(err));
 
-	return err;
+	return -err;
 }
 
 #if defined(_WIN32)
