@@ -195,7 +195,7 @@ out:
 	return err;
 }
 
-static int refs_fuse_op_getattr_visit_directory_entry(
+static int refs_fuse_op_getattr_visit_short_entry(
 		void *context,
 		const refschar *file_name,
 		u16 file_name_length,
@@ -218,9 +218,9 @@ static int refs_fuse_op_getattr_visit_directory_entry(
 		/* struct stat *stbuf */
 		(struct FUSE_STAT*) context,
 		/* sys_bool is_directory */
-		SYS_TRUE,
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u32 file_flags */
-		file_flags,
+		file_flags & ~((u32) 0x10000000UL),
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -235,7 +235,7 @@ static int refs_fuse_op_getattr_visit_directory_entry(
 		0);
 }
 
-static int refs_fuse_op_getattr_visit_file_entry(
+static int refs_fuse_op_getattr_visit_long_entry(
 		void *context,
 		const le16 *file_name,
 		u16 file_name_length,
@@ -283,6 +283,7 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 	refs_volume *const vol =
 		(refs_volume*) fuse_get_context()->private_data;
 	int err = 0;
+	sys_bool is_short_entry = SYS_FALSE;
 	u8 *record = NULL;
 	size_t record_size = 0;
 	u64 parent_directory_object_id = 0;
@@ -300,6 +301,8 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
 		/* u8 **out_record */
 		&record,
 		/* size_t *out_record_size */
@@ -335,10 +338,10 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 			/* u64 allocated_size */
 			0);
 	}
-	else if(directory_object_id) {
-		visitor.node_directory_entry =
-			refs_fuse_op_getattr_visit_directory_entry;
-		err = parse_level3_directory_value(
+	else if(is_short_entry) {
+		visitor.node_short_entry =
+			refs_fuse_op_getattr_visit_short_entry;
+		err = parse_level3_short_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
@@ -361,9 +364,9 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 			NULL);
 	}
 	else {
-		visitor.node_file_entry =
-			refs_fuse_op_getattr_visit_file_entry;
-		err = parse_level3_file_value(
+		visitor.node_long_entry =
+			refs_fuse_op_getattr_visit_long_entry;
+		err = parse_level3_long_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
@@ -413,6 +416,8 @@ static int refs_fuse_op_open(const char *path, struct fuse_file_info *fi)
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		NULL,
 		/* u8 **out_record */
 		NULL,
 		/* size_t *out_record_size */
@@ -575,6 +580,7 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	refs_volume *const vol =
 		(refs_volume*) fuse_get_context()->private_data;
 	int err = 0;
+	sys_bool is_short_entry = SYS_FALSE;
 	u8 *record = NULL;
 	size_t record_size = 0;
 	u64 parent_directory_object_id = 0;
@@ -594,6 +600,8 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
 		/* u8 **out_record */
 		&record,
 		/* size_t *out_record_size */
@@ -615,10 +623,17 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	context.size = size;
 	context.cur_offset = 0;
 	context.start_offset = offset;
+
+	if(is_short_entry) {
+		/* Don't know how to find extents for short entries yet. These
+		 * may be hard links and might need resolving in other ways. */
+		goto out;
+	}
+
 	visitor.context = &context;
 	visitor.node_file_extent = refs_fuse_op_read_visit_file_extent;
 
-	err = parse_level3_file_value(
+	err = parse_level3_long_value(
 		/* refs_node_walk_visitor *visitor */
 		&visitor,
 		/* const char *prefix */
@@ -768,6 +783,8 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		NULL,
 		/* u8 **out_record */
 		NULL,
 		/* size_t *out_record_size */
@@ -795,8 +812,8 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 	context.dirbuf = dirbuf;
 	context.filler = filler;
 	visitor.context = &context;
-	visitor.node_file_entry = refs_fuse_op_readdir_visit_file_entry;
-	visitor.node_directory_entry =
+	visitor.node_long_entry = refs_fuse_op_readdir_visit_file_entry;
+	visitor.node_short_entry =
 		refs_fuse_op_readdir_visit_directory_entry;
 
 	err = refs_node_walk(
@@ -827,7 +844,7 @@ out:
 }
 
 #if defined(_WIN32)
-static int refs_fuse_op_win_get_attributes_visit_directory_entry(
+static int refs_fuse_op_win_get_attributes_visit_short_entry(
 		void *context,
 		const refschar *file_name,
 		u16 file_name_length,
@@ -851,12 +868,14 @@ static int refs_fuse_op_win_get_attributes_visit_directory_entry(
 	(void) record_size;
 
 	*((uint32_t*) context) =
-		file_flags | 0x10 /* FILE_ATTRIBUTE_DIRECTORY */;
+		(file_flags & ~((uint32_t) 0x10000000UL)) |
+		((file_flags & 0x10000000UL) ?
+		0x10 /* FILE_ATTRIBUTE_DIRECTORY */ : 0);
 
 	return 0;
 }
 
-static int refs_fuse_op_win_get_attributes_visit_file_entry(
+static int refs_fuse_op_win_get_attributes_visit_long_entry(
 		void *context,
 		const le16 *file_name,
 		u16 file_name_length,
@@ -893,6 +912,7 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 	int err = 0;
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
+	sys_bool is_short_entry = SYS_FALSE;
 	u8 *record = NULL;
 	size_t record_size = 0;
 	refs_node_walk_visitor visitor;
@@ -909,6 +929,8 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 		&parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
 		/* u8 **out_record */
 		&record,
 		/* size_t *out_record_size */
@@ -930,10 +952,10 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 			0x10 /* FILE_ATTRIBUTE_DIRECTORY */ |
 			0x20 /* FILE_ATTRIBUTE_ARCHIVE */;
 	}
-	else if(directory_object_id) {
-		visitor.node_directory_entry =
-			refs_fuse_op_win_get_attributes_visit_directory_entry;
-		err = parse_level3_directory_value(
+	else if(is_short_entry) {
+		visitor.node_short_entry =
+			refs_fuse_op_win_get_attributes_visit_short_entry;
+		err = parse_level3_short_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
@@ -956,9 +978,9 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 			NULL);
 	}
 	else {
-		visitor.node_file_entry =
-			refs_fuse_op_win_get_attributes_visit_file_entry;
-		err = parse_level3_file_value(
+		visitor.node_long_entry =
+			refs_fuse_op_win_get_attributes_visit_long_entry;
+		err = parse_level3_long_value(
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
