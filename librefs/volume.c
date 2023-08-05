@@ -402,6 +402,7 @@ out:
 static int refs_volume_lookup(
 		refs_volume *const vol,
 		const void *const path,
+		const u64 *const start_object_id,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
@@ -415,7 +416,7 @@ static int refs_volume_lookup(
 	refs_volume_lookup_context context;
 	const void *cur_path = path;
 	size_t cur_path_length = path_size;
-	u64 cur_object_id = 0x600;
+	u64 cur_object_id = start_object_id ? *start_object_id : 0x600;
 	refschar *cur_element = NULL;
 	size_t cur_element_capacity = 255;
 	size_t cur_element_length = 0;
@@ -533,6 +534,7 @@ out:
 int refs_volume_lookup_by_posix_path(
 		refs_volume *const vol,
 		const char *const path,
+		const u64 *const start_object_id,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
@@ -578,6 +580,8 @@ int refs_volume_lookup_by_posix_path(
 		vol,
 		/* const void *path */
 		cur_path,
+		/* const u64 *start_object_id */
+		start_object_id,
 		/* u64 *out_parent_directory_object_id */
 		out_parent_directory_object_id,
 		/* u64 *out_directory_object_id */
