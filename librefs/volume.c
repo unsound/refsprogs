@@ -192,13 +192,14 @@ typedef struct {
 	refschar *name;
 	size_t name_length;
 	sys_bool found;
+	sys_bool is_short_entry;
 	sys_bool is_directory;
 	u64 directory_object_id;
 	u8 **record;
 	size_t *record_size;
 } refs_volume_lookup_context;
 
-static int refs_volume_lookup_node_file_entry(
+static int refs_volume_lookup_node_long_entry(
 		void *_context,
 		const refschar *file_name,
 		u16 file_name_length,
@@ -230,6 +231,7 @@ static int refs_volume_lookup_node_file_entry(
 		file_name_length * sizeof(refschar)))
 	{
 		context->found = SYS_TRUE;
+		context->is_short_entry = SYS_FALSE;
 		context->is_directory = SYS_FALSE;
 
 		if(context->record) {
@@ -249,7 +251,7 @@ out:
 	return err;
 }
 
-static int refs_volume_lookup_node_directory_entry(
+static int refs_volume_lookup_node_short_entry(
 		void *_context,
 		const refschar *file_name,
 		u16 file_name_length,
@@ -278,8 +280,11 @@ static int refs_volume_lookup_node_directory_entry(
 		file_name_length * sizeof(refschar)))
 	{
 		context->found = SYS_TRUE;
-		context->is_directory = SYS_TRUE;
-		context->directory_object_id = object_id;
+		context->is_short_entry = SYS_TRUE;
+		context->is_directory =
+			(file_flags & 0x10000000) ? SYS_TRUE : SYS_FALSE;
+		context->directory_object_id =
+			(file_flags & 0x10000000) ? object_id : 0;
 
 		if(context->record) {
 			err = sys_malloc(record_size, context->record);
@@ -399,6 +404,7 @@ static int refs_volume_lookup(
 		const void *const path,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
+		sys_bool *const out_is_short_entry,
 		u8 **const out_record,
 		size_t *const out_record_size)
 {
@@ -421,8 +427,8 @@ static int refs_volume_lookup(
 		goto out;
 	}
 
-	visitor.node_file_entry = refs_volume_lookup_node_file_entry;
-	visitor.node_directory_entry = refs_volume_lookup_node_directory_entry;
+	visitor.node_long_entry = refs_volume_lookup_node_long_entry;
+	visitor.node_short_entry = refs_volume_lookup_node_short_entry;
 	visitor.context = &context;
 
 	while(1) {
@@ -446,7 +452,6 @@ static int refs_volume_lookup(
 
 		cur_path_length =
 			path_size - ((size_t) cur_path - (size_t) path);
-
 
 		memset(&context, 0, sizeof(context));
 		context.name = cur_element;
@@ -504,6 +509,10 @@ static int refs_volume_lookup(
 					context.directory_object_id : 0;
 			}
 
+			if(out_is_short_entry) {
+				*out_is_short_entry = context.is_short_entry;
+			}
+
 			break;
 		}
 		else if(!context.is_directory) {
@@ -526,6 +535,7 @@ int refs_volume_lookup_by_posix_path(
 		const char *const path,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
+		sys_bool *const out_is_short_entry,
 		u8 **const out_record,
 		size_t *const out_record_size)
 {
@@ -572,6 +582,8 @@ int refs_volume_lookup_by_posix_path(
 		out_parent_directory_object_id,
 		/* u64 *out_directory_object_id */
 		out_directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		out_is_short_entry,
 		/* u8 **out_record */
 		out_record,
 		/* size_t *out_record_size */

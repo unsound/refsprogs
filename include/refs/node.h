@@ -70,7 +70,7 @@ struct refs_node_walk_visitor {
 		void *context,
 		const le16 *volume_label,
 		u16 volume_label_length);
-	int (*node_file_entry)(
+	int (*node_long_entry)(
 		void *context,
 		const le16 *file_name,
 		u16 file_name_length,
@@ -83,7 +83,7 @@ struct refs_node_walk_visitor {
 		u64 allocated_size,
 		const u8 *record,
 		size_t record_size);
-	int (*node_directory_entry)(
+	int (*node_short_entry)(
 		void *context,
 		const le16 *file_name,
 		u16 file_name_length,
@@ -102,7 +102,7 @@ struct refs_node_walk_visitor {
 		u32 block_index_unit);
 };
 
-int parse_level3_file_value(
+int parse_level3_long_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -115,7 +115,7 @@ int parse_level3_file_value(
 		const u16 value_size,
 		void *const context);
 
-int parse_level3_directory_value(
+int parse_level3_short_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
