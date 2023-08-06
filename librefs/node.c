@@ -1922,7 +1922,7 @@ static int parse_generic_block(
 	 * index nodes but the leaf nodes have mixed values... e.g. the first
 	 * entry seems to be an $I30 index in each directory, then there are
 	 * file/directory entries, etc. */
-	if(flags == 0x301) {
+	if(flags == 0x301 || flags == 0x302 || flags == 0x101) {
 		is_index_node = SYS_TRUE;
 	}
 
