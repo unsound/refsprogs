@@ -106,9 +106,9 @@ static const char* entry_type_to_string(u16 entry_type)
 	case 0x0:
 		return "metadata";
 	case 0x1:
-		return "file";
+		return "long";
 	case 0x2:
-		return "directory";
+		return "short";
 	default:
 		return "unknown";
 	}
@@ -3954,7 +3954,8 @@ int parse_level3_long_value(
 	}
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
-		"file", PRAu16(value_offset), PRAX16(value_offset));
+		entry_type_to_string(0x1), PRAu16(value_offset),
+		PRAX16(value_offset));
 
 	emit(prefix, indent, "Attribute %" PRIu16 " @ 0 / 0x0:",
 		PRAu16(attribute_index));
@@ -4404,7 +4405,8 @@ int parse_level3_short_value(
 	}
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
-		"directory", PRAu16(value_offset), PRAX16(value_offset));
+		entry_type_to_string(0x2), PRAu16(value_offset),
+		PRAX16(value_offset));
 
 	/* Note: The object ID of a directory is verified to partially match the
 	 * output of fsutil file queryFileID in the high 64 bits of the 128 bit
