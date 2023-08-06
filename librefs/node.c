@@ -4370,65 +4370,36 @@ int parse_level3_short_value(
 
 	(void) context;
 
-	if(visitor) {
-		if((file_flags & 0x10000000) && visitor->node_short_entry) {
-			err = visitor->node_short_entry(
-				/* void *context */
-				visitor->context,
-				/* const refschar *file_name */
-				(const refschar*) &key[4],
-				/* u16 file_name_length */
-				(key_size - 4) / sizeof(refschar),
-				/* u32 file_flags */
-				file_flags,
-				/* u64 object_id */
-				object_id,
-				/* u64 create_time */
-				creation_time,
-				/* u64 last_access_time */
-				last_access_time,
-				/* u64 last_write_time */
-				last_data_modification_time,
-				/* u64 last_mft_change_time */
-				last_mft_modification_time,
-				/* const u8 *record */
-				value,
-				/* size_t record_size */
-				value_size);
-			if(err) {
-				goto out;
-			}
-		}
-		else if(!(file_flags & 0x10000000) && visitor->node_long_entry)
-		{
-			err = visitor->node_long_entry(
-				/* void *context */
-				visitor->context,
-				/* const refschar *file_name */
-				(const refschar*) &key[4],
-				/* u16 file_name_length */
-				(key_size - 4) / sizeof(refschar),
-				/* u32 file_flags */
-				file_flags,
-				/* u64 create_time */
-				creation_time,
-				/* u64 last_access_time */
-				last_access_time,
-				/* u64 last_write_time */
-				last_data_modification_time,
-				/* u64 last_mft_change_time */
-				last_mft_modification_time,
-				/* u64 file_size */
-				file_size,
-				/* u64 allocated_size */
-				allocated_size,
-				/* const u8 *record */
-				value,
-				/* size_t record_size */
-				value_size);
-			if(err) {
-				goto out;
-			}
+	if(visitor && visitor->node_short_entry) {
+		err = visitor->node_short_entry(
+			/* void *context */
+			visitor->context,
+			/* const refschar *file_name */
+			(const refschar*) &key[4],
+			/* u16 file_name_length */
+			(key_size - 4) / sizeof(refschar),
+			/* u32 file_flags */
+			file_flags,
+			/* u64 object_id */
+			object_id,
+			/* u64 create_time */
+			creation_time,
+			/* u64 last_access_time */
+			last_access_time,
+			/* u64 last_write_time */
+			last_data_modification_time,
+			/* u64 last_mft_change_time */
+			last_mft_modification_time,
+			/* u64 file_size */
+			file_size,
+			/* u64 allocated_size */
+			allocated_size,
+			/* const u8 *record */
+			value,
+			/* size_t record_size */
+			value_size);
+		if(err) {
+			goto out;
 		}
 	}
 

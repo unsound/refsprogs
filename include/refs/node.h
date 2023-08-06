@@ -93,6 +93,8 @@ struct refs_node_walk_visitor {
 		u64 last_access_time,
 		u64 last_write_time,
 		u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
 		const u8 *record,
 		size_t record_size);
 	int (*node_file_extent)(
