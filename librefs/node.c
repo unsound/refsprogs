@@ -106,9 +106,9 @@ static const char* entry_type_to_string(u16 entry_type)
 	case 0x0:
 		return "metadata";
 	case 0x1:
-		return "file";
+		return "long";
 	case 0x2:
-		return "directory";
+		return "short";
 	default:
 		return "unknown";
 	}
@@ -1922,7 +1922,7 @@ static int parse_generic_block(
 	 * index nodes but the leaf nodes have mixed values... e.g. the first
 	 * entry seems to be an $I30 index in each directory, then there are
 	 * file/directory entries, etc. */
-	if(flags == 0x301) {
+	if(flags == 0x301 || flags == 0x302 || flags == 0x101) {
 		is_index_node = SYS_TRUE;
 	}
 
@@ -3954,7 +3954,8 @@ int parse_level3_long_value(
 	}
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
-		"file", PRAu16(value_offset), PRAX16(value_offset));
+		entry_type_to_string(0x1), PRAu16(value_offset),
+		PRAX16(value_offset));
 
 	emit(prefix, indent, "Attribute %" PRIu16 " @ 0 / 0x0:",
 		PRAu16(attribute_index));
@@ -4370,70 +4371,42 @@ int parse_level3_short_value(
 
 	(void) context;
 
-	if(visitor) {
-		if((file_flags & 0x10000000) && visitor->node_short_entry) {
-			err = visitor->node_short_entry(
-				/* void *context */
-				visitor->context,
-				/* const refschar *file_name */
-				(const refschar*) &key[4],
-				/* u16 file_name_length */
-				(key_size - 4) / sizeof(refschar),
-				/* u32 file_flags */
-				file_flags,
-				/* u64 object_id */
-				object_id,
-				/* u64 create_time */
-				creation_time,
-				/* u64 last_access_time */
-				last_access_time,
-				/* u64 last_write_time */
-				last_data_modification_time,
-				/* u64 last_mft_change_time */
-				last_mft_modification_time,
-				/* const u8 *record */
-				value,
-				/* size_t record_size */
-				value_size);
-			if(err) {
-				goto out;
-			}
-		}
-		else if(!(file_flags & 0x10000000) && visitor->node_long_entry)
-		{
-			err = visitor->node_long_entry(
-				/* void *context */
-				visitor->context,
-				/* const refschar *file_name */
-				(const refschar*) &key[4],
-				/* u16 file_name_length */
-				(key_size - 4) / sizeof(refschar),
-				/* u32 file_flags */
-				file_flags,
-				/* u64 create_time */
-				creation_time,
-				/* u64 last_access_time */
-				last_access_time,
-				/* u64 last_write_time */
-				last_data_modification_time,
-				/* u64 last_mft_change_time */
-				last_mft_modification_time,
-				/* u64 file_size */
-				file_size,
-				/* u64 allocated_size */
-				allocated_size,
-				/* const u8 *record */
-				value,
-				/* size_t record_size */
-				value_size);
-			if(err) {
-				goto out;
-			}
+	if(visitor && visitor->node_short_entry) {
+		err = visitor->node_short_entry(
+			/* void *context */
+			visitor->context,
+			/* const refschar *file_name */
+			(const refschar*) &key[4],
+			/* u16 file_name_length */
+			(key_size - 4) / sizeof(refschar),
+			/* u32 file_flags */
+			file_flags,
+			/* u64 object_id */
+			object_id,
+			/* u64 create_time */
+			creation_time,
+			/* u64 last_access_time */
+			last_access_time,
+			/* u64 last_write_time */
+			last_data_modification_time,
+			/* u64 last_mft_change_time */
+			last_mft_modification_time,
+			/* u64 file_size */
+			file_size,
+			/* u64 allocated_size */
+			allocated_size,
+			/* const u8 *record */
+			value,
+			/* size_t record_size */
+			value_size);
+		if(err) {
+			goto out;
 		}
 	}
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
-		"directory", PRAu16(value_offset), PRAX16(value_offset));
+		entry_type_to_string(0x2), PRAu16(value_offset),
+		PRAX16(value_offset));
 
 	/* Note: The object ID of a directory is verified to partially match the
 	 * output of fsutil file queryFileID in the high 64 bits of the 128 bit

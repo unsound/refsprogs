@@ -52,7 +52,7 @@ static struct refsls_options {
 	sys_bool help;
 } options;
 
-static int refsls_node_file_entry(
+static int refsls_node_long_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
@@ -66,7 +66,7 @@ static int refsls_node_file_entry(
 		const u8 *const record,
 		const size_t record_size);
 
-static int refsls_node_directory_entry(
+static int refsls_node_short_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
@@ -76,6 +76,8 @@ static int refsls_node_directory_entry(
 		const u64 last_access_time,
 		const u64 last_write_time,
 		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
 		const u8 *const record,
 		const size_t record_size);
 
@@ -228,9 +230,8 @@ static int refsls_print_dirent(
 		subdir_ctx.prefix[prev_prefix_length + cstr_len] = '\0';
 
 		subdir_visitor.context = &subdir_ctx;
-		subdir_visitor.node_long_entry = refsls_node_file_entry;
-		subdir_visitor.node_short_entry =
-			refsls_node_directory_entry;
+		subdir_visitor.node_long_entry = refsls_node_long_entry;
+		subdir_visitor.node_short_entry = refsls_node_short_entry;
 
 		err = refs_node_walk(
 			/* sys_device *dev */
@@ -270,7 +271,7 @@ out:
 	return err;
 }
 
-static int refsls_node_file_entry(
+static int refsls_node_long_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
@@ -314,7 +315,7 @@ static int refsls_node_file_entry(
 	return err;
 }
 
-static int refsls_node_directory_entry(
+static int refsls_node_short_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
@@ -324,6 +325,8 @@ static int refsls_node_directory_entry(
 		const u64 last_access_time,
 		const u64 last_write_time,
 		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
 		const u8 *const record,
 		const size_t record_size)
 {
@@ -332,6 +335,7 @@ static int refsls_node_directory_entry(
 	(void) create_time;
 	(void) last_write_time;
 	(void) last_mft_change_time;
+	(void) allocated_size;
 	(void) record;
 	(void) record_size;
 
@@ -339,7 +343,7 @@ static int refsls_node_directory_entry(
 		/* void *const context */
 		context,
 		/* sys_bool is_directory */
-		SYS_TRUE,
+		(file_flags & 0x10000000) ? SYS_TRUE : SYS_FALSE,
 		/* const refschar *name */
 		file_name,
 		/* size_t name_len */
@@ -349,7 +353,7 @@ static int refsls_node_directory_entry(
 		/* u64 last_access_time */
 		last_access_time,
 		/* u64 file_size */
-		0,
+		file_size,
 		/* u64 directory_object_id */
 		object_id);
 
@@ -500,8 +504,8 @@ int main(int argc, char **argv)
 	context.vol = vol;
 	context.long_format = options.long_format;
 	visitor.context = &context;
-	visitor.node_long_entry = refsls_node_file_entry;
-	visitor.node_short_entry = refsls_node_directory_entry;
+	visitor.node_long_entry = refsls_node_long_entry;
+	visitor.node_short_entry = refsls_node_short_entry;
 
 	err = refs_node_walk(
 		/* sys_device *dev */
@@ -529,6 +533,10 @@ int main(int argc, char **argv)
 
 	ret = (EXIT_SUCCESS);
 out:
+	if(vol) {
+		refs_volume_destroy(&vol);
+	}
+
 	if(dev_open) {
 		sys_device_close(&dev);
 	}

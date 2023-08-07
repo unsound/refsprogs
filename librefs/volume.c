@@ -261,6 +261,8 @@ static int refs_volume_lookup_node_short_entry(
 		u64 last_access_time,
 		u64 last_write_time,
 		u64 last_mft_change_time,
+		u64 file_size,
+		u64 allocated_size,
 		const u8 *record,
 		size_t record_size)
 {
@@ -274,6 +276,8 @@ static int refs_volume_lookup_node_short_entry(
 	(void) last_access_time;
 	(void) last_write_time;
 	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
 
 	if(file_name_length == context->name_length &&
 		!memcmp(file_name, context->name,
