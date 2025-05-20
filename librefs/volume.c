@@ -440,7 +440,7 @@ static int refs_volume_lookup(
 		cur_element_length = cur_element_capacity;
 
 		sys_log_debug("Processing path element \"%.*s\"...",
-			(int) cur_path_length, cur_path);
+			(int) cur_path_length, (const char*) cur_path);
 		err = next_path_element(
 			/* const void **path */
 			&cur_path,
