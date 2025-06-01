@@ -561,7 +561,10 @@ static int parse_block_header(
 
 	emit(prefix, indent + 1, "Block header:");
 	if(is_v3) {
-		emit(prefix, indent + 2, "Signature: \"%" PRIbs "\"",
+		emit(prefix, indent + 2, "Signature @ %" PRIuz " / "
+			"0x%" PRIXz ": \"%" PRIbs "\"",
+			PRAuz(0x0),
+			PRAXz(0x0),
 			PRAbs(4, &block[0x0]));
 		print_unknown32(prefix, indent + 2, block, &block[0x4]);
 		print_unknown32(prefix, indent + 2, block, &block[0x8]);
@@ -571,7 +574,10 @@ static int parse_block_header(
 	}
 
 	/* This is the 48/80 byte block header. */
-	emit(prefix, indent + 2, "Block number: %" PRIu64 " / 0x%" PRIX64,
+	emit(prefix, indent + 2, "Block number @ %" PRIuz " / 0x%" PRIXz ": "
+		"%" PRIu64 " / 0x%" PRIX64,
+		PRAuz(((u64) header - (u64) block) + 0x0),
+		PRAXz(((u64) header - (u64) block) + 0x0),
 		PRAu64(read_le64(&header[0x0])),
 		PRAX64(read_le64(&header[0x0])));
 	if(block_number != read_le64(&header[0x0])) {
@@ -587,7 +593,10 @@ static int parse_block_header(
 	print_unknown64(prefix, indent + 2, block, &header[0x8]);
 	print_unknown64(prefix, indent + 2, block, &header[0x10]);
 	if(!is_v3) {
-		emit(prefix, indent + 2, "Object ID: %" PRIu64 " / 0x%" PRIX64,
+		emit(prefix, indent + 2, "Object ID @ %" PRIuz " / "
+			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
+			PRAuz(((u64) header - (u64) block) + 0x18),
+			PRAXz(((u64) header - (u64) block) + 0x18),
 			PRAu64(read_le64(&header[0x18])),
 			PRAX64(read_le64(&header[0x18])));
 	}
@@ -599,7 +608,10 @@ static int parse_block_header(
 		print_unknown64(prefix, indent + 2, block, &header[0x28]);
 	}
 	else {
-		emit(prefix, indent + 2, "Object ID: %" PRIu64 " / 0x%" PRIX64,
+		emit(prefix, indent + 2, "Object ID @ %" PRIuz " / "
+			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
+			PRAuz(((u64) header - (u64) block) + 0x28),
+			PRAXz(((u64) header - (u64) block) + 0x28),
 			PRAu64(read_le64(&header[0x28])),
 			PRAX64(read_le64(&header[0x28])));
 	}
@@ -654,21 +666,37 @@ static void parse_superblock_v1(
 	print_unknown64(prefix, indent, block, &header->reserved24);
 	print_unknown64(prefix, indent, block, &header->reserved32);
 	print_unknown64(prefix, indent, block, &header->reserved40);
-	emit(prefix, indent, "GUID: %" PRIGUID,
+	emit(prefix, indent, "GUID @ %" PRIuz " / 0x%" PRIXz ": %" PRIGUID,
+		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
+		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
 		PRAGUID(header->block_guid));
 	print_unknown64(prefix, indent, block, &header->reserved64);
 	print_unknown64(prefix, indent, block, &header->reserved72);
 	level_1_blocks_offset = le32_to_cpu(header->level1_blocks_offset);
-	emit(prefix, indent, "Offset of level 1 block references: %" PRIu64,
+	emit(prefix, indent, "Offset of level 1 block references @ %" PRIuz " "
+		"/ 0x%" PRIXz ": "
+		"%" PRIu64,
+		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_offset)),
+		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_offset)),
 		PRAu64(level_1_blocks_offset));
 	level_1_blocks_count = le32_to_cpu(header->level1_blocks_count);
-	emit(prefix, indent, "Number of level 1 block references: %" PRIu64,
+	emit(prefix, indent, "Number of level 1 block references @ %" PRIuz " "
+		"/ 0x%" PRIXz ": "
+		"%" PRIu64,
+		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_count)),
+		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_count)),
 		PRAu64(level_1_blocks_count));
 	self_extents_offset = le32_to_cpu(header->self_extents_offset);
-	emit(prefix, indent, "Offset of self reference: %" PRIu64,
+	emit(prefix, indent, "Offset of self reference @ %" PRIuz " / "
+		"0x%" PRIXz ": %" PRIu64,
+		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
+		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
 		PRAu64(self_extents_offset));
 	self_extents_size = le32_to_cpu(header->self_extents_size);
-	emit(prefix, indent, "Size of self reference: %" PRIu64,
+	emit(prefix, indent, "Size of self reference @ %" PRIuz " / "
+		"0x%" PRIXz ": %" PRIu64,
+		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_size)),
+		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_size)),
 		PRAu64(self_extents_size));
 
 	if(sys_min(level_1_blocks_offset, self_extents_offset) > 96) {
@@ -962,8 +990,10 @@ static int parse_level1_block_level2_blocks_list(
 	u32 i;
 
 	extents_count = read_le32(&block[extents_list_offset]);
-	emit(prefix, indent, "Level 2 blocks count: %" PRIu64 " / "
-		"0x%" PRIX64,
+	emit(prefix, indent, "Level 2 blocks count @ %" PRIuz " / "
+		"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
+		PRAuz(extents_list_offset),
+		PRAXz(extents_list_offset),
 		PRAu64(extents_count),
 		PRAX64(extents_count));
 	extents_size = extents_count * sizeof(le32);
@@ -987,9 +1017,11 @@ static int parse_level1_block_level2_blocks_list(
 		extents_list[i] =
 			read_le32(&block[extents_list_offset +
 			(1 + i) * sizeof(le32)]);
-		emit(prefix, indent, "Level 2 blocks offset (%" PRIu32 "): "
-			"%" PRIu64 " / 0x%" PRIX64,
+		emit(prefix, indent, "Level 2 blocks offset (%" PRIu32 ") @ "
+			"%" PRIuz " / 0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
 			PRAu32(i),
+			PRAuz(extents_list_offset + (1 + i) * sizeof(le32)),
+			PRAXz(extents_list_offset + (1 + i) * sizeof(le32)),
 			PRAu64(extents_list[i]),
 			PRAX64(extents_list[i]));
 	}
