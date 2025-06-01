@@ -975,28 +975,31 @@ static int parse_level1_block_level2_blocks_list(
 		const char *const prefix,
 		const size_t indent,
 		const u8 *const block,
-		size_t block_size,
-		size_t extents_list_offset,
+		u32 block_size,
+		u32 extents_list_offset,
 		u32 **const out_extents_list,
-		u32 *const out_extents_count)
+		u32 *const out_extents_count,
+		u32 *const out_end_offset)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
 	int err = 0;
+	u32 offset = extents_list_offset;
 	u32 extents_count;
 	size_t extents_size = 0;
 	size_t extents_list_inset = 0;
 	u32 *extents_list = NULL;
 	u32 i;
 
-	extents_count = read_le32(&block[extents_list_offset]);
+	extents_count = read_le32(&block[offset]);
 	emit(prefix, indent, "Level 2 blocks count @ %" PRIuz " / "
 		"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
 		PRAuz(extents_list_offset),
 		PRAXz(extents_list_offset),
 		PRAu64(extents_count),
 		PRAX64(extents_count));
+	offset += sizeof(le32);
 	extents_size = extents_count * sizeof(le32);
 	if(extents_size > block_size - extents_list_offset) {
 		sys_log_warning("Invalid extents list: Overflows end of "
@@ -1004,6 +1007,24 @@ static int parse_level1_block_level2_blocks_list(
 		*out_extents_list = NULL;
 		*out_extents_count = 0;
 		goto out;
+	}
+
+	if(REFS_VERSION_MIN(visitor->version_major, visitor->version_minor, 3,
+		14))
+	{
+		sys_log_debug("Insetting extents list by 5 elements on ReFS "
+			"3.14 and later.");
+		/* Not sure what these 5 elements are in version 3.14,
+		 * investigating is TODO. */
+		extents_list_inset = 5 * sizeof(le32);
+	}
+
+	if(extents_list_inset) {
+		print_data_with_base(prefix, indent,
+			extents_list_offset + sizeof(le32), block_size,
+			&block[extents_list_offset + sizeof(le32)],
+			extents_list_inset);
+		offset += extents_list_inset;
 	}
 
 	err = sys_malloc(extents_size, &extents_list);
@@ -1015,20 +1036,20 @@ static int parse_level1_block_level2_blocks_list(
 	}
 
 	for(i = 0; i < extents_count; ++i) {
-		extents_list[i] =
-			read_le32(&block[extents_list_offset +
-			(1 + i) * sizeof(le32)]);
+		extents_list[i] = read_le32(&block[offset]);
 		emit(prefix, indent, "Level 2 blocks offset (%" PRIu32 ") @ "
 			"%" PRIuz " / 0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
 			PRAu32(i),
-			PRAuz(extents_list_offset + (1 + i) * sizeof(le32)),
-			PRAXz(extents_list_offset + (1 + i) * sizeof(le32)),
+			PRAuz(offset),
+			PRAXz(offset),
 			PRAu64(extents_list[i]),
 			PRAX64(extents_list[i]));
+		offset += sizeof(le32);
 	}
 
 	*out_extents_list = extents_list;
 	*out_extents_count = extents_count;
+	*out_end_offset = offset;
 out:
 	return err;
 }
@@ -1060,6 +1081,7 @@ static int parse_level1_block(
 	u32 level2_extents_count = 0;
 	u32 *level2_extents_offsets = NULL;
 	u64 level2_extents_size = 0;
+	u32 level2_extents_end_offset = 0;
 	u64 *level2_extents = NULL;
 
 	err = parse_block_header(
@@ -1129,19 +1151,22 @@ static int parse_level1_block(
 		indent,
 		/* const u8 *block */
 		block,
-		/* size_t block_size */
+		/* u32 block_size */
 		block_size,
-		/* size_t extents_list_offset */
+		/* u32 extents_list_offset */
 		i,
 		/* u32 **out_extents_list */
 		&level2_extents_offsets,
 		/* u32 *out_extents_count */
-		&level2_extents_count);
+		&level2_extents_count,
+		/* u32 *out_end_offset */
+		&level2_extents_end_offset);
 	if(err) {
+		sys_log_perror(err, "Error while parsing level 2 blocks list");
 		goto out;
 	}
 
-	i += (1 + level2_extents_count) * sizeof(le32);
+	i = level2_extents_end_offset;
 
 	if(self_extents_offset > i) {
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
@@ -4807,6 +4832,9 @@ static int crawl_volume_metadata(
 		((cluster_size == 4096) ? 12U * 1024U : 16U * 1024U);
 
 	block_index_unit = is_v3 ? cluster_size : 16384;
+
+	visitor->version_major = bs->version_major;
+	visitor->version_minor = bs->version_minor;
 
 	if(visitor && visitor->print_visitor.print_message) {
 		/* Print the data between the boot sector and the superblock. */

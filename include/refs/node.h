@@ -47,6 +47,9 @@ struct refs_node_walk_visitor {
 
 	refs_node_print_visitor print_visitor;
 
+	int version_major;
+	int version_minor;
+
 	int (*node_header)(
 		void *context,
 		u64 node_number,
