@@ -986,6 +986,7 @@ static int parse_level1_block_level2_blocks_list(
 	int err = 0;
 	u32 extents_count;
 	size_t extents_size = 0;
+	size_t extents_list_inset = 0;
 	u32 *extents_list = NULL;
 	u32 i;
 
@@ -1153,7 +1154,11 @@ static int parse_level1_block(
 	 * prior observations and fail if it deviates. This may be a description
 	 * of a fragmented level 1 node, but we have not seen those yet so we
 	 * don't quite know what to expect. */
-	if(self_extents_offset >= block_size);
+	if(self_extents_offset >= block_size) {
+		sys_log_warning("Self extents offset exceeds block size: "
+			"%" PRIu32 " != %" PRIuz,
+			PRAu32(self_extents_offset), PRAuz(block_size));
+	}
 	else if(is_v3) {
 		i += parse_extents_list_v3(
 			/* refs_node_walk_visitor *visitor */
@@ -1197,7 +1202,15 @@ static int parse_level1_block(
 			NULL);
 	}
 
-	if(level2_extents_offsets && level2_extents_offsets[0] >= i) {
+	if(!level2_extents_offsets) {
+		sys_log_warning("No level 2 extents offsets!");
+	}
+	else if(level2_extents_offsets[0] < i) {
+		sys_log_warning("First level 2 extent offset precedes end of "
+			"extent list: %" PRIu32 " < %" PRIu32,
+			PRAu32(level2_extents_offsets[0]), PRAu32(i));
+	}
+	else {
 		if(level2_extents_offsets[0] > i) {
 			print_data_with_base(prefix, 0, i, block_size,
 				&block[i],
@@ -4983,6 +4996,16 @@ static int crawl_volume_metadata(
 		if(err) {
 			goto out;
 		}
+	}
+
+	if(!primary_level2_blocks || !secondary_level2_blocks) {
+		sys_log_critical("No %s%s%s level 2 blocks parsed!",
+			!primary_level2_blocks ? "primary" : "",
+			(!primary_level2_blocks && !secondary_level2_blocks) ?
+				"/" : "",
+			!secondary_level2_blocks ? "secondary" : "");
+		err = EINVAL;
+		goto out;
 	}
 
 	if(primary_level2_blocks_count != secondary_level2_blocks_count)
