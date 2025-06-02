@@ -325,4 +325,13 @@ typedef union {
 	REFS_V3_LEVEL1_NODE v3;
 } __attribute__ ((__packed__)) REFS_LEVEL1_NODE;
 
+/**
+ * Tests if the version number is at least @p major.minor and returns
+ * @ref SYS_TRUE if it is (@ref SYS_FALSE otherwise).
+ */
+#define REFS_VERSION_MIN(actual_major, actual_minor, min_major, min_minor) \
+	(((actual_major) > (min_major) || \
+	((actual_major) == (min_major) && (actual_minor) >= (min_minor))) ? \
+	SYS_TRUE : SYS_FALSE)
+
 #endif /* _REFS_LAYOUT_H */

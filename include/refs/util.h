@@ -417,7 +417,8 @@ static void _print_data_with_base(
 		(u8) ((sys_fls64(!maxvalue ? base + size : maxvalue) + 3) / 4);
 
 	size_t i = 0;
-	size_t zero_run = 0;
+	size_t id_run = 0;
+	char id[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
 	switch(8 - (base % 8)) {
 	case 1:
@@ -546,27 +547,52 @@ static void _print_data_with_base(
 	}
 
 	for(; i + 7 < size; i += 8) {
-		const sys_bool is_zeroed = zeroed(&data[i], 8);
+		const sys_bool is_id =
+			memcmp(&data[i], id, 8) ? SYS_FALSE : SYS_TRUE;
 
-		if(zero_run && (i + 8 + 7) < size && is_zeroed) {
-			++zero_run;
+		if(id_run && (i + 8 + 7) < size && is_id) {
+			++id_run;
 			continue;
 		}
-		else if(zero_run) {
-			if(zero_run > 2) {
+		else if(id_run) {
+			if(id_run > 2) {
 				emit(prefix, indent, "%.*s   ...",
 					max_hex_digits,
 					spaces);
 			}
 
-			if(!is_zeroed && zero_run > 1) {
-				emit(prefix, indent, "%*" PRIXz " | 00 00 00 "
-					"00 00 00 00 00 | ........",
+			if(!is_id && id_run > 1) {
+				emit(prefix, indent, "%*" PRIXz " | "
+					"%" PRI0PAD(2) PRIX8 " "
+					"%" PRI0PAD(2) PRIX8 " "
+					"%" PRI0PAD(2) PRIX8 " "
+					"%" PRI0PAD(2) PRIX8 " "
+					"%" PRI0PAD(2) PRIX8 " "
+					"%" PRI0PAD(2) PRIX8 " "
+					"%" PRI0PAD(2) PRIX8 " "
+					"%" PRI0PAD(2) PRIX8 " | "
+					"%c%c%c%c%c%c%c%c",
 					max_hex_digits,
-					base + i - 8);
+					PRAXz(base + i - 8),
+					PRAX8(id[0]),
+					PRAX8(id[1]),
+					PRAX8(id[2]),
+					PRAX8(id[3]),
+					PRAX8(id[4]),
+					PRAX8(id[5]),
+					PRAX8(id[6]),
+					PRAX8(id[7]),
+					makeprintable(id[0]),
+					makeprintable(id[1]),
+					makeprintable(id[2]),
+					makeprintable(id[3]),
+					makeprintable(id[4]),
+					makeprintable(id[5]),
+					makeprintable(id[6]),
+					makeprintable(id[7]));
 			}
 
-			zero_run = 0;
+			id_run = 0;
 		}
 
 		emit(prefix, indent, "%*" PRIXz " | "
@@ -576,7 +602,7 @@ static void _print_data_with_base(
 			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " | "
 			"%c%c%c%c%c%c%c%c",
 			max_hex_digits,
-			base + i,
+			PRAXz(base + i),
 			PRAX8(data[i + 0]),
 			PRAX8(data[i + 1]),
 			PRAX8(data[i + 2]),
@@ -593,8 +619,11 @@ static void _print_data_with_base(
 			makeprintable(data[i + 5]),
 			makeprintable(data[i + 6]),
 			makeprintable(data[i + 7]));
-		if(is_zeroed) {
-			zero_run = 1;
+		if(is_id) {
+			id_run = 1;
+		}
+		else {
+			memcpy(id, &data[i], 8);
 		}
 	}
 
