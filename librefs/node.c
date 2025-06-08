@@ -569,7 +569,8 @@ static int parse_block_header(
 		print_unknown32(prefix, indent + 2, block, &block[0x4]);
 		print_unknown32(prefix, indent + 2, block, &block[0x8]);
 		print_unknown32(prefix, indent + 2, block, &block[0xC]);
-		print_unknown64(prefix, indent + 2, block, &block[0x10]);
+		print_le64_dechex("Checkpoint number", prefix, indent + 2,
+			block, &block[0x10]);
 		print_unknown64(prefix, indent + 2, block, &block[0x18]);
 	}
 
@@ -1139,8 +1140,10 @@ static int parse_level1_block(
 	self_extents_size = read_le32(&header[0x3C]);
 	emit(prefix, indent, "Size of self reference: %" PRIu64,
 		PRAu64(self_extents_size));
-	print_unknown64(prefix, indent, block, &header[0x40]);
-	print_unknown64(prefix, indent, block, &header[0x48]);
+	print_le64_dechex("Checkpoint number", prefix, indent, block,
+		&header[0x40]);
+	print_le64_dechex("First checkpoint number (?)", prefix, indent, block,
+		&header[0x48]);
 	print_unknown64(prefix, indent, block, &header[0x50]);
 	i += 0x58;
 
