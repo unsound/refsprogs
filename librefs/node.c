@@ -1020,10 +1020,22 @@ static int parse_level1_block_level2_blocks_list(
 	}
 
 	if(extents_list_inset) {
+		/* Note: The offset (from the start of the node) of the level 2
+		 * block list appears to be stored at the first offset in ReFS
+		 * 3.14. Not sure what the other numbers are yet. */
+		const u32 level2_block_list_start = read_le32(&block[offset]);
+
+		emit(prefix, indent, "Level 2 blocks start offset @ "
+			"%" PRIu32 " / 0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
+			PRAu32(offset),
+			PRAX32(offset),
+			PRAu32(level2_block_list_start),
+			PRAX32(level2_block_list_start));
+
 		print_data_with_base(prefix, indent,
-			extents_list_offset + sizeof(le32), block_size,
-			&block[extents_list_offset + sizeof(le32)],
-			extents_list_inset);
+			extents_list_offset + sizeof(le32) * 2, block_size,
+			&block[extents_list_offset + sizeof(le32) * 2],
+			extents_list_inset - sizeof(le32));
 		offset += extents_list_inset;
 	}
 
@@ -1038,12 +1050,12 @@ static int parse_level1_block_level2_blocks_list(
 	for(i = 0; i < extents_count; ++i) {
 		extents_list[i] = read_le32(&block[offset]);
 		emit(prefix, indent, "Level 2 blocks offset (%" PRIu32 ") @ "
-			"%" PRIuz " / 0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
+			"%" PRIu32 " / 0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
 			PRAu32(i),
-			PRAuz(offset),
-			PRAXz(offset),
-			PRAu64(extents_list[i]),
-			PRAX64(extents_list[i]));
+			PRAu32(offset),
+			PRAX32(offset),
+			PRAu32(extents_list[i]),
+			PRAX32(extents_list[i]));
 		offset += sizeof(le32);
 	}
 
