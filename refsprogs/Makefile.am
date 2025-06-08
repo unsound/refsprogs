@@ -89,3 +89,14 @@ refsls_CFLAGS = \
 	$(refs_common_cflags)
 refsls_SOURCES = \
 	refsls.c
+
+# Development utilities
+noinst_PROGRAMS += search_device
+search_device_LDADD = \
+	$(refs_common_libs)
+search_device_LDFLAGS = \
+	$(refs_common_ldflags)
+search_device_CFLAGS = \
+	$(refs_common_cflags)
+search_device_SOURCES = \
+	search_device.c
