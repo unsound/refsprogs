@@ -4260,8 +4260,7 @@ int parse_level3_long_value(
 		entry_type_to_string(0x1), PRAu16(value_offset),
 		PRAX16(value_offset));
 
-	emit(prefix, indent, "Attribute %" PRIu16 " @ 0 / 0x0:",
-		PRAu16(attribute_index));
+	emit(prefix, indent, "Basic information @ 0 / 0x0:");
 	++attribute_index;
 
 	/* This field has the observed values 0 and 168 / 0xA8 with the latter
@@ -4380,35 +4379,35 @@ int parse_level3_long_value(
 		 * Observed values for 126 (except 0) are (in order of
 		 * occurrences):
 		 *   0x5 0x7 0x4 0x6 */
-		if(cur_attribute_end > 0x7C) {
+		if(cur_attribute_end >= 0x7C) {
 			i += print_unknown32(prefix, indent + 1, value,
 				&value[0x78]);
 		}
-		if(cur_attribute_end > 0x7E) {
+		if(cur_attribute_end >= 0x7E) {
 			i += print_unknown16(prefix, indent + 1, value,
 				&value[0x7C]);
 		}
-		if(cur_attribute_end > 0x80) {
+		if(cur_attribute_end >= 0x80) {
 			i += print_unknown16(prefix, indent + 1, value,
 				&value[0x7E]);
 		}
-		if(cur_attribute_end > 0x88) {
+		if(cur_attribute_end >= 0x88) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x80]);
 		}
-		if(cur_attribute_end > 0x90) {
+		if(cur_attribute_end >= 0x90) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x88]);
 		}
-		if(cur_attribute_end > 0x98) {
+		if(cur_attribute_end >= 0x98) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x90]);
 		}
-		if(cur_attribute_end > 0xA0) {
+		if(cur_attribute_end >= 0xA0) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x98]);
 		}
-		if(cur_attribute_end > 0xA8) {
+		if(cur_attribute_end >= 0xA8) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0xA0]);
 		}
@@ -4444,11 +4443,21 @@ int parse_level3_long_value(
 			break;
 		}
 
-		emit(prefix, indent, "Attribute %" PRIu16 " @ %" PRIuz " / "
-			"0x%" PRIXz ":",
-			PRAu16(attribute_index),
-			PRAuz(offset_in_value),
-			PRAXz(offset_in_value));
+		if(attribute_index == 1) {
+			emit(prefix, indent, "Attribute header @ %" PRIuz " / "
+				"0x%" PRIXz ":",
+				PRAuz(offset_in_value),
+				PRAXz(offset_in_value));
+		}
+		else {
+			emit(prefix, indent, "Attribute %" PRIu16 "/%" PRIu16 " "
+				"@ %" PRIuz " / 0x%" PRIXz ":",
+				PRAu16((attribute_index - 2) + 1),
+				PRAu16(number_of_attributes),
+				PRAuz(offset_in_value),
+				PRAXz(offset_in_value));
+		}
+
 		++attribute_index;
 
 		j = 0;
@@ -4470,24 +4479,30 @@ int parse_level3_long_value(
 		remaining_in_attribute =
 			(u16) sys_min(attribute_size, remaining_in_value);
 
-		print_unknown16(prefix, indent + 1, attribute,
-			&attribute[0x02]);
-		j += 2;
+		j += print_unknown16(prefix, indent + 1, attribute,
+			&attribute[j]);
 
 		attribute_type = read_le16(&attribute[j]);
 		attribute_type2 = read_le16(&attribute[j + 2]);
-		j += print_le16_hex("Attribute type 1", prefix, indent + 1,
-			attribute, &attribute[j + 0]);
-		j += print_le16_hex("Attribute type 2", prefix, indent + 1,
-			attribute, &attribute[j + 2]);
-
+		if(attribute_index <= 2) {
+			j += print_unknown32(prefix, indent + 1, attribute,
+				&attribute[j]);
+		}
+		else {
+			j += print_le16_hex("Attribute type 1", prefix,
+				indent + 1, attribute, &attribute[j]);
+			j += print_le16_hex("Attribute type 2", prefix,
+				indent + 1, attribute, &attribute[j]);
+		}
 
 		if(attribute_index - 1 == 1 &&
 			remaining_in_attribute >= j + 0x18)
 		{
-			/* Attributes header, always seems to be 40 / 0x28 bytes
-			 * on v3 and 32 / 0x20 on v1 and has the number of
-			 * attributes plus some other unknown data. */
+			/* Attributes header, seems to be:
+			 * - 40 / 0x28 bytes on version 3
+			 * - 32 / 0x20 bytes on version 1
+			 * It has the number of attributes plus some other
+			 * unknown data. */
 			j += print_unknown32(prefix, indent + 1, attribute,
 				&attribute[j]);
 			j += print_unknown16(prefix, indent + 1, attribute,
@@ -4507,6 +4522,10 @@ int parse_level3_long_value(
 				j += print_unknown64(prefix, indent + 1,
 					attribute, &attribute[j]);
 			}
+			if(remaining_in_attribute - j >= 0x8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0028 &&
 			attribute_size >= 0x48)
@@ -4515,144 +4534,146 @@ int parse_level3_long_value(
 			u32 k;
 
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x08 */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x0A */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x0C */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x10 */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x18 */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x1A */
+			j += print_le16_hex("Attribute stream", prefix,
+				indent + 1, attribute,
+				&attribute[j]); /* 0x1C */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
-			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x1E */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x20 */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x28 */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x30 */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x38 */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x3C */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x40 */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x44 */
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x48 */
 			}
 			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x4C */
 			}
 			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x4E */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x50 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_le64_dechex("Number of clusters (1)",
 					prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x58 */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x60 */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x64 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_le64_dechex("Number of clusters (2)",
 					prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x68 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_le64_dechex("Number of clusters (3)",
 					prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x70 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_le64_dechex("Number of clusters (4)",
 					prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x78 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_le64_dechex("Number of clusters (4)",
 					prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x80 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x88 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x90 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x98 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xA0 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xA8 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xB0 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xB8 */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xC0 */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xC4 */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xC8 */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xCC */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xD0 */
 			}
 			if(attribute_size - j >= 4) {
 				number_of_extents = read_le32(&attribute[j]);
-				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+				j += print_le32_dechex("Number of extents",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xD4 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xD8 */
 			}
 			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xE0 */
 			}
 
 			for(k = 0; k < number_of_extents; ++k) {
