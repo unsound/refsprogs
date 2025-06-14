@@ -4582,6 +4582,9 @@ int parse_level3_long_value(
 					block_count,
 					/* u32 block_index_unit */
 					block_index_unit);
+				if(err) {
+					goto out;
+				}
 			}
 		}
 
