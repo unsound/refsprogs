@@ -4831,6 +4831,89 @@ int parse_level3_long_value(
 			}
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
+			stream_type == 0x0080)
+		{
+			/* This attribute type appears to be inline data for the
+			 * data stream. */
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x08 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x0A */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x0C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x10 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x14 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x18 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1A */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_le32_dechex("Stream type ($DATA)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x20 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x24 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x28 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x2C */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x30 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Allocated size 1",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x38 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Logical size 1",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x40 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Logical size 2",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x48 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Allocated size 2",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x50 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x58 */
+			}
+		}
+		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
 			stream_type == 0x00E0)
 		{
 			/* This attribute type appears to be inline data for the
