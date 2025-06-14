@@ -266,16 +266,16 @@ static void parse_extent_v3(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
-	print_le64_dec("Start block", prefix, indent,
+	print_le64_dechex("Block number 1", prefix, indent,
 		base,
 		&data[0]);
-	print_le64_dec("Unknown", prefix, indent,
+	print_le64_dechex("Block number 2", prefix, indent,
 		base,
 		&data[8]);
-	print_le64_dec("Unknown", prefix, indent,
+	print_le64_dechex("Block number 3", prefix, indent,
 		base,
 		&data[16]);
-	print_le64_dec("Unknown", prefix, indent,
+	print_le64_dechex("Block number 4", prefix, indent,
 		base,
 		&data[24]);
 	print_le64_hex("Flags(?)", prefix, indent,
@@ -575,12 +575,9 @@ static int parse_block_header(
 	}
 
 	/* This is the 48/80 byte block header. */
-	emit(prefix, indent + 2, "Block number @ %" PRIuz " / 0x%" PRIXz ": "
-		"%" PRIu64 " / 0x%" PRIX64,
-		PRAuz(((u64) header - (u64) block) + 0x0),
-		PRAXz(((u64) header - (u64) block) + 0x0),
-		PRAu64(read_le64(&header[0x0])),
-		PRAX64(read_le64(&header[0x0])));
+	print_le64_dechex(is_v3 ? "Block number 1" : "Block number", prefix,
+		indent + 2, block, &header[0x0]);
+
 	if(block_number != read_le64(&header[0x0])) {
 		sys_log_warning("Ignoring block with mismatching block "
 			"number.");
@@ -591,9 +588,9 @@ static int parse_block_header(
 		goto out;
 	}
 
-	print_unknown64(prefix, indent + 2, block, &header[0x8]);
-	print_unknown64(prefix, indent + 2, block, &header[0x10]);
 	if(!is_v3) {
+		print_unknown64(prefix, indent + 2, block, &header[0x8]);
+		print_unknown64(prefix, indent + 2, block, &header[0x10]);
 		emit(prefix, indent + 2, "Object ID @ %" PRIuz " / "
 			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
 			PRAuz(((u64) header - (u64) block) + 0x18),
@@ -602,7 +599,12 @@ static int parse_block_header(
 			PRAX64(read_le64(&header[0x18])));
 	}
 	else {
-		print_unknown64(prefix, indent + 2, block, &header[0x18]);
+		print_le64_dechex("Block number 2", prefix, indent + 2, block,
+			&header[0x8]);
+		print_le64_dechex("Block number 3", prefix, indent + 2, block,
+			&header[0x10]);
+		print_le64_dechex("Block number 4", prefix, indent + 2, block,
+			&header[0x18]);
 	}
 	print_unknown64(prefix, indent + 2, block, &header[0x20]);
 	if(!is_v3) {
