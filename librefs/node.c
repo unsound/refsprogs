@@ -4437,6 +4437,7 @@ int parse_level3_long_value(
 		u16 remaining_in_attribute = 0;
 		u16 attribute_type = 0;
 		u16 attribute_type2 = 0;
+		u32 stream_type = 0;
 
 		attribute_size = read_le16(&attribute[0]);
 		if(!attribute_size) {
@@ -4450,6 +4451,10 @@ int parse_level3_long_value(
 				PRAXz(offset_in_value));
 		}
 		else {
+			if(attribute_size >= 0x20) {
+				stream_type = read_le32(&attribute[0x1C]);
+			}
+
 			emit(prefix, indent, "Attribute %" PRIu16 "/%" PRIu16 " "
 				"@ %" PRIuz " / 0x%" PRIXz ":",
 				PRAu16((attribute_index - 2) + 1),
@@ -4822,6 +4827,147 @@ int parse_level3_long_value(
 					block_index_unit);
 				if(err) {
 					goto out;
+				}
+			}
+		}
+		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
+			stream_type == 0x00E0)
+		{
+			/* This attribute type appears to be inline data for the
+			 * EA stream. Likely same format as the above. */
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x08 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x0C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x10 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x14 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x18 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1A */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_le32_dechex("Stream type ($EA)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x20 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x24 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x28 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x2C */
+			}
+
+			/* After this, the EA list starts. */
+			while(attribute_size - j >= 8) {
+				u32 offset_to_next_ea = 0;
+				u32 ea_end_offset = 0;
+				u8 name_length = 0;
+				u16 data_length = 0;
+
+				if(attribute_size - j >= 4) {
+					offset_to_next_ea =
+						read_le32(&attribute[j]);
+					ea_end_offset = j + offset_to_next_ea;
+					j += print_le32_dechex("Offset to next "
+						"EA", prefix, indent + 1,
+						attribute, &attribute[j]);
+					if(ea_end_offset > attribute_size) {
+						sys_log_warning("Offset to "
+							"next EA is outside "
+							"the bounds of the "
+							"attribute: "
+							"%" PRIu32 " > "
+							"%" PRIu32,
+							PRAu32(ea_end_offset),
+							PRAu32(attribute_size));
+						ea_end_offset = attribute_size;
+					}
+				}
+				if(ea_end_offset - j >= 1) {
+					j += print_u8_dechex("Flags", prefix,
+						indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(ea_end_offset - j >= 1) {
+					name_length = attribute[j];
+					j += print_u8_dechex("Name length",
+						prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(name_length > ea_end_offset - j) {
+					sys_log_warning("Name length exceeds "
+						"EA bounds: %" PRIu8 " > "
+						"%" PRIu32,
+						PRAu8(name_length),
+						PRAu32(ea_end_offset - j));
+				}
+				if(ea_end_offset - j >= 2) {
+					data_length = read_le16(&attribute[j]);
+					j += print_le16_dechex("Data length",
+						prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				emit(prefix, indent + 1, "Name @ %" PRIuz " / "
+					"0x%" PRIXz ": %" PRIbs,
+					PRAuz(j), PRAXz(j),
+					PRAbs(sys_min(ea_end_offset - j,
+					name_length), &attribute[j]));
+				if(ea_end_offset - j < name_length) {
+					break;
+				}
+				j += name_length;
+				print_u8_hex("Null terminator", prefix,
+					indent + 1, attribute, &attribute[j]);
+				++j;
+				if(data_length > ea_end_offset - j) {
+					sys_log_warning("data length exceeds "
+						"EA bounds: %" PRIu8 " > "
+						"%" PRIu32,
+						PRAu8(data_length),
+						PRAu32(ea_end_offset - j));
+				}
+				emit(prefix, indent + 1, "Data @ %" PRIuz " / "
+					"0x%" PRIXz ":",
+					PRAuz(j), PRAXz(j));
+				print_data_with_base(prefix, indent + 2, 0,
+					data_length, &attribute[j],
+					sys_min(ea_end_offset - j,
+					data_length));
+				if(ea_end_offset - j < data_length) {
+					break;
+				}
+				j += data_length;
+
+				if(j < ea_end_offset) {
+					print_data_with_base(prefix, indent + 1,
+						j, ea_end_offset,
+						&attribute[j],
+						ea_end_offset - j);
+					j = ea_end_offset;
 				}
 			}
 		}
