@@ -925,6 +925,34 @@ out:
 	return err;
 }
 
+static int refs_fuse_op_read_visit_file_data(
+		void *const _context,
+		const void *const data,
+		const size_t size)
+{
+	refs_fuse_op_read_context *const context =
+		(refs_fuse_op_read_context*) _context;
+
+	int err = 0;
+	size_t bytes_to_copy = 0;
+
+	if(context->start_offset >= size) {
+		context->cur_offset = size;
+		goto out;
+	}
+
+	bytes_to_copy =
+		sys_min(context->size, size - (size_t) context->start_offset);
+	memcpy(context->buf,
+		&((const char*) data)[(size_t) context->start_offset],
+		bytes_to_copy);
+	context->size -= bytes_to_copy;
+	context->cur_offset = context->start_offset + bytes_to_copy;
+	context->buf = &context->buf[bytes_to_copy];
+out:
+	return err;
+}
+
 static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		off_t offset, struct fuse_file_info *fi)
 {
@@ -991,6 +1019,7 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		vol);
 	visitor.context = &context;
 	visitor.node_file_extent = refs_fuse_op_read_visit_file_extent;
+	visitor.node_file_data = refs_fuse_op_read_visit_file_data;
 
 	err = parse_level3_long_value(
 		/* refs_node_crawl_context *crawl_context */
