@@ -4500,6 +4500,9 @@ int parse_level3_long_value(
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0028 &&
 			attribute_size >= 0x48)
 		{
+			u32 number_of_extents = 0;
+			u32 k;
+
 			j += print_unknown16(prefix, indent + 1, attribute,
 				&attribute[j]);
 			j += print_unknown16(prefix, indent + 1, attribute,
@@ -4530,21 +4533,219 @@ int parse_level3_long_value(
 				&attribute[j]);
 			j += print_unknown32(prefix, indent + 1, attribute,
 				&attribute[j]);
-			if(attribute_size >= 0xE8) {
+			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
 					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (1)",
+					prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (2)",
+					prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (3)",
+					prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (4)",
+					prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (4)",
+					prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
 					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 4) {
+				number_of_extents = read_le32(&attribute[j]);
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
+
+			for(k = 0; k < number_of_extents; ++k) {
+				u64 first_block = 0;
+				u32 block_count = 0;
+
+				emit(prefix, indent + 1, "Extent %" PRIu32 "/"
+					"%" PRIu32 ":",
+					PRAu32(k + 1),
+					PRAu32(number_of_extents));
+				if(attribute_size - j >= 8) {
+					first_block =
+						read_le64(&attribute[j]) -
+						(0x50000 - 0x4000); /* TODO: Virtual to physical mapping. */
+					j += print_le64_dechex("Extent start "
+						"physical block value", prefix,
+						indent + 2, attribute,
+						&attribute[j]);
+					emit(prefix, indent + 3, "Actual "
+						"physical block: %" PRIu64 " / "
+						"0x%" PRIX64 " (byte offset: "
+						"%" PRIu64 ")",
+						PRAu64(first_block),
+						PRAX64(first_block),
+						PRAu64(first_block *
+						block_index_unit));
+				}
+				else {
+					break;
+				}
+
+				if(attribute_size - j >= 4) {
+					j += print_le32_dechex("Flags (?)",
+						prefix, indent + 2, attribute,
+						&attribute[j]);
+				}
+				else {
+					break;
+				}
+
+				if(attribute_size - j >= 8) {
+					/* XXX: Misaligned? */
+					j += print_le64_dechex("Extent start "
+						"logical block", prefix,
+						indent + 2, attribute,
+						&attribute[j]);
+				}
+				else {
+					break;
+				}
+
+				if(attribute_size - j >= 4) {
+					block_count = read_le32(&attribute[j]);
+					j += print_le32_dechex("Extent block "
+						"count (?)", prefix, indent + 2,
+						attribute, &attribute[j]);
+				}
+				else {
+					break;
+				}
+
+				if(first_block && block_count && visitor &&
+					visitor->node_file_extent)
+				{
+					err = visitor->node_file_extent(
+						/* void *context */
+						visitor->context,
+						/* u64 first_block */
+						first_block,
+						/* u64 block_count */
+						block_count,
+						/* u32 block_index_unit */
+						block_index_unit);
+					if(err) {
+						goto out;
+					}
+				}
+			}
+
+			if(number_of_extents) {
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
 			}
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x000E) {
