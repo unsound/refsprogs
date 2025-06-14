@@ -1146,7 +1146,8 @@ static int parse_level1_block(
 		&header[0x40]);
 	print_le64_dechex("First checkpoint number (?)", prefix, indent, block,
 		&header[0x48]);
-	print_unknown64(prefix, indent, block, &header[0x50]);
+	print_unknown32(prefix, indent, block, &header[0x50]);
+	print_unknown32(prefix, indent, block, &header[0x54]);
 	i += 0x58;
 
 	if(is_v3) {
