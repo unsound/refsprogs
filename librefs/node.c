@@ -2612,6 +2612,88 @@ static int parse_level2_0x3_leaf_value(
 	return 0;
 }
 
+static int parse_level2_0x4_leaf_value(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u8 *const value,
+		const u16 value_offset,
+		const u16 value_size,
+		const u32 entry_size,
+		void *const context)
+{
+	/* The 0x3 tree maps object IDs to virtual block addresses in clusters
+	 * of 4. The exact purpose is a bit unclear. */
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	u16 i = 0;
+	u64 block_number = 0;
+
+	(void) object_id;
+	(void) context;
+
+	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
+		(key == value && key_size == value_size) ? "Key/value" :
+		"Value", "unknown", PRAu16(value_offset), PRAX16(value_offset));
+
+	if(value_size >= 0x8) {
+		i += print_unknown64(prefix, indent, value, &value[0x0]);
+	}
+	if(value_size >= 0xC) {
+		i += print_unknown32(prefix, indent, value, &value[0x8]);
+	}
+	if(value_size >= 0x10) {
+		i += print_unknown32(prefix, indent, value, &value[0xC]);
+	}
+	if(value_size >= 0x18) {
+		i += print_unknown64(prefix, indent, value, &value[0x10]);
+	}
+	if(value_size >= 0x20) {
+		i += print_unknown64(prefix, indent, value, &value[0x18]);
+	}
+	if(value_size >= 0x28) {
+		i += print_le64_dechex("Block number 1", prefix, indent, value,
+			&value[0x20]);
+	}
+	if(value_size >= 0x30) {
+		i += print_le64_dechex("Block number 2", prefix, indent, value,
+			&value[0x28]);
+	}
+	if(value_size >= 0x38) {
+		i += print_le64_dechex("Block number 3", prefix, indent, value,
+			&value[0x30]);
+	}
+	if(value_size >= 0x40) {
+		i += print_le64_dechex("Block number 4", prefix, indent, value,
+			&value[0x38]);
+	}
+	if(value_size >= 0x44) {
+		i += print_unknown32(prefix, indent, value, &value[0x40]);
+	}
+	if(value_size >= 0x48) {
+		i += print_unknown32(prefix, indent, value, &value[0x44]);
+	}
+	if(value_size >= 0x50) {
+		i += print_le64_hex("Checksum", prefix, indent, value,
+			&value[0x48]);
+	}
+	if(value_size >= 0x58) {
+		i += print_unknown64(prefix, indent, value, &value[0x50]);
+	}
+
+	if(i < value_size) {
+		print_data_with_base(prefix, indent, i, entry_size, &value[i],
+			value_size - i);
+	}
+
+	return 0;
+}
+
 static int parse_0xB_0xC_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -2981,7 +3063,73 @@ static int parse_level2_block_0xE_table_entry(
 out:
 	return err;
 }
+#endif
 
+static int parse_level2_0x21_leaf_value(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u8 *const value,
+		const u16 value_offset,
+		const u16 value_size,
+		const u32 entry_size,
+		void *const context)
+{
+	/* The 0x21 tree maps something to virtual block addresses in clusters
+	 * of 4. The exact purpose is a bit unclear. */
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	u16 i = 0;
+	u64 block_number = 0;
+
+	(void) object_id;
+	(void) context;
+
+	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
+		(key == value && key_size == value_size) ? "Key/value" :
+		"Value", "unknown", PRAu16(value_offset), PRAX16(value_offset));
+
+	if(value_size >= 0x8) {
+		i += print_le64_dechex("Block number 1", prefix, indent, value,
+			&value[0x0]);
+	}
+	if(value_size >= 0x10) {
+		i += print_le64_dechex("Block number 2", prefix, indent, value,
+			&value[0x8]);
+	}
+	if(value_size >= 0x18) {
+		i += print_le64_dechex("Block number 3", prefix, indent, value,
+			&value[0x10]);
+	}
+	if(value_size >= 0x20) {
+		i += print_le64_dechex("Block number 4", prefix, indent, value,
+			&value[0x18]);
+	}
+	if(value_size >= 0x24) {
+		i += print_unknown32(prefix, indent, value, &value[0x20]);
+	}
+	if(value_size >= 0x28) {
+		i += print_unknown32(prefix, indent, value, &value[0x24]);
+	}
+	if(value_size >= 0x30) {
+		i += print_le64_hex("Checksum", prefix, indent, value,
+			&value[0x28]);
+	}
+
+	if(i < value_size) {
+		print_data_with_base(prefix, indent, i, entry_size, &value[i],
+			value_size - i);
+	}
+
+	return 0;
+}
+
+#if 0
 static int parse_level2_block_0x22_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -3314,6 +3462,33 @@ static int parse_level2_leaf_value(
 			/* void *context */
 			context);
 	}
+	else if(object_id == 0x4) {
+		err = parse_level2_0x4_leaf_value(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* u64 object_id */
+			object_id,
+			/* sys_bool is_v3 */
+			is_v3,
+			/* const u8 *key */
+			key,
+			/* u16 key_size */
+			key_size,
+			/* const u8 *value */
+			value,
+			/* u16 value_offset */
+			value_offset,
+			/* u16 value_size */
+			value_size,
+			/* u32 entry_size */
+			entry_size,
+			/* void *context */
+			context);
+	}
 	else if(object_id == 0xB) {
 		err = parse_level2_block_0xB_0xC_leaf_value(
 			/* refs_node_walk_visitor *visitor */
@@ -3431,6 +3606,35 @@ static int parse_level2_leaf_value(
 			/* void *context */
 			context);
 	}
+#endif
+	else if(object_id == 0x21) {
+		err = parse_level2_0x21_leaf_value(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* u64 object_id */
+			object_id,
+			/* sys_bool is_v3 */
+			is_v3,
+			/* const u8 *key */
+			key,
+			/* u16 key_size */
+			key_size,
+			/* const u8 *value */
+			value,
+			/* u16 value_offset */
+			value_offset,
+			/* u16 value_size */
+			value_size,
+			/* u32 entry_size */
+			entry_size,
+			/* void *context */
+			context);
+	}
+#if 0
 	else if(object_id == 0x22) {
 		err = parse_level2_block_0x22_value(
 			/* refs_node_walk_visitor *visitor */
