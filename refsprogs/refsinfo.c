@@ -233,8 +233,10 @@ static int print_leaf_by_path(
 	sys_bool is_short_entry = SYS_FALSE;
 	u8 *record = NULL;
 	size_t record_size = 0;
+	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
 
+	memset(&crawl_context, 0, sizeof(crawl_context));
 	memset(&visitor, 0, sizeof(visitor));
 
 	if(path[0] != '/') {
@@ -274,6 +276,13 @@ static int print_leaf_by_path(
 		goto out;
 	}
 
+	crawl_context.dev = vol->dev;
+	crawl_context.bs = vol->bs;
+	crawl_context.block_map = vol->block_map;
+	crawl_context.block_index_unit =
+		(vol->bs->version_major == 1) ? 16384 : vol->cluster_size;
+	crawl_context.version_major = vol->bs->version_major;
+	crawl_context.version_minor = vol->bs->version_minor;
 	visitor.print_visitor.print_message = print_leaf_by_path_print_message;
 	if(!record) {
 		/* No record for this entry. Should only happen for the root
@@ -285,14 +294,14 @@ static int print_leaf_by_path(
 	}
 	else if(is_short_entry) {
 		err = parse_level3_short_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
 			"",
 			/* size_t indent */
 			1,
-			/* sys_bool is_v3 */
-			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 			/* const u8 *key */
 			NULL,
 			/* u16 key_size */
@@ -313,17 +322,14 @@ static int print_leaf_by_path(
 	}
 	else {
 		err = parse_level3_long_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
 			"",
 			/* size_t indent */
 			1,
-			/* u32 block_index_unit */
-			(vol->bs->version_major == 1) ? 16384 :
-			vol->cluster_size,
-			/* sys_bool is_v3 */
-			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 			/* const u8 *key */
 			NULL,
 			/* u16 key_size */
