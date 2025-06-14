@@ -367,6 +367,10 @@ int main(int argc, char **argv)
 	visitor.node_long_entry = refscat_node_long_entry;
 	visitor.node_file_extent = refscat_node_file_extent;
 
+#ifdef O_BINARY
+	setmode(fileno(stdout), O_BINARY);
+#endif
+
 	err = refs_node_walk(
 		/* sys_device *dev */
 		dev,
