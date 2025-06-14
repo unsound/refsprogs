@@ -5508,6 +5508,16 @@ out:
 	return err;
 }
 
+void refs_block_map_destroy(
+		refs_block_map **const block_map)
+{
+	if((*block_map)->entries) {
+		sys_free(&(*block_map)->entries);
+	}
+
+	sys_free(block_map);
+}
+
 static int crawl_volume_metadata(
 		refs_node_walk_visitor *const visitor,
 		sys_device *const dev,
@@ -5530,7 +5540,7 @@ static int crawl_volume_metadata(
 	u32 block_index_unit = 0;
 	u8 *padding = NULL;
 	u8 *block = NULL;
-	refs_block_map mappings;
+	refs_block_map *mappings = NULL;
 	u64 primary_level1_block = 0;
 	u64 secondary_level1_block = 0;
 	u64 *primary_level2_blocks = NULL;
@@ -5542,7 +5552,6 @@ static int crawl_volume_metadata(
 	refs_node_crawl_context crawl_context;
 	size_t i = 0;
 
-	memset(&mappings, 0, sizeof(mappings));
 	memset(&level2_queue, 0, sizeof(level2_queue));
 	memset(&level3_queue, 0, sizeof(level3_queue));
 	memset(&crawl_context, 0, sizeof(crawl_context));
@@ -5793,9 +5802,16 @@ static int crawl_volume_metadata(
 	primary_level2_blocks_count = 0;
 
 	if(block_map && *block_map) {
-		mappings = **block_map;
+		mappings = *block_map;
 	}
 	else {
+		err = sys_calloc(sizeof(*mappings), &mappings);
+		if(err) {
+			sys_log_perror(err, "Error while allocating mappings "
+				"base struct");
+			goto out;
+		}
+
 		/* For v3 volumes we first iterate over the Level 2 blocks to
 		 * find the block region mappings, located in the tree with
 		 * object ID 0xB. */
@@ -5891,7 +5907,7 @@ static int crawl_volume_metadata(
 				/* sys_bool add_subnodes_in_offsets_order */
 				SYS_TRUE,
 				/* void *context */
-				(object_id == 0xB) ? &mappings : NULL,
+				(object_id == 0xB) ? mappings : NULL,
 				/* int (*parse_key)(
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
@@ -5932,21 +5948,25 @@ static int crawl_volume_metadata(
 
 			sys_log_debug("Mapping table after processing 0xB "
 				"block (%" PRIuz " entries):",
-				PRAuz(mappings.length));
-			for(j = 0; j < mappings.length; ++j) {
+				PRAuz(mappings->length));
+			for(j = 0; j < mappings->length; ++j) {
 				sys_log_debug("\t[%" PRIuz "]:",
 					PRAuz(j));
 				sys_log_debug("\t\tStart: %" PRIu64,
-					PRAu64(mappings.entries[j].
+					PRAu64(mappings->entries[j].
 					start));
 				sys_log_debug("\t\tLength: %" PRIu64,
-					PRAu64(mappings.entries[j].
+					PRAu64(mappings->entries[j].
 					length));
 			}
 		}
+
+		if(block_map) {
+			*block_map = mappings;
+		}
 	}
 
-	crawl_context.block_map = &mappings;
+	crawl_context.block_map = mappings;
 
 	/* At this point the mappings are set up and we can look up a node by
 	 * node number. */
@@ -6229,8 +6249,10 @@ out:
 		sys_free(&block);
 	}
 
-	if(mappings.entries) {
-		sys_free(&mappings.entries);
+	if(mappings && !(block_map && *block_map == mappings)) {
+		refs_block_map_destroy(
+			/* refs_block_map **block_map */
+			&mappings);
 	}
 
 	if(padding) {
