@@ -4912,6 +4912,18 @@ int parse_level3_long_value(
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x58 */
 			}
+			if(visitor && visitor->node_file_data) {
+				err = visitor->node_file_data(
+					/* void *context */
+					visitor->context,
+					/* const void *data */
+					&attribute[j],
+					/* size_t size */
+					file_size);
+				if(err) {
+					goto out;
+				}
+			}
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
 			stream_type == 0x00E0)
@@ -4970,6 +4982,8 @@ int parse_level3_long_value(
 				u32 ea_end_offset = 0;
 				u8 name_length = 0;
 				u16 data_length = 0;
+				const char *name = NULL;
+				const void *data = NULL;
 
 				if(attribute_size - j >= 4) {
 					offset_to_next_ea =
@@ -5014,6 +5028,7 @@ int parse_level3_long_value(
 						prefix, indent + 1,
 						attribute, &attribute[j]);
 				}
+				name = (const char*) &attribute[j];
 				emit(prefix, indent + 1, "Name @ %" PRIuz " / "
 					"0x%" PRIXz ": %" PRIbs,
 					PRAuz(j), PRAXz(j),
@@ -5033,6 +5048,7 @@ int parse_level3_long_value(
 						PRAu8(data_length),
 						PRAu32(ea_end_offset - j));
 				}
+				data = &attribute[j];
 				emit(prefix, indent + 1, "Data @ %" PRIuz " / "
 					"0x%" PRIXz ":",
 					PRAuz(j), PRAXz(j));
@@ -5040,6 +5056,22 @@ int parse_level3_long_value(
 					data_length, &attribute[j],
 					sys_min(ea_end_offset - j,
 					data_length));
+				if(visitor && visitor->node_ea) {
+					err = visitor->node_ea(
+						/* void *context */
+						visitor->context,
+						/* const char *name */
+						name,
+						/* size_t name_length */
+						name_length,
+						/* const void *data */
+						data,
+						/* size_t data_size */
+						data_length);
+					if(err) {
+						goto out;
+					}
+				}
 				if(ea_end_offset - j < data_length) {
 					break;
 				}

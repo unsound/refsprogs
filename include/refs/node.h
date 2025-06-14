@@ -106,6 +106,16 @@ struct refs_node_walk_visitor {
 		u64 first_block,
 		u64 block_count,
 		u32 block_index_unit);
+	int (*node_file_data)(
+		void *context,
+		const void *data,
+		size_t size);
+	int (*node_ea)(
+		void *context,
+		const char *name,
+		size_t name_length,
+		const void *data,
+		size_t data_size);
 };
 
 struct refs_node_crawl_context {
