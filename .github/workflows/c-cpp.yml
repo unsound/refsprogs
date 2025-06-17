@@ -93,3 +93,27 @@ jobs:
       run: make check
     - name: make distcheck
       run: make distcheck
+
+  build-freebsd:
+    runs-on: ubuntu-latest
+
+    name: Build refsprogs in FreeBSD
+    env:
+      MYTOKEN : ${{ secrets.MYTOKEN }}
+      MYTOKEN2: "value2"
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in FreeBSD
+      id: test
+      uses: vmactions/freebsd-vm@
+      with:
+        envs: 'MYTOKEN MYTOKEN2'
+        usesh: true
+        prepare: |
+          pkg install -y fusefs-libs autoconf automake libtool pkgconf
+        run: |
+          ./autogen.sh
+          ./configure
+          make
+          make check
+          make distcheck
