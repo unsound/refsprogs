@@ -1,7 +1,7 @@
 /*-
  * refscat.c - Print the data of a file on an ReFS volume to stdout.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -59,7 +59,7 @@ static void print_help(FILE *out, const char *invoke_cmd)
 static void print_about(FILE *out)
 {
 	fprintf(out, BINARY_NAME " %s\n", VERSION);
-	fprintf(out, "Copyright (c) 2022-2023 Erik Larsson\n");
+	fprintf(out, "Copyright (c) 2022-2025 Erik Larsson\n");
 }
 
 typedef struct {
@@ -155,6 +155,43 @@ out:
 		sys_free(&buf);
 	}
 
+	return err;
+}
+
+static int refscat_node_file_data(
+		void *const _context,
+		const void *const data,
+		const size_t size)
+{
+	refscat_print_data_ctx *const context =
+		(refscat_print_data_ctx*) _context;
+
+	int err = 0;
+
+	if(context->name_matches) {
+		ssize_t bytes_written = 0;
+
+		context->remaining_bytes -= size;
+
+		bytes_written = write(STDOUT_FILENO, data, size);
+		if(bytes_written < 0) {
+			err = (err = errno) ? err : EIO;
+			sys_log_perror(err, "Error while writing "
+				"%" PRIuz " bytes to stdout",
+				PRAuz(size));
+			goto out;
+		}
+		else if((size_t) bytes_written != size) {
+			err = EIO;
+			sys_log_perror(errno, "Partial write of file "
+				"data to stdout: %" PRIuz " / "
+				"%" PRIuz " bytes written",
+				PRAuz((size_t) bytes_written),
+				PRAuz(size));
+			goto out;
+		}
+	}
+out:
 	return err;
 }
 
@@ -365,7 +402,12 @@ int main(int argc, char **argv)
 	context.name_length = (u16) name_length;
 	visitor.context = &context;
 	visitor.node_long_entry = refscat_node_long_entry;
+	visitor.node_file_data = refscat_node_file_data;
 	visitor.node_file_extent = refscat_node_file_extent;
+
+#ifdef O_BINARY
+	setmode(fileno(stdout), O_BINARY);
+#endif
 
 	err = refs_node_walk(
 		/* sys_device *dev */

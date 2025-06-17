@@ -1,7 +1,7 @@
 /*-
  * node.h - ReFS node handling declarations.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -27,8 +27,9 @@ typedef struct refs_block_map refs_block_map;
 typedef struct refs_node_print_visitor refs_node_print_visitor;
 typedef struct refs_node_walk_visitor refs_node_walk_visitor;
 typedef struct refs_node_scan_visitor refs_node_scan_visitor;
+typedef struct refs_node_crawl_context refs_node_crawl_context;
 
-#include "volume.h"
+#include "layout.h"
 #include "sys.h"
 
 struct refs_node_print_visitor {
@@ -105,14 +106,58 @@ struct refs_node_walk_visitor {
 		u64 first_block,
 		u64 block_count,
 		u32 block_index_unit);
+	int (*node_file_data)(
+		void *context,
+		const void *data,
+		size_t size);
+	int (*node_ea)(
+		void *context,
+		const char *name,
+		size_t name_length,
+		const void *data,
+		size_t data_size);
 };
 
+struct refs_node_crawl_context {
+	sys_device *dev;
+	REFS_BOOT_SECTOR *bs;
+	refs_block_map *block_map;
+	u32 block_index_unit;
+	u8 version_major;
+	u8 version_minor;
+};
+
+static inline refs_node_crawl_context refs_node_crawl_context_init(
+		sys_device *const dev,
+		REFS_BOOT_SECTOR *const bs,
+		refs_block_map *const block_map,
+		const u32 block_index_unit,
+		const u8 version_major,
+		const u8 version_minor)
+{
+	const refs_node_crawl_context ctx = {
+		/* sys_device *dev */
+		dev,
+		/* REFS_BOOT_SECTOR *bs */
+		bs,
+		/* refs_block_map *block_map */
+		block_map,
+		/* u32 block_index_unit */
+		block_index_unit,
+		/* u8 version_major */
+		version_major,
+		/* u8 version_minor */
+		version_minor
+	};
+
+	return ctx;
+}
+
 int parse_level3_long_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
-		const u32 block_index_unit,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -121,10 +166,10 @@ int parse_level3_long_value(
 		void *const context);
 
 int parse_level3_short_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,

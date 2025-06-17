@@ -1,7 +1,7 @@
 /*-
  * refs_util.h - ReFS utility macros and declarations.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published

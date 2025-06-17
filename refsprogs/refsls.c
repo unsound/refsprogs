@@ -1,7 +1,7 @@
 /*-
  * refsls.c - List files on an ReFS volume.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -92,7 +92,7 @@ static void print_help(FILE *out, const char *invoke_cmd)
 static void print_about(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
-	fprintf(out, "Copyright (c) 2022-2023 Erik Larsson\n");
+	fprintf(out, "Copyright (c) 2022-2025 Erik Larsson\n");
 }
 
 typedef struct {

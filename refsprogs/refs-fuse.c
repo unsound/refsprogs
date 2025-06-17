@@ -1,7 +1,7 @@
 /*-
  * refs-fuse.c - FUSE driver interface to librefs.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -629,6 +629,7 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 	size_t record_size = 0;
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
+	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
 
 	memset(&visitor, 0, sizeof(visitor));
@@ -660,6 +661,9 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 		goto out;
 	}
 
+	crawl_context = refs_volume_init_node_crawl_context(
+		/* refs_volume *vol */
+		vol);
 	visitor.context = stbuf;
 	if(!record && directory_object_id) {
 		/* Root directory. */
@@ -687,14 +691,14 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 		visitor.node_short_entry =
 			refs_fuse_op_getattr_visit_short_entry;
 		err = parse_level3_short_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
 			"",
 			/* size_t indent */
 			1,
-			/* sys_bool is_v3 */
-			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 			/* const u8 *key */
 			NULL,
 			/* u16 key_size */
@@ -712,17 +716,14 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 		visitor.node_long_entry =
 			refs_fuse_op_getattr_visit_long_entry;
 		err = parse_level3_long_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
 			"",
 			/* size_t indent */
 			1,
-			/* u32 block_index_unit */
-			(vol->bs->version_major == 1) ? 16384 :
-			vol->cluster_size,
-			/* sys_bool is_v3 */
-			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 			/* const u8 *key */
 			NULL,
 			/* u16 key_size */
@@ -924,6 +925,34 @@ out:
 	return err;
 }
 
+static int refs_fuse_op_read_visit_file_data(
+		void *const _context,
+		const void *const data,
+		const size_t size)
+{
+	refs_fuse_op_read_context *const context =
+		(refs_fuse_op_read_context*) _context;
+
+	int err = 0;
+	size_t bytes_to_copy = 0;
+
+	if(context->start_offset >= size) {
+		context->cur_offset = size;
+		goto out;
+	}
+
+	bytes_to_copy =
+		sys_min(context->size, size - (size_t) context->start_offset);
+	memcpy(context->buf,
+		&((const char*) data)[(size_t) context->start_offset],
+		bytes_to_copy);
+	context->size -= bytes_to_copy;
+	context->cur_offset = context->start_offset + bytes_to_copy;
+	context->buf = &context->buf[bytes_to_copy];
+out:
+	return err;
+}
+
 static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		off_t offset, struct fuse_file_info *fi)
 {
@@ -936,6 +965,7 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
 	refs_fuse_op_read_context context;
+	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
 
 	memset(&context, 0, sizeof(context));
@@ -984,20 +1014,22 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		goto out;
 	}
 
+	crawl_context = refs_volume_init_node_crawl_context(
+		/* refs_volume *vol */
+		vol);
 	visitor.context = &context;
 	visitor.node_file_extent = refs_fuse_op_read_visit_file_extent;
+	visitor.node_file_data = refs_fuse_op_read_visit_file_data;
 
 	err = parse_level3_long_value(
+		/* refs_node_crawl_context *crawl_context */
+		&crawl_context,
 		/* refs_node_walk_visitor *visitor */
 		&visitor,
 		/* const char *prefix */
 		"",
 		/* size_t indent */
 		1,
-		/* u32 block_index_unit */
-		(vol->bs->version_major == 1) ? 16384 : vol->cluster_size,
-		/* sys_bool is_v3 */
-		(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 		/* const u8 *key */
 		NULL,
 		/* u16 key_size */
@@ -1301,6 +1333,7 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 	sys_bool is_short_entry = SYS_FALSE;
 	const u8 *record = NULL;
 	size_t record_size = 0;
+	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
 	uint32_t attributes = 0;
 
@@ -1332,6 +1365,9 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 		goto out;
 	}
 
+	crawl_context = refs_volume_init_node_crawl_context(
+		/* refs_volume *vol */
+		vol);
 	visitor.context = &attributes;
 	if(!record && directory_object_id) {
 		/* Root directory. */
@@ -1344,14 +1380,14 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 		visitor.node_short_entry =
 			refs_fuse_op_win_get_attributes_visit_short_entry;
 		err = parse_level3_short_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
 			"",
 			/* size_t indent */
 			1,
-			/* sys_bool is_v3 */
-			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 			/* const u8 *key */
 			NULL,
 			/* u16 key_size */
@@ -1369,17 +1405,14 @@ uint32_t refs_fuse_op_win_get_attributes(const char *path)
 		visitor.node_long_entry =
 			refs_fuse_op_win_get_attributes_visit_long_entry;
 		err = parse_level3_long_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			&visitor,
 			/* const char *prefix */
 			"",
 			/* size_t indent */
 			1,
-			/* u32 block_index_unit */
-			(vol->bs->version_major == 1) ? 16384 :
-			vol->cluster_size,
-			/* sys_bool is_v3 */
-			(vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 			/* const u8 *key */
 			NULL,
 			/* u16 key_size */

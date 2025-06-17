@@ -1,7 +1,7 @@
 /*-
  * volume.c - ReFS volume handling definitions.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -82,9 +82,13 @@ int refs_volume_create(
 	}
 
 	err = sys_device_pread(
+		/* sys_device *dev */
 		dev,
+		/* u64 offset */
 		0,
+		/* size_t nbytes */
 		bs_size,
+		/* void *buf */
 		bs);
 	if(err) {
 		sys_log_perror(err, "Error while reading boot sector");
@@ -183,6 +187,12 @@ void refs_volume_destroy(
 		refs_volume **const out_vol)
 {
 	refs_volume *const vol = *out_vol;
+
+	if(vol->block_map) {
+		refs_block_map_destroy(
+			/* refs_block_map **block_map */
+			&vol->block_map);
+	}
 
 	sys_free(&vol->bs);
 	sys_free(out_vol);

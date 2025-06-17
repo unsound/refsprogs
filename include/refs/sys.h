@@ -1,7 +1,7 @@
 /*-
  * sys.h - Lightweight abstractions for system functionality.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -211,6 +211,10 @@ static inline u8 sys_fls64(u64 value)
 #define SYS_LOG_WARNING_ENABLED 1
 #endif
 
+#ifndef SYS_LOG_INFO_ENABLED
+#define SYS_LOG_INFO_ENABLED 1
+#endif
+
 #ifndef SYS_LOG_DEBUG_ENABLED
 #define SYS_LOG_DEBUG_ENABLED 0
 #endif
@@ -268,6 +272,20 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 	fprintf(stderr, "[WARNING] " fmt ": %s\n", ##__VA_ARGS__, strerror(err))
 #else
 #define sys_log_pwarning sys_log_pnoop
+#endif
+
+#if SYS_LOG_INFO_ENABLED
+#define sys_log_info(fmt, ...) \
+	fprintf(stderr, fmt "\n", ##__VA_ARGS__)
+#else
+#define sys_log_info sys_log_noop
+#endif
+
+#if SYS_LOG_INFO_ENABLED
+#define sys_log_pinfo(err, fmt, ...) \
+	fprintf(stderr, fmt ": %s\n", ##__VA_ARGS__, strerror(err))
+#else
+#define sys_log_pinfo sys_log_pnoop
 #endif
 
 #if SYS_LOG_DEBUG_ENABLED

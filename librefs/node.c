@@ -1,7 +1,7 @@
 /*-
  * node.c - ReFS node handling definitions.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -115,10 +115,11 @@ static const char* entry_type_to_string(u16 entry_type)
 }
 
 static u64 logical_to_physical_block_number(
-		REFS_BOOT_SECTOR *const bs,
-		refs_block_map *const mapping_table,
+		refs_node_crawl_context *const crawl_context,
 		const u64 logical_block_number)
 {
+	REFS_BOOT_SECTOR *const bs = crawl_context->bs;
+	refs_block_map *const mapping_table = crawl_context->block_map;
 	const u32 cluster_size =
 		le32_to_cpu(bs->bytes_per_sector) *
 		le32_to_cpu(bs->sectors_per_cluster);
@@ -266,16 +267,16 @@ static void parse_extent_v3(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
-	print_le64_dec("Start block", prefix, indent,
+	print_le64_dechex("Block number 1", prefix, indent,
 		base,
 		&data[0]);
-	print_le64_dec("Unknown", prefix, indent,
+	print_le64_dechex("Block number 2", prefix, indent,
 		base,
 		&data[8]);
-	print_le64_dec("Unknown", prefix, indent,
+	print_le64_dechex("Block number 3", prefix, indent,
 		base,
 		&data[16]);
-	print_le64_dec("Unknown", prefix, indent,
+	print_le64_dechex("Block number 4", prefix, indent,
 		base,
 		&data[24]);
 	print_le64_hex("Flags(?)", prefix, indent,
@@ -569,17 +570,15 @@ static int parse_block_header(
 		print_unknown32(prefix, indent + 2, block, &block[0x4]);
 		print_unknown32(prefix, indent + 2, block, &block[0x8]);
 		print_unknown32(prefix, indent + 2, block, &block[0xC]);
-		print_unknown64(prefix, indent + 2, block, &block[0x10]);
+		print_le64_dechex("Checkpoint number", prefix, indent + 2,
+			block, &block[0x10]);
 		print_unknown64(prefix, indent + 2, block, &block[0x18]);
 	}
 
 	/* This is the 48/80 byte block header. */
-	emit(prefix, indent + 2, "Block number @ %" PRIuz " / 0x%" PRIXz ": "
-		"%" PRIu64 " / 0x%" PRIX64,
-		PRAuz(((u64) header - (u64) block) + 0x0),
-		PRAXz(((u64) header - (u64) block) + 0x0),
-		PRAu64(read_le64(&header[0x0])),
-		PRAX64(read_le64(&header[0x0])));
+	print_le64_dechex(is_v3 ? "Block number 1" : "Block number", prefix,
+		indent + 2, block, &header[0x0]);
+
 	if(block_number != read_le64(&header[0x0])) {
 		sys_log_warning("Ignoring block with mismatching block "
 			"number.");
@@ -590,9 +589,9 @@ static int parse_block_header(
 		goto out;
 	}
 
-	print_unknown64(prefix, indent + 2, block, &header[0x8]);
-	print_unknown64(prefix, indent + 2, block, &header[0x10]);
 	if(!is_v3) {
+		print_unknown64(prefix, indent + 2, block, &header[0x8]);
+		print_unknown64(prefix, indent + 2, block, &header[0x10]);
 		emit(prefix, indent + 2, "Object ID @ %" PRIuz " / "
 			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
 			PRAuz(((u64) header - (u64) block) + 0x18),
@@ -601,7 +600,12 @@ static int parse_block_header(
 			PRAX64(read_le64(&header[0x18])));
 	}
 	else {
-		print_unknown64(prefix, indent + 2, block, &header[0x18]);
+		print_le64_dechex("Block number 2", prefix, indent + 2, block,
+			&header[0x8]);
+		print_le64_dechex("Block number 3", prefix, indent + 2, block,
+			&header[0x10]);
+		print_le64_dechex("Block number 4", prefix, indent + 2, block,
+			&header[0x18]);
 	}
 	print_unknown64(prefix, indent + 2, block, &header[0x20]);
 	if(!is_v3) {
@@ -971,6 +975,7 @@ static void parse_superblock_v3(
 }
 
 static int parse_level1_block_level2_blocks_list(
+		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -1009,7 +1014,7 @@ static int parse_level1_block_level2_blocks_list(
 		goto out;
 	}
 
-	if(REFS_VERSION_MIN(visitor->version_major, visitor->version_minor, 3,
+	if(REFS_VERSION_MIN(context->version_major, context->version_minor, 3,
 		14))
 	{
 		sys_log_debug("Insetting extents list by 5 elements on ReFS "
@@ -1020,10 +1025,22 @@ static int parse_level1_block_level2_blocks_list(
 	}
 
 	if(extents_list_inset) {
+		/* Note: The offset (from the start of the node) of the level 2
+		 * block list appears to be stored at the first offset in ReFS
+		 * 3.14. Not sure what the other numbers are yet. */
+		const u32 level2_block_list_start = read_le32(&block[offset]);
+
+		emit(prefix, indent, "Level 2 blocks start offset @ "
+			"%" PRIu32 " / 0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
+			PRAu32(offset),
+			PRAX32(offset),
+			PRAu32(level2_block_list_start),
+			PRAX32(level2_block_list_start));
+
 		print_data_with_base(prefix, indent,
-			extents_list_offset + sizeof(le32), block_size,
-			&block[extents_list_offset + sizeof(le32)],
-			extents_list_inset);
+			extents_list_offset + sizeof(le32) * 2, block_size,
+			&block[extents_list_offset + sizeof(le32) * 2],
+			extents_list_inset - sizeof(le32));
 		offset += extents_list_inset;
 	}
 
@@ -1038,12 +1055,12 @@ static int parse_level1_block_level2_blocks_list(
 	for(i = 0; i < extents_count; ++i) {
 		extents_list[i] = read_le32(&block[offset]);
 		emit(prefix, indent, "Level 2 blocks offset (%" PRIu32 ") @ "
-			"%" PRIuz " / 0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
+			"%" PRIu32 " / 0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
 			PRAu32(i),
-			PRAuz(offset),
-			PRAXz(offset),
-			PRAu64(extents_list[i]),
-			PRAX64(extents_list[i]));
+			PRAu32(offset),
+			PRAX32(offset),
+			PRAu32(extents_list[i]),
+			PRAX32(extents_list[i]));
 		offset += sizeof(le32);
 	}
 
@@ -1055,6 +1072,7 @@ out:
 }
 
 static int parse_level1_block(
+		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
 		const u64 block_number,
@@ -1127,9 +1145,12 @@ static int parse_level1_block(
 	self_extents_size = read_le32(&header[0x3C]);
 	emit(prefix, indent, "Size of self reference: %" PRIu64,
 		PRAu64(self_extents_size));
-	print_unknown64(prefix, indent, block, &header[0x40]);
-	print_unknown64(prefix, indent, block, &header[0x48]);
-	print_unknown64(prefix, indent, block, &header[0x50]);
+	print_le64_dechex("Checkpoint number", prefix, indent, block,
+		&header[0x40]);
+	print_le64_dechex("First checkpoint number (?)", prefix, indent, block,
+		&header[0x48]);
+	print_unknown32(prefix, indent, block, &header[0x50]);
+	print_unknown32(prefix, indent, block, &header[0x54]);
 	i += 0x58;
 
 	if(is_v3) {
@@ -1143,6 +1164,8 @@ static int parse_level1_block(
 	}
 
 	err = parse_level1_block_level2_blocks_list(
+		/* refs_node_crawl_context *context */
+		context,
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* const char *prefix */
@@ -1573,12 +1596,11 @@ static int parse_unknown_key(
 }
 
 static int parse_unknown_leaf_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u64 object_id,
-		const u32 block_index_unit,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -1587,6 +1609,9 @@ static int parse_unknown_leaf_value(
 		const u32 entry_size,
 		void *const context)
 {
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
@@ -1606,6 +1631,7 @@ static int parse_unknown_leaf_value(
 }
 
 static int parse_generic_entry(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const u64 object_id,
@@ -1630,12 +1656,11 @@ static int parse_generic_entry(
 			u32 entry_size,
 			void *context),
 		int (*const parse_leaf_value)(
+			refs_node_crawl_context *crawl_context,
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
 			u64 object_id,
-			u32 block_index_unit,
-			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
 			const u8 *value,
@@ -1770,6 +1795,8 @@ static int parse_generic_entry(
 	else {
 		err = (parse_leaf_value ? parse_leaf_value :
 			parse_unknown_leaf_value)(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1778,10 +1805,6 @@ static int parse_generic_entry(
 			indent + 1,
 			/* u64 object_id */
 			object_id,
-			/* u32 block_index_unit */
-			block_index_unit,
-			/* sys_bool is_v3 */
-			is_v3,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -1802,6 +1825,7 @@ out:
 }
 
 static int parse_generic_block(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
 		const u64 block_number,
@@ -1809,7 +1833,6 @@ static int parse_generic_block(
 		const u8 level,
 		const u8 *const block,
 		const u32 block_size,
-		const u32 block_index_unit,
 		block_queue *const block_queue,
 		const sys_bool add_subnodes_in_offsets_order,
 		void *const context,
@@ -1826,12 +1849,11 @@ static int parse_generic_block(
 			u32 entry_size,
 			void *context),
 		int (*const parse_leaf_value)(
+			refs_node_crawl_context *crawl_context,
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
 			u64 object_id,
-			u32 block_index_unit,
-			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
 			const u8 *value,
@@ -1846,6 +1868,8 @@ static int parse_generic_block(
 			u32 node_type))
 {
 	static const char *const prefix = "\t";
+
+	const u32 block_index_unit = crawl_context->block_index_unit;
 
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -2072,6 +2096,8 @@ static int parse_generic_block(
 		}
 
 		err = parse_generic_entry(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			!((print_visitor && print_visitor->print_message) ||
 			!add_subnodes_in_offsets_order) ? visitor : NULL,
@@ -2108,12 +2134,11 @@ static int parse_generic_block(
 			 *      void *context) */
 			parse_key,
 			/* int (*parse_leaf_value)(
+			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
 			 *      const char *prefix,
 			 *      size_t indent,
 			 *      u64 object_id,
-			 *      u32 block_index_unit,
-			 *      sys_bool is_v3,
 			 *      const u8 *key,
 			 *      u16 key_size,
 			 *      const u8 *value,
@@ -2229,6 +2254,8 @@ static int parse_generic_block(
 			entry_size = read_le32(entry);
 
 			err = parse_generic_entry(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* const char *prefix */
@@ -2595,6 +2622,88 @@ static int parse_level2_0x3_leaf_value(
 	return 0;
 }
 
+static int parse_level2_0x4_leaf_value(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u8 *const value,
+		const u16 value_offset,
+		const u16 value_size,
+		const u32 entry_size,
+		void *const context)
+{
+	/* The 0x3 tree maps object IDs to virtual block addresses in clusters
+	 * of 4. The exact purpose is a bit unclear. */
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	u16 i = 0;
+	u64 block_number = 0;
+
+	(void) object_id;
+	(void) context;
+
+	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
+		(key == value && key_size == value_size) ? "Key/value" :
+		"Value", "unknown", PRAu16(value_offset), PRAX16(value_offset));
+
+	if(value_size >= 0x8) {
+		i += print_unknown64(prefix, indent, value, &value[0x0]);
+	}
+	if(value_size >= 0xC) {
+		i += print_unknown32(prefix, indent, value, &value[0x8]);
+	}
+	if(value_size >= 0x10) {
+		i += print_unknown32(prefix, indent, value, &value[0xC]);
+	}
+	if(value_size >= 0x18) {
+		i += print_unknown64(prefix, indent, value, &value[0x10]);
+	}
+	if(value_size >= 0x20) {
+		i += print_unknown64(prefix, indent, value, &value[0x18]);
+	}
+	if(value_size >= 0x28) {
+		i += print_le64_dechex("Block number 1", prefix, indent, value,
+			&value[0x20]);
+	}
+	if(value_size >= 0x30) {
+		i += print_le64_dechex("Block number 2", prefix, indent, value,
+			&value[0x28]);
+	}
+	if(value_size >= 0x38) {
+		i += print_le64_dechex("Block number 3", prefix, indent, value,
+			&value[0x30]);
+	}
+	if(value_size >= 0x40) {
+		i += print_le64_dechex("Block number 4", prefix, indent, value,
+			&value[0x38]);
+	}
+	if(value_size >= 0x44) {
+		i += print_unknown32(prefix, indent, value, &value[0x40]);
+	}
+	if(value_size >= 0x48) {
+		i += print_unknown32(prefix, indent, value, &value[0x44]);
+	}
+	if(value_size >= 0x50) {
+		i += print_le64_hex("Checksum", prefix, indent, value,
+			&value[0x48]);
+	}
+	if(value_size >= 0x58) {
+		i += print_unknown64(prefix, indent, value, &value[0x50]);
+	}
+
+	if(i < value_size) {
+		print_data_with_base(prefix, indent, i, entry_size, &value[i],
+			value_size - i);
+	}
+
+	return 0;
+}
+
 static int parse_0xB_0xC_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -2701,12 +2810,11 @@ static void parse_level2_block_0xB_0xC_table_leaf_value(
 }
 
 static int parse_level2_block_0xB_0xC_leaf_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u64 object_id,
-		const u32 block_index_unit,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -2715,6 +2823,9 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		const u32 entry_size,
 		void *const context)
 {
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	block_range *const range = (block_range*) context;
 
 	int err = 0;
@@ -2749,12 +2860,11 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 }
 
 static int parse_level2_0xB_leaf_value_add_mapping(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u64 object_id,
-		const u32 block_index_unit,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -2763,6 +2873,9 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		const u32 entry_size,
 		void *const context)
 {
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	refs_block_map *const mappings = (refs_block_map*) context;
 
 	int err = 0;
@@ -2964,7 +3077,73 @@ static int parse_level2_block_0xE_table_entry(
 out:
 	return err;
 }
+#endif
 
+static int parse_level2_0x21_leaf_value(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u8 *const value,
+		const u16 value_offset,
+		const u16 value_size,
+		const u32 entry_size,
+		void *const context)
+{
+	/* The 0x21 tree maps something to virtual block addresses in clusters
+	 * of 4. The exact purpose is a bit unclear. */
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	u16 i = 0;
+	u64 block_number = 0;
+
+	(void) object_id;
+	(void) context;
+
+	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
+		(key == value && key_size == value_size) ? "Key/value" :
+		"Value", "unknown", PRAu16(value_offset), PRAX16(value_offset));
+
+	if(value_size >= 0x8) {
+		i += print_le64_dechex("Block number 1", prefix, indent, value,
+			&value[0x0]);
+	}
+	if(value_size >= 0x10) {
+		i += print_le64_dechex("Block number 2", prefix, indent, value,
+			&value[0x8]);
+	}
+	if(value_size >= 0x18) {
+		i += print_le64_dechex("Block number 3", prefix, indent, value,
+			&value[0x10]);
+	}
+	if(value_size >= 0x20) {
+		i += print_le64_dechex("Block number 4", prefix, indent, value,
+			&value[0x18]);
+	}
+	if(value_size >= 0x24) {
+		i += print_unknown32(prefix, indent, value, &value[0x20]);
+	}
+	if(value_size >= 0x28) {
+		i += print_unknown32(prefix, indent, value, &value[0x24]);
+	}
+	if(value_size >= 0x30) {
+		i += print_le64_hex("Checksum", prefix, indent, value,
+			&value[0x28]);
+	}
+
+	if(i < value_size) {
+		print_data_with_base(prefix, indent, i, entry_size, &value[i],
+			value_size - i);
+	}
+
+	return 0;
+}
+
+#if 0
 static int parse_level2_block_0x22_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -3231,12 +3410,11 @@ static int parse_level2_key(
 }
 
 static int parse_level2_leaf_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u64 object_id,
-		const u32 block_index_unit,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -3245,6 +3423,10 @@ static int parse_level2_leaf_value(
 		const u32 entry_size,
 		void *const context)
 {
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+
 	int err = 0;
 
 	if(object_id == 0x2) {
@@ -3297,8 +3479,8 @@ static int parse_level2_leaf_value(
 			/* void *context */
 			context);
 	}
-	else if(object_id == 0xB) {
-		err = parse_level2_block_0xB_0xC_leaf_value(
+	else if(object_id == 0x4) {
+		err = parse_level2_0x4_leaf_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -3307,8 +3489,6 @@ static int parse_level2_leaf_value(
 			indent,
 			/* u64 object_id */
 			object_id,
-			/* u32 block_index_unit */
-			block_index_unit,
 			/* sys_bool is_v3 */
 			is_v3,
 			/* const u8 *key */
@@ -3326,8 +3506,10 @@ static int parse_level2_leaf_value(
 			/* void *context */
 			context);
 	}
-	else if(object_id == 0xC) {
+	else if(object_id == 0xB) {
 		err = parse_level2_block_0xB_0xC_leaf_value(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -3336,10 +3518,33 @@ static int parse_level2_leaf_value(
 			indent,
 			/* u64 object_id */
 			object_id,
-			/* u32 block_index_unit */
-			block_index_unit,
-			/* sys_bool is_v3 */
-			is_v3,
+			/* const u8 *key */
+			key,
+			/* u16 key_size */
+			key_size,
+			/* const u8 *value */
+			value,
+			/* u16 value_offset */
+			value_offset,
+			/* u16 value_size */
+			value_size,
+			/* u32 entry_size */
+			entry_size,
+			/* void *context */
+			context);
+	}
+	else if(object_id == 0xC) {
+		err = parse_level2_block_0xB_0xC_leaf_value(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* u64 object_id */
+			object_id,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -3414,6 +3619,35 @@ static int parse_level2_leaf_value(
 			/* void *context */
 			context);
 	}
+#endif
+	else if(object_id == 0x21) {
+		err = parse_level2_0x21_leaf_value(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* u64 object_id */
+			object_id,
+			/* sys_bool is_v3 */
+			is_v3,
+			/* const u8 *key */
+			key,
+			/* u16 key_size */
+			key_size,
+			/* const u8 *value */
+			value,
+			/* u16 value_offset */
+			value_offset,
+			/* u16 value_size */
+			value_size,
+			/* u32 entry_size */
+			entry_size,
+			/* void *context */
+			context);
+	}
+#if 0
 	else if(object_id == 0x22) {
 		err = parse_level2_block_0x22_value(
 			/* refs_node_walk_visitor *visitor */
@@ -3446,6 +3680,8 @@ static int parse_level2_leaf_value(
 #endif
 	else {
 		err = parse_unknown_leaf_value(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -3454,10 +3690,6 @@ static int parse_level2_leaf_value(
 			indent,
 			/* u64 object_id */
 			object_id,
-			/* u32 block_index_unit */
-			block_index_unit,
-			/* sys_bool is_v3 */
-			is_v3,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -3478,13 +3710,13 @@ static int parse_level2_leaf_value(
 }
 
 static int parse_level2_block(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
 		const u64 block_number,
 		const u64 block_queue_index,
 		const u8 *const block,
 		const u32 block_size,
-		const u32 block_index_unit,
 		u64 *const object_id_mapping,
 		sys_bool *const object_id_mapping_found,
 		u64 **const level2_queue,
@@ -3557,6 +3789,8 @@ static int parse_level2_block(
 	}
 
 	err = parse_generic_block(
+		/* refs_node_crawl_context *crawl_context */
+		crawl_context,
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* u64 cluster_number */
@@ -3571,8 +3805,6 @@ static int parse_level2_block(
 		block,
 		/* u32 block_size */
 		block_size,
-		/* u32 block_index_unit */
-		block_index_unit,
 		/* block_queue *block_queue */
 		(object_id != 0xB && object_id != 0xC) ? &level2_block_queue :
 		NULL,
@@ -3594,12 +3826,11 @@ static int parse_level2_block(
 		 *      void *context) */
 		parse_level2_key,
 		/* int (*parse_leaf_value)(
+		 *      refs_node_crawl_context *const crawl_context,
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
 		 *      u64 object_id,
-		 *      u32 block_index_unit,
-		 *      sys_bool is_v3,
 		 *      const u8 *key,
 		 *      u16 key_size,
 		 *      const u8 *value,
@@ -3948,11 +4179,10 @@ static int parse_level3_key(
  * points.
  */
 int parse_level3_long_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
-		const u32 block_index_unit,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -3960,6 +4190,9 @@ int parse_level3_long_value(
 		const u16 value_size,
 		void *const context)
 {
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	const u64 creation_time =
 		(value_size < 40 + 8) ? 0 : read_le64(&value[40]);
 	const u64 last_access_time =
@@ -4027,8 +4260,7 @@ int parse_level3_long_value(
 		entry_type_to_string(0x1), PRAu16(value_offset),
 		PRAX16(value_offset));
 
-	emit(prefix, indent, "Attribute %" PRIu16 " @ 0 / 0x0:",
-		PRAu16(attribute_index));
+	emit(prefix, indent, "Basic information @ 0 / 0x0:");
 	++attribute_index;
 
 	/* This field has the observed values 0 and 168 / 0xA8 with the latter
@@ -4147,35 +4379,35 @@ int parse_level3_long_value(
 		 * Observed values for 126 (except 0) are (in order of
 		 * occurrences):
 		 *   0x5 0x7 0x4 0x6 */
-		if(cur_attribute_end > 0x7C) {
+		if(cur_attribute_end >= 0x7C) {
 			i += print_unknown32(prefix, indent + 1, value,
 				&value[0x78]);
 		}
-		if(cur_attribute_end > 0x7E) {
+		if(cur_attribute_end >= 0x7E) {
 			i += print_unknown16(prefix, indent + 1, value,
 				&value[0x7C]);
 		}
-		if(cur_attribute_end > 0x80) {
+		if(cur_attribute_end >= 0x80) {
 			i += print_unknown16(prefix, indent + 1, value,
 				&value[0x7E]);
 		}
-		if(cur_attribute_end > 0x88) {
+		if(cur_attribute_end >= 0x88) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x80]);
 		}
-		if(cur_attribute_end > 0x90) {
+		if(cur_attribute_end >= 0x90) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x88]);
 		}
-		if(cur_attribute_end > 0x98) {
+		if(cur_attribute_end >= 0x98) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x90]);
 		}
-		if(cur_attribute_end > 0xA0) {
+		if(cur_attribute_end >= 0xA0) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0x98]);
 		}
-		if(cur_attribute_end > 0xA8) {
+		if(cur_attribute_end >= 0xA8) {
 			i += print_unknown64(prefix, indent + 1, value,
 				&value[0xA0]);
 		}
@@ -4205,17 +4437,32 @@ int parse_level3_long_value(
 		u16 remaining_in_attribute = 0;
 		u16 attribute_type = 0;
 		u16 attribute_type2 = 0;
+		u32 stream_type = 0;
 
 		attribute_size = read_le16(&attribute[0]);
 		if(!attribute_size) {
 			break;
 		}
 
-		emit(prefix, indent, "Attribute %" PRIu16 " @ %" PRIuz " / "
-			"0x%" PRIXz ":",
-			PRAu16(attribute_index),
-			PRAuz(offset_in_value),
-			PRAXz(offset_in_value));
+		if(attribute_index == 1) {
+			emit(prefix, indent, "Attribute header @ %" PRIuz " / "
+				"0x%" PRIXz ":",
+				PRAuz(offset_in_value),
+				PRAXz(offset_in_value));
+		}
+		else {
+			if(attribute_size >= 0x20) {
+				stream_type = read_le32(&attribute[0x1C]);
+			}
+
+			emit(prefix, indent, "Attribute %" PRIu16 "/%" PRIu16 " "
+				"@ %" PRIuz " / 0x%" PRIXz ":",
+				PRAu16((attribute_index - 2) + 1),
+				PRAu16(number_of_attributes),
+				PRAuz(offset_in_value),
+				PRAXz(offset_in_value));
+		}
+
 		++attribute_index;
 
 		j = 0;
@@ -4237,24 +4484,30 @@ int parse_level3_long_value(
 		remaining_in_attribute =
 			(u16) sys_min(attribute_size, remaining_in_value);
 
-		print_unknown16(prefix, indent + 1, attribute,
-			&attribute[0x02]);
-		j += 2;
+		j += print_unknown16(prefix, indent + 1, attribute,
+			&attribute[j]);
 
 		attribute_type = read_le16(&attribute[j]);
 		attribute_type2 = read_le16(&attribute[j + 2]);
-		j += print_le16_hex("Attribute type 1", prefix, indent + 1,
-			attribute, &attribute[j + 0]);
-		j += print_le16_hex("Attribute type 2", prefix, indent + 1,
-			attribute, &attribute[j + 2]);
-
+		if(attribute_index <= 2) {
+			j += print_unknown32(prefix, indent + 1, attribute,
+				&attribute[j]);
+		}
+		else {
+			j += print_le16_hex("Attribute type 1", prefix,
+				indent + 1, attribute, &attribute[j]);
+			j += print_le16_hex("Attribute type 2", prefix,
+				indent + 1, attribute, &attribute[j]);
+		}
 
 		if(attribute_index - 1 == 1 &&
 			remaining_in_attribute >= j + 0x18)
 		{
-			/* Attributes header, always seems to be 40 / 0x28 bytes
-			 * on v3 and 32 / 0x20 on v1 and has the number of
-			 * attributes plus some other unknown data. */
+			/* Attributes header, seems to be:
+			 * - 40 / 0x28 bytes on version 3
+			 * - 32 / 0x20 bytes on version 1
+			 * It has the number of attributes plus some other
+			 * unknown data. */
 			j += print_unknown32(prefix, indent + 1, attribute,
 				&attribute[j]);
 			j += print_unknown16(prefix, indent + 1, attribute,
@@ -4274,55 +4527,266 @@ int parse_level3_long_value(
 				j += print_unknown64(prefix, indent + 1,
 					attribute, &attribute[j]);
 			}
+			if(remaining_in_attribute - j >= 0x8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]);
+			}
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0028 &&
 			attribute_size >= 0x48)
 		{
+			u32 number_of_extents = 0;
+			u32 k;
+
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x08 */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x0A */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x0C */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x10 */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x18 */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x1A */
+			j += print_le16_hex("Attribute stream", prefix,
+				indent + 1, attribute,
+				&attribute[j]); /* 0x1C */
 			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
-			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x1E */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x20 */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x28 */
 			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x30 */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x38 */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x3C */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
+				&attribute[j]); /* 0x40 */
 			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
-			if(attribute_size >= 0xE8) {
+				&attribute[j]); /* 0x44 */
+			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x48 */
+			}
+			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x4C */
+			}
+			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x4E */
+			}
+			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x50 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (1)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x58 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x60 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x64 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (2)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x68 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (3)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x70 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (4)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x78 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Number of clusters (4)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x80 */
+			}
+			if(attribute_size - j >= 8) {
 				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0x88 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x90 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x98 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xA0 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xA8 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xB0 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xB8 */
+			}
+			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xC0 */
+			}
+			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]);
+					attribute, &attribute[j]); /* 0xC4 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xC8 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xCC */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xD0 */
+			}
+			if(attribute_size - j >= 4) {
+				number_of_extents = read_le32(&attribute[j]);
+				j += print_le32_dechex("Number of extents",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xD4 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xD8 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xE0 */
+			}
+
+			for(k = 0; k < number_of_extents; ++k) {
+				u64 first_block = 0;
+				u32 block_count = 0;
+
+				emit(prefix, indent + 1, "Extent %" PRIu32 "/"
+					"%" PRIu32 ":",
+					PRAu32(k + 1),
+					PRAu32(number_of_extents));
+				if(attribute_size - j >= 8) {
+					first_block =
+					logical_to_physical_block_number(
+						/* refs_node_crawl_context
+						 * *crawl_context */
+						crawl_context,
+						/* u64 logical_block_number */
+						read_le64(&attribute[j]));
+					j += print_le64_dechex("Extent start "
+						"physical block value", prefix,
+						indent + 2, attribute,
+						&attribute[j]);
+					emit(prefix, indent + 3, "Actual "
+						"physical block: %" PRIu64 " / "
+						"0x%" PRIX64 " (byte offset: "
+						"%" PRIu64 ")",
+						PRAu64(first_block),
+						PRAX64(first_block),
+						PRAu64(first_block *
+						block_index_unit));
+				}
+				else {
+					break;
+				}
+
+				if(attribute_size - j >= 4) {
+					j += print_le32_dechex("Flags (?)",
+						prefix, indent + 2, attribute,
+						&attribute[j]);
+				}
+				else {
+					break;
+				}
+
+				if(attribute_size - j >= 8) {
+					/* XXX: Misaligned? */
+					j += print_le64_dechex("Extent start "
+						"logical block", prefix,
+						indent + 2, attribute,
+						&attribute[j]);
+				}
+				else {
+					break;
+				}
+
+				if(attribute_size - j >= 4) {
+					block_count = read_le32(&attribute[j]);
+					j += print_le32_dechex("Extent block "
+						"count (?)", prefix, indent + 2,
+						attribute, &attribute[j]);
+				}
+				else {
+					break;
+				}
+
+				if(first_block && block_count && visitor &&
+					visitor->node_file_extent)
+				{
+					err = visitor->node_file_extent(
+						/* void *context */
+						visitor->context,
+						/* u64 first_block */
+						first_block,
+						/* u64 block_count */
+						block_count,
+						/* u32 block_index_unit */
+						block_index_unit);
+					if(err) {
+						goto out;
+					}
+				}
+			}
+
+			if(number_of_extents) {
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(attribute_size - j >= 4) {
+					j += print_unknown32(prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
 			}
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x000E) {
@@ -4361,6 +4825,265 @@ int parse_level3_long_value(
 					block_count,
 					/* u32 block_index_unit */
 					block_index_unit);
+				if(err) {
+					goto out;
+				}
+			}
+		}
+		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
+			stream_type == 0x0080)
+		{
+			/* This attribute type appears to be inline data for the
+			 * data stream. */
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x08 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x0A */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x0C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x10 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x14 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x18 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1A */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_le32_dechex("Stream type ($DATA)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x20 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x24 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x28 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x2C */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_unknown64(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x30 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Allocated size 1",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x38 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Logical size 1",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x40 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Logical size 2",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x48 */
+			}
+			if(attribute_size - j >= 8) {
+				j += print_le64_dechex("Allocated size 2",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x50 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x58 */
+			}
+			if(visitor && visitor->node_file_data) {
+				err = visitor->node_file_data(
+					/* void *context */
+					visitor->context,
+					/* const void *data */
+					&attribute[j],
+					/* size_t size */
+					file_size);
+				if(err) {
+					goto out;
+				}
+			}
+		}
+		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
+			stream_type == 0x00E0)
+		{
+			/* This attribute type appears to be inline data for the
+			 * EA stream. Likely same format as the above. */
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x08 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x0C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x10 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x14 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x18 */
+			}
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1A */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_le32_dechex("Stream type ($EA)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1C */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x20 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x24 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x28 */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x2C */
+			}
+
+			/* After this, the EA list starts. */
+			while(attribute_size - j >= 8) {
+				u32 offset_to_next_ea = 0;
+				u32 ea_end_offset = 0;
+				u8 name_length = 0;
+				u16 data_length = 0;
+				const char *name = NULL;
+				const void *data = NULL;
+
+				if(attribute_size - j >= 4) {
+					offset_to_next_ea =
+						read_le32(&attribute[j]);
+					ea_end_offset = j + offset_to_next_ea;
+					j += print_le32_dechex("Offset to next "
+						"EA", prefix, indent + 1,
+						attribute, &attribute[j]);
+					if(ea_end_offset > attribute_size) {
+						sys_log_warning("Offset to "
+							"next EA is outside "
+							"the bounds of the "
+							"attribute: "
+							"%" PRIu32 " > "
+							"%" PRIu32,
+							PRAu32(ea_end_offset),
+							PRAu32(attribute_size));
+						ea_end_offset = attribute_size;
+					}
+				}
+				if(ea_end_offset - j >= 1) {
+					j += print_u8_dechex("Flags", prefix,
+						indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(ea_end_offset - j >= 1) {
+					name_length = attribute[j];
+					j += print_u8_dechex("Name length",
+						prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				if(name_length > ea_end_offset - j) {
+					sys_log_warning("Name length exceeds "
+						"EA bounds: %" PRIu8 " > "
+						"%" PRIu32,
+						PRAu8(name_length),
+						PRAu32(ea_end_offset - j));
+				}
+				if(ea_end_offset - j >= 2) {
+					data_length = read_le16(&attribute[j]);
+					j += print_le16_dechex("Data length",
+						prefix, indent + 1,
+						attribute, &attribute[j]);
+				}
+				name = (const char*) &attribute[j];
+				emit(prefix, indent + 1, "Name @ %" PRIuz " / "
+					"0x%" PRIXz ": %" PRIbs,
+					PRAuz(j), PRAXz(j),
+					PRAbs(sys_min(ea_end_offset - j,
+					name_length), &attribute[j]));
+				if(ea_end_offset - j < name_length) {
+					break;
+				}
+				j += name_length;
+				print_u8_hex("Null terminator", prefix,
+					indent + 1, attribute, &attribute[j]);
+				++j;
+				if(data_length > ea_end_offset - j) {
+					sys_log_warning("data length exceeds "
+						"EA bounds: %" PRIu8 " > "
+						"%" PRIu32,
+						PRAu8(data_length),
+						PRAu32(ea_end_offset - j));
+				}
+				data = &attribute[j];
+				emit(prefix, indent + 1, "Data @ %" PRIuz " / "
+					"0x%" PRIXz ":",
+					PRAuz(j), PRAXz(j));
+				print_data_with_base(prefix, indent + 2, 0,
+					data_length, &attribute[j],
+					sys_min(ea_end_offset - j,
+					data_length));
+				if(visitor && visitor->node_ea) {
+					err = visitor->node_ea(
+						/* void *context */
+						visitor->context,
+						/* const char *name */
+						name,
+						/* size_t name_length */
+						name_length,
+						/* const void *data */
+						data,
+						/* size_t data_size */
+						data_length);
+					if(err) {
+						goto out;
+					}
+				}
+				if(ea_end_offset - j < data_length) {
+					break;
+				}
+				j += data_length;
+
+				if(j < ea_end_offset) {
+					print_data_with_base(prefix, indent + 1,
+						j, ea_end_offset,
+						&attribute[j],
+						ea_end_offset - j);
+					j = ea_end_offset;
+				}
 			}
 		}
 
@@ -4405,10 +5128,10 @@ out:
  * fields describe its allocation state.
  */
 int parse_level3_short_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -4416,6 +5139,8 @@ int parse_level3_short_value(
 		const u16 value_size,
 		void *const context)
 {
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	const u64 object_id =
 		(value_size < (is_v3 ? 8 : 0) + 8) ? 0 :
 		read_le64(&value[is_v3 ? 8 : 0]);
@@ -4439,7 +5164,7 @@ int parse_level3_short_value(
 
 	int err = 0;
 
-	(void) context;
+	(void) crawl_context;
 
 	if(visitor && visitor->node_short_entry) {
 		err = visitor->node_short_entry(
@@ -4589,12 +5314,11 @@ out:
 }
 
 static int parse_level3_leaf_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u64 object_id,
-		const u32 block_index_unit,
-		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -4616,16 +5340,14 @@ static int parse_level3_leaf_value(
 	if(key_type == 0x30 && dirent_type == 0x1) {
 		/* File. */
 		err = parse_level3_long_value(
+			/* refs_node_crawl_context *context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
 			indent,
-			/* u32 block_index_unit */
-			block_index_unit,
-			/* sys_bool is_v3 */
-			is_v3,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -4645,14 +5367,14 @@ static int parse_level3_leaf_value(
 	else if(key_type == 0x30 && dirent_type == 0x2) {
 		/* Directory. */
 		err = parse_level3_short_value(
+			/* refs_node_crawl_context *context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
 			indent,
-			/* sys_bool is_v3 */
-			is_v3,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -4699,16 +5421,18 @@ out:
 }
 
 static int parse_level3_block(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
 		const u64 block_number,
 		const u64 block_queue_index,
 		const u8 *const block,
 		const u32 block_size,
-		const u32 block_index_unit,
 		u64 **const level3_queue,
 		size_t *const level3_queue_length)
 {
+	const u32 block_index_unit = crawl_context->block_index_unit;
+
 	int err = 0;
 	block_queue block_queue;
 
@@ -4718,6 +5442,8 @@ static int parse_level3_block(
 	block_queue.elements_per_entry = 1;
 
 	err = parse_generic_block(
+		/* refs_node_crawl_context *crawl_context */
+		crawl_context,
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* u64 cluster_number */
@@ -4732,8 +5458,6 @@ static int parse_level3_block(
 		block,
 		/* u32 block_size */
 		block_size,
-		/* u32 block_index_unit */
-		block_index_unit,
 		/* block_queue *block_queue */
 		&block_queue,
 		/* sys_bool add_subnodes_in_offsets_order */
@@ -4754,12 +5478,11 @@ static int parse_level3_block(
 		 *      void *context) */
 		parse_level3_key,
 		/* int (*parse_leaf_value)(
+		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
 		 *      u64 object_id,
-		 *      u32 block_index_unit,
-		 *      sys_bool is_v3,
 		 *      const u8 *key,
 		 *      u16 key_size,
 		 *      const u8 *value,
@@ -4785,6 +5508,16 @@ out:
 	return err;
 }
 
+void refs_block_map_destroy(
+		refs_block_map **const block_map)
+{
+	if((*block_map)->entries) {
+		sys_free(&(*block_map)->entries);
+	}
+
+	sys_free(block_map);
+}
+
 static int crawl_volume_metadata(
 		refs_node_walk_visitor *const visitor,
 		sys_device *const dev,
@@ -4807,7 +5540,7 @@ static int crawl_volume_metadata(
 	u32 block_index_unit = 0;
 	u8 *padding = NULL;
 	u8 *block = NULL;
-	refs_block_map mappings;
+	refs_block_map *mappings = NULL;
 	u64 primary_level1_block = 0;
 	u64 secondary_level1_block = 0;
 	u64 *primary_level2_blocks = NULL;
@@ -4816,11 +5549,12 @@ static int crawl_volume_metadata(
 	size_t secondary_level2_blocks_count = 0;
 	block_queue level2_queue;
 	block_queue level3_queue;
+	refs_node_crawl_context crawl_context;
 	size_t i = 0;
 
-	memset(&mappings, 0, sizeof(mappings));
 	memset(&level2_queue, 0, sizeof(level2_queue));
 	memset(&level3_queue, 0, sizeof(level3_queue));
+	memset(&crawl_context, 0, sizeof(crawl_context));
 
 	/* Superblock seems to be at cluster 30. Block is metadata-block
 	 * sized. */
@@ -4833,8 +5567,11 @@ static int crawl_volume_metadata(
 
 	block_index_unit = is_v3 ? cluster_size : 16384;
 
-	visitor->version_major = bs->version_major;
-	visitor->version_minor = bs->version_minor;
+	crawl_context.dev = dev;
+	crawl_context.bs = bs;
+	crawl_context.block_index_unit = block_index_unit;
+	crawl_context.version_major = bs->version_major;
+	crawl_context.version_minor = bs->version_minor;
 
 	if(visitor && visitor->print_visitor.print_message) {
 		/* Print the data between the boot sector and the superblock. */
@@ -4957,6 +5694,8 @@ static int crawl_volume_metadata(
 		}
 
 		err = parse_level1_block(
+			/* refs_node_crawl_context *context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* u64 block_number */
@@ -5004,6 +5743,8 @@ static int crawl_volume_metadata(
 		}
 
 		err = parse_level1_block(
+			/* refs_node_crawl_context *context */
+			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* u64 cluster_number */
@@ -5061,9 +5802,16 @@ static int crawl_volume_metadata(
 	primary_level2_blocks_count = 0;
 
 	if(block_map && *block_map) {
-		mappings = **block_map;
+		mappings = *block_map;
 	}
 	else {
+		err = sys_calloc(sizeof(*mappings), &mappings);
+		if(err) {
+			sys_log_perror(err, "Error while allocating mappings "
+				"base struct");
+			goto out;
+		}
+
 		/* For v3 volumes we first iterate over the Level 2 blocks to
 		 * find the block region mappings, located in the tree with
 		 * object ID 0xB. */
@@ -5078,10 +5826,9 @@ static int crawl_volume_metadata(
 
 			physical_block_number =
 				logical_to_physical_block_number(
-					/* REFS_BOOT_SECTOR *bs */
-					bs,
-					/* mapping_table *mapping_table */
-					NULL,
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					&crawl_context,
 					/* u64 logical_block_number */
 					logical_block_number);
 			if(!physical_block_number) {
@@ -5139,6 +5886,8 @@ static int crawl_volume_metadata(
 			 * order described by the attribute list. */
 
 			err = parse_generic_block(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
 				NULL,
 				/* u64 cluster_number */
@@ -5153,14 +5902,12 @@ static int crawl_volume_metadata(
 				block,
 				/* u32 block_size */
 				block_size,
-				/* u32 block_index_unit */
-				block_index_unit,
 				/* block_queue *block_queue */
 				&level2_queue,
 				/* sys_bool add_subnodes_in_offsets_order */
 				SYS_TRUE,
 				/* void *context */
-				(object_id == 0xB) ? &mappings : NULL,
+				(object_id == 0xB) ? mappings : NULL,
 				/* int (*parse_key)(
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
@@ -5174,12 +5921,11 @@ static int crawl_volume_metadata(
 				 *      void *context) */
 				NULL,
 				/* int (*parse_leaf_value)(
+				 *      refs_node_crawl_context *crawl_context,
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
 				 *      size_t indent,
 				 *      u64 object_id,
-				 *      u32 block_index_unit,
-				 *      sys_bool is_v3,
 				 *      const u8 *key,
 				 *      u16 key_size,
 				 *      const u8 *value,
@@ -5202,19 +5948,25 @@ static int crawl_volume_metadata(
 
 			sys_log_debug("Mapping table after processing 0xB "
 				"block (%" PRIuz " entries):",
-				PRAuz(mappings.length));
-			for(j = 0; j < mappings.length; ++j) {
+				PRAuz(mappings->length));
+			for(j = 0; j < mappings->length; ++j) {
 				sys_log_debug("\t[%" PRIuz "]:",
 					PRAuz(j));
 				sys_log_debug("\t\tStart: %" PRIu64,
-					PRAu64(mappings.entries[j].
+					PRAu64(mappings->entries[j].
 					start));
 				sys_log_debug("\t\tLength: %" PRIu64,
-					PRAu64(mappings.entries[j].
+					PRAu64(mappings->entries[j].
 					length));
 			}
 		}
+
+		if(block_map) {
+			*block_map = mappings;
+		}
 	}
+
+	crawl_context.block_map = mappings;
 
 	/* At this point the mappings are set up and we can look up a node by
 	 * node number. */
@@ -5232,10 +5984,8 @@ static int crawl_volume_metadata(
 
 		physical_block_number =
 			logical_to_physical_block_number(
-				/* REFS_BOOT_SECTOR *bs */
-				bs,
-				/* mapping_table *mapping_table */
-				&mappings,
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
 				/* u64 logical_block_number */
 				*start_node);
 
@@ -5329,10 +6079,9 @@ static int crawl_volume_metadata(
 
 			physical_block_number =
 				logical_to_physical_block_number(
-					/* REFS_BOOT_SECTOR *bs */
-					bs,
-					/* mapping_table *mapping_table */
-					&mappings,
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					&crawl_context,
 					/* u64 logical_block_number */
 					logical_block_number);
 
@@ -5368,6 +6117,8 @@ static int crawl_volume_metadata(
 			}
 
 			err = parse_level2_block(
+				/* refs_node_crawl_context *context */
+				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* u64 cluster_number */
@@ -5380,8 +6131,6 @@ static int crawl_volume_metadata(
 				block,
 				/* u32 block_size */
 				block_size,
-				/* u32 block_index_unit */
-				block_index_unit,
 				/* u64 *object_id_mapping */
 				object_id ? &object_id_mapping : NULL,
 				/* sys_bool *object_id_mapping_found */
@@ -5429,10 +6178,9 @@ static int crawl_volume_metadata(
 
 			physical_block_number =
 				logical_to_physical_block_number(
-					/* REFS_BOOT_SECTOR *bs */
-					bs,
-					/* mapping_table *mapping_table */
-					&mappings,
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					&crawl_context,
 					/* u64 logical_block_number */
 					logical_block_number);
 
@@ -5457,6 +6205,8 @@ static int crawl_volume_metadata(
 			}
 
 			err = parse_level3_block(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* u64 cluster_number */
@@ -5469,8 +6219,6 @@ static int crawl_volume_metadata(
 				block,
 				/* u32 block_size */
 				block_size,
-				/* u32 block_index_unit */
-				block_index_unit,
 				/* u64 **level3_queue */
 				&level3_queue.block_numbers,
 				/* size_t *level3_queue_length */
@@ -5501,8 +6249,10 @@ out:
 		sys_free(&block);
 	}
 
-	if(mappings.entries) {
-		sys_free(&mappings.entries);
+	if(mappings && !(block_map && *block_map == mappings)) {
+		refs_block_map_destroy(
+			/* refs_block_map **block_map */
+			&mappings);
 	}
 
 	if(padding) {

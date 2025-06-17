@@ -1,7 +1,7 @@
 /*-
  * volume.h - ReFS volume handling declarations.
  *
- * Copyright (c) 2022-2023 Erik Larsson
+ * Copyright (c) 2022-2025 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -68,5 +68,23 @@ int refs_volume_generate_metadata_bitmap(
 		refs_volume *vol,
 		u8 **bitmap,
 		size_t *bitmap_size);
+
+static inline refs_node_crawl_context refs_volume_init_node_crawl_context(
+		refs_volume *const vol)
+{
+	return refs_node_crawl_context_init(
+		/* sys_device *dev */
+		vol->dev,
+		/* REFS_BOOT_SECTOR *bs */
+		vol->bs,
+		/* refs_block_map *block_map */
+		vol->block_map,
+		/* u32 block_index_unit */
+		(vol->bs->version_major == 1) ? 16384 : vol->cluster_size,
+		/* u8 version_major */
+		vol->bs->version_major,
+		/* u8 version_minor */
+		vol->bs->version_minor);
+}
 
 #endif /* !defined(_REFS_VOLUME_H) */
