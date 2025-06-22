@@ -4936,23 +4936,27 @@ int parse_level3_long_value(
 			}
 			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x0A */
+			}
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x0C */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x10 */
 			}
-			if(attribute_size - j >= 4) {
-				j += print_unknown32(prefix, indent + 1,
+			if(attribute_size - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x14 */
 			}
 			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
-					attribute, &attribute[j]); /* 0x18 */
+					attribute, &attribute[j]); /* 0x16 */
 			}
-			if(attribute_size - j >= 2) {
-				j += print_unknown16(prefix, indent + 1,
-					attribute, &attribute[j]); /* 0x1A */
+			if(attribute_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x18 */
 			}
 			if(attribute_size - j >= 4) {
 				j += print_le32_dechex("Stream type ($EA)",
@@ -4970,10 +4974,6 @@ int parse_level3_long_value(
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x28 */
-			}
-			if(attribute_size - j >= 4) {
-				j += print_unknown32(prefix, indent + 1,
-					attribute, &attribute[j]); /* 0x2C */
 			}
 
 			/* After this, the EA list starts. */
