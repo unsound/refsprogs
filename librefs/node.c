@@ -4657,7 +4657,7 @@ int parse_level3_long_value(
 				&attribute[j]); /* 0x18 */
 			j += print_unknown16(prefix, indent + 1, attribute,
 				&attribute[j]); /* 0x1A */
-			j += print_le16_hex("Attribute stream", prefix,
+			j += print_le16_hex("Attribute type ($DATA)", prefix,
 				indent + 1, attribute,
 				&attribute[j]); /* 0x1C */
 			j += print_unknown16(prefix, indent + 1, attribute,
@@ -4971,7 +4971,7 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x1A */
 			}
 			if(attribute_size - j >= 4) {
-				j += print_le32_dechex("Stream type ($DATA)",
+				j += print_le32_dechex("Attribute type ($DATA)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x1C */
 			}
