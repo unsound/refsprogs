@@ -4329,6 +4329,7 @@ int parse_level3_long_value(
 	u16 number_of_attributes = 0;
 	u16 offsets_start = 0;
 	u16 j = 0;
+	char *cstr = NULL;
 
 	(void) context;
 
@@ -5193,6 +5194,644 @@ int parse_level3_long_value(
 				}
 			}
 		}
+		else if(attribute_type == 0x0010 && stream_type == 0x000500B0) {
+			const u16 name_start = attribute_type;
+			const u16 name_end = attribute_type2;
+			u16 value_offset = 0;
+			u32 value_size = 0;
+			u32 real_name_offset = 0;
+			size_t cstr_length = 0;
+			u32 data_size = 0;
+			sys_bool non_resident = SYS_FALSE;
+
+			/* This attribute type contains data relating to
+			 * alternate data streams. */
+			if(remaining_in_attribute - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x08 */
+			}
+			if(remaining_in_attribute - j >= 2) {
+				value_offset = read_le16(&attribute[j]);
+				j += print_le16_dechex("Value offset", prefix,
+					indent + 1, attribute,
+					&attribute[j]); /* 0x0A */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				value_size = read_le32(&attribute[j]);
+				j += print_le32_dechex("Value size (1)", prefix,
+					indent + 1, attribute,
+					&attribute[j]); /* 0x0C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_le32_dechex("Value size (2)", prefix,
+					indent + 1, attribute,
+					&attribute[j]); /* 0x10 */
+			}
+			if(remaining_in_attribute - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x14 */
+			}
+			if(remaining_in_attribute - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x16 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x18 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_le32_dechex("Stream type (named "
+					"$DATA)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1C */
+			}
+
+			real_name_offset = 0x10 + name_start;
+			if(j < real_name_offset) {
+				const u32 print_end =
+					sys_min(real_name_offset,
+					remaining_in_attribute);
+				print_data_with_base(prefix, indent + 1, j,
+					print_end, &attribute[j],
+					print_end - j);
+				j = print_end;
+			}
+
+			if(remaining_in_attribute - j >= name_end - name_start)
+			{
+				err = sys_unistr_decode(
+					/* const refschar *ins */
+					(const refschar*) &attribute[0x10 +
+					name_start],
+					/* size_t ins_len */
+					(name_end - name_start) /
+					sizeof(refschar),
+					/* char **outs */
+					&cstr,
+					/* size_t *outs_len */
+					&cstr_length);
+				if(err) {
+					goto out;
+				}
+				else {
+					emit(prefix, indent + 1, "Name @ "
+						"%" PRIuz " / 0x%" PRIXz " "
+						"(length: %" PRIuz "):",
+						PRAuz(j), PRAXz(j),
+						PRAuz(cstr_length));
+					emit(prefix, indent + 2, "%" PRIbs,
+						PRAbs(cstr_length, cstr));
+					j += cstr_length * sizeof(refschar);
+				}
+			}
+
+			if(j < value_offset) {
+				const u32 print_end =
+					sys_min(value_offset,
+					remaining_in_attribute);
+				print_data_with_base(prefix, indent + 1, j,
+					print_end, &attribute[j],
+					print_end - j);
+				j = print_end;
+			}
+
+			emit(prefix, indent + 1, "Value @ %" PRIuz " / "
+				"0x%" PRIXz " (size: %" PRIuz " / "
+				"0x%" PRIXz "):",
+				PRAuz(j), PRAXz(j), PRAuz(value_size),
+				PRAXz(value_size));
+
+			{
+				const u8 *const value = &attribute[j];
+				const u32 true_value_size =
+					sys_min(remaining_in_attribute - j,
+					value_size);
+				u16 k = 0;
+
+				if(true_value_size - k >= 4) {
+					u32 flags;
+
+					flags = read_le32(&value[k]);
+					k += print_le32_dechex("Flags", prefix,
+						indent + 2, value,
+						&value[k]);
+
+					if(flags & 0x10000000UL) {
+						flags &= ~0x10000000UL;
+						emit(prefix, indent + 3,
+							"NON_RESIDENT%s",
+							flags ? " |" : "");
+						non_resident = SYS_TRUE;
+					}
+					if(flags) {
+						emit(prefix, indent + 3,
+							"<unknown: "
+							"0x%" PRIu32 ">",
+							PRAu32(flags));
+					}
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_le32_dechex("Allocated size "
+						"(1)", prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					data_size = read_le32(&value[k]);
+					k += print_le32_dechex("Attribute size "
+						"(1)", prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_le32_dechex("Attribute size "
+						"(2)", prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_le32_dechex("Allocated size "
+						"(2)", prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix, indent + 2,
+						value, &value[k]);
+				}
+				if(true_value_size - k > 0 && !non_resident) {
+					const u32 data_limit =
+						sys_min(data_size,
+						value_size - k);
+					refs_node_stream_data data;
+
+					memset(&data, 0, sizeof(data));
+
+					emit(prefix, indent + 2, "Resident "
+						"data @ %" PRIuz " / "
+						"0x%" PRIXz " (length: "
+						"%" PRIuz "):",
+						PRAuz(k), PRAXz(k),
+						PRAuz(data_size));
+
+					data.resident = SYS_TRUE;
+					data.data.resident = &value[k];
+
+					if(visitor && visitor->node_stream) {
+						err = visitor->node_stream(
+							/* void *context */
+							visitor->context,
+							/* const char *name */
+							cstr,
+							/* size_t name_length */
+							cstr_length,
+							/* u64 data_size */
+							data_size,
+							/* const
+							 * refs_node_stream_data
+							 * *data_reference */
+							&data);
+						if(err) {
+							goto out;
+						}
+					}
+
+					print_data_with_base(prefix, indent + 3,
+						k, k + data_limit, &value[k],
+						data_limit);
+					k += data_limit;
+				}
+				else if(non_resident) {
+					u64 stream_id = 0;
+
+					emit(prefix, indent + 2, "Non-resident "
+						"data @ %" PRIuz " / "
+						"0x%" PRIXz " (length: "
+						"%" PRIuz "):",
+						PRAuz(k), PRAXz(k),
+						PRAuz(data_size));
+					if(true_value_size - k >= 4) {
+						stream_id =
+							read_le64(&value[k]);
+						k += print_le64_dechex("Stream "
+							"ID", prefix,
+							indent + 3, value,
+							&value[k]);
+					}
+
+					if(visitor && visitor->node_stream &&
+						stream_id)
+					{
+						refs_node_stream_data data;
+
+						memset(&data, 0, sizeof(data));
+
+						data.resident = SYS_FALSE;
+						data.data.non_resident.stream_id
+							= stream_id;
+
+						err = visitor->node_stream(
+							/* void *context */
+							visitor->context,
+							/* const char *name */
+							cstr,
+							/* size_t name_length */
+							cstr_length,
+							/* u64 data_size */
+							data_size,
+							/* const
+							 * refs_node_stream_data
+							 * *data_reference */
+							&data);
+						if(err) {
+							goto out;
+						}
+					}
+					if(true_value_size - k >= 4) {
+						k += print_unknown32(prefix,
+							indent + 3, value,
+							&value[k]);
+					}
+				}
+
+				if(k < true_value_size) {
+					print_data_with_base(prefix, indent + 2,
+						k, true_value_size, &value[k],
+						true_value_size - k);
+					k = true_value_size;
+				}
+
+				j += k;
+			}
+		}
+		else if(attribute_type == 0x0010 && attribute_type2 == 0x50) {
+			u64 stream_id = 0;
+			u32 num_extents = 0;
+			u32 k;
+
+			if(remaining_in_attribute - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x08 */
+			}
+			if(remaining_in_attribute - j >= 2) {
+				j += print_le16_dechex("Value offset", prefix,
+					indent + 1, attribute,
+					&attribute[j]); /* 0x0A */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_le32_dechex("Value size (1)", prefix,
+					indent + 1, attribute,
+					&attribute[j]); /* 0x0C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_le32_dechex("Value size (2)", prefix,
+					indent + 1, attribute,
+					&attribute[j]); /* 0x10 */
+			}
+			if(remaining_in_attribute - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x14 */
+			}
+			if(remaining_in_attribute - j >= 2) {
+				j += print_unknown16(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x16 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x18 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x1C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x20 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x24 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x28 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x2C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x30 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x34 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x38 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x3C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				stream_id = read_le64(&attribute[j]);
+				j += print_le32_dechex("Stream ID",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x40 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x44 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x48 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x4C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x50 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x54 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x58 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x5C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x60 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x64 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x68 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x6C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x70 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x74 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x78 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x7C */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_le32_dechex("Number of extents",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x80 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x84 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x88 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x8C */
+			}
+			if(remaining_in_attribute - j >= 8) {
+				j += print_le64_dechex("Allocated size (1)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x90 */
+			}
+			if(remaining_in_attribute - j >= 8) {
+				j += print_le64_dechex("Allocated size (2)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x98 */
+			}
+			if(remaining_in_attribute - j >= 8) {
+				j += print_le64_dechex("Allocated size (3)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xA0 */
+			}
+			if(remaining_in_attribute - j >= 8) {
+				j += print_le64_dechex("Allocated size (4)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xA8 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xB0 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xB4 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xB8 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xBC */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xC0 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xC4 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xC8 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xCC */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xD0 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xD4 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xD8 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xDC */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xE0 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xE4 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xE8 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xEC */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xF0 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xF4 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xF8 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				num_extents = read_le32(&attribute[j]);
+				j += print_le32_dechex("Number of extents (2)",
+					prefix, indent + 1,
+					attribute, &attribute[j]); /* 0xFC */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x100 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x104 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x108 */
+			}
+			if(remaining_in_attribute - j >= 4) {
+				j += print_unknown32(prefix, indent + 1,
+					attribute, &attribute[j]); /* 0x10C */
+			}
+
+			/* Iterate over extents in stream. */
+			for(k = 0; k < num_extents &&
+				(remaining_in_attribute - j) >= 24; ++k)
+			{
+				const u64 first_physical_block =
+					logical_to_physical_block_number(
+						/* refs_node_crawl_context
+						 * *crawl_context */
+						crawl_context,
+						/* u64 logical_block_number */
+						read_le64(&attribute[j]));
+				/* TODO: Guessing that this is the number of
+				 * clusters in the extent. Not sure about it. */
+				const u32 cluster_count =
+					read_le32(&attribute[j + 20]);
+
+				emit(prefix, indent + 1, "Extent %" PRIu32 "/"
+					"%" PRIu32 ":",
+					PRAu32(k + 1), PRAu32(num_extents));
+
+				j += print_le64_dechex("First block", prefix,
+					indent + 2,
+					attribute, &attribute[j]); /* 0x110 */
+				emit(prefix, indent + 3,
+					"-> Physical block: %" PRIu64 " / "
+					"0x%" PRIX64 " (byte offset: "
+					"%" PRIu64 ")",
+					PRAu64(first_physical_block),
+					PRAX64(first_physical_block),
+					PRAu64(first_physical_block *
+					block_index_unit));
+				if(visitor && visitor->node_stream_extent) {
+					err = visitor->node_stream_extent(
+						/* void *context */
+						visitor->context,
+						/* u64 stream_id */
+						stream_id,
+						/* u64 first_block */
+						first_physical_block,
+						/* u32 block_index_unit */
+						block_index_unit,
+						/* u32 cluster_count */
+						cluster_count);
+					if(err) {
+						goto out;
+					}
+				}
+
+				j += print_unknown32(prefix, indent + 2,
+					attribute, &attribute[j]); /* 0x118 */
+
+				j += print_unknown32(prefix, indent + 2,
+					attribute, &attribute[j]); /* 0x11C */
+
+				j += print_unknown32(prefix, indent + 2,
+					attribute, &attribute[j]); /* 0x120 */
+
+				j += print_le32_dechex("Number of clusters in "
+					"extent (?)", prefix, indent + 2,
+					attribute, &attribute[j]); /* 0x124 */
+			}
+		}
 
 		if(j < remaining_in_attribute) {
 			print_data_with_base(prefix, indent + 1, j,
@@ -5202,6 +5841,10 @@ int parse_level3_long_value(
 		}
 
 		i += remaining_in_attribute;
+
+		if(cstr) {
+			sys_free(&cstr);
+		}
 	}
 
 	offsets_start = value_size - number_of_attributes * 4;
@@ -5222,6 +5865,10 @@ int parse_level3_long_value(
 		i += 4;
 	}
 out:
+	if(cstr) {
+		sys_free(&cstr);
+	}
+
 	return err;
 }
 

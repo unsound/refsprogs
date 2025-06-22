@@ -26,6 +26,7 @@ typedef struct refs_node refs_node;
 typedef struct refs_block_map refs_block_map;
 typedef struct refs_node_print_visitor refs_node_print_visitor;
 typedef struct refs_node_walk_visitor refs_node_walk_visitor;
+typedef struct refs_node_stream_data refs_node_stream_data;
 typedef struct refs_node_scan_visitor refs_node_scan_visitor;
 typedef struct refs_node_crawl_context refs_node_crawl_context;
 
@@ -41,6 +42,16 @@ struct refs_node_print_visitor {
 		const char *fmt,
 		...)
 		__attribute__((format(printf, 2, 3)));
+};
+
+struct refs_node_stream_data {
+	sys_bool resident;
+	union {
+		const void *resident;
+		struct {
+			u64 stream_id;
+		} non_resident;
+	} data;
 };
 
 struct refs_node_walk_visitor {
@@ -116,6 +127,18 @@ struct refs_node_walk_visitor {
 		size_t name_length,
 		const void *data,
 		size_t data_size);
+	int (*node_stream)(
+		void *context,
+		const char *name,
+		size_t name_length,
+		u64 data_size,
+		const refs_node_stream_data *data_reference);
+	int (*node_stream_extent)(
+		void *context,
+		u64 stream_id,
+		u64 first_block,
+		u32 block_index_unit,
+		u32 cluster_count);
 };
 
 struct refs_node_crawl_context {
