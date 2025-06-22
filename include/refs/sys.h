@@ -157,7 +157,7 @@ static inline u8 sys_fls64(u64 value)
 #ifdef HAVE_FLSLL
 	return (u8) flsll((long long) value);
 #elif defined(__GNUC__)
-	return (sizeof(value) * 8) - 1 -__builtin_clzll((long long) value);
+	return (sizeof(value) * 8) - __builtin_clzll((long long) value);
 #else
 	u8 index = 1;
 
