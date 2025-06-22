@@ -1,6 +1,6 @@
 .\" Copyright (c) 2022-2025 Erik Larsson
 .\"
-.TH REFSLS 8 "May 2023" "refsprogs @VERSION@"
+.TH REFSLS 8 "June 2025" "refsprogs @VERSION@"
 .SH NAME
 refsls \- List files on an ReFS volume.
 .SH SYNOPSIS
@@ -24,6 +24,9 @@ and the long name is preceded by
 \fB\-a\fR, \fB\-\-show\-all\fR
 Show all files, including hidden files.
 .TP
+\fB\-e\fR, \fB\-\-show\-eas\fR
+Show extended attributes (EAs) of files in listing.
+.TP
 \fB\-l\fR, \fB\-\-long\-format\fR
 Use long format when listing files, including file sizes and flags.
 .TP
@@ -34,6 +37,9 @@ starting with a '/').
 \fB\-R\fR, \fB\-\-recursive\fR
 List files recursively starting at the specified path, i.e. all subdirectories
 and its files will be listed.
+.TP
+\fB\-s\fR, \fB\-\-show\-streams\fR
+Show alternate data streams (ADSs) of files in listing.
 .SH BUGS
 There are no known problems with
 .BR refsls .

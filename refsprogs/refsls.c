@@ -46,6 +46,8 @@ static struct refsls_options {
 	char *device_name;
 	char *path;
 	sys_bool show_all;
+	sys_bool show_eas;
+	sys_bool show_streams;
 	sys_bool long_format;
 	sys_bool recursive;
 	sys_bool about;
@@ -85,8 +87,8 @@ static int refsls_node_short_entry(
 static void print_help(FILE *out, const char *invoke_cmd)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
-	fprintf(out, "usage: " BINARY_NAME " [-a] [-l] [-R] [-p <path>] "
-		"<device|file>\n");
+	fprintf(out, "usage: " BINARY_NAME " [-a] [-e] [-l] [-R] [-p <path>] "
+		"[-s] <device|file>\n");
 }
 
 static void print_about(FILE *out)
@@ -98,7 +100,11 @@ static void print_about(FILE *out)
 typedef struct {
 	refs_volume *vol;
 	sys_bool long_format;
+	sys_bool show_eas;
+	sys_bool show_streams;
 	char *prefix;
+	char *cur_name;
+	size_t cur_name_length;
 } refsls_list_dir_fill_ctx;
 
 static int refsls_print_dirent(
@@ -124,6 +130,10 @@ static int refsls_print_dirent(
 		goto out;
 	}
 
+	if(ctx->cur_name) {
+		sys_free(&ctx->cur_name);
+	}
+
 	err = sys_unistr_decode(
 		name,
 		name_len,
@@ -133,6 +143,9 @@ static int refsls_print_dirent(
 		fprintf(stderr, "Error: Failed to decode filename string.\n");
 		goto out;
 	}
+
+	ctx->cur_name = cstr;
+	ctx->cur_name_length = cstr_len;
 
 	{
 		if(options.long_format) {
@@ -264,10 +277,6 @@ static int refsls_print_dirent(
 		}
 	}
 out:
-	if(cstr) {
-		sys_free(&cstr);
-	}
-
 	return err;
 }
 
@@ -360,6 +369,62 @@ static int refsls_node_short_entry(
 	return err;
 }
 
+static int refsls_node_ea(
+		void *context,
+		const char *name,
+		size_t name_length,
+		const void *data,
+		size_t data_size)
+{
+	refsls_list_dir_fill_ctx *const ctx =
+		(refsls_list_dir_fill_ctx*) context;
+
+	(void) data;
+
+	if(ctx->show_eas) {
+		if(ctx->long_format) {
+			fprintf(stdout, "%" PRIPAD(13) PRIu64
+				"                        ",
+				PRAu64(data_size));
+		}
+
+		fprintf(stdout, "%" PRIbs ":$EA:%" PRIbs "\n",
+			PRAbs(ctx->cur_name_length, ctx->cur_name),
+			PRAbs(name_length, name));
+	}
+
+	return 0;
+}
+
+static int refsls_node_stream(
+		void *context,
+		const char *name,
+		size_t name_length,
+		u64 data_size,
+		const refs_node_stream_data *data_reference)
+{
+	refsls_list_dir_fill_ctx *const ctx =
+		(refsls_list_dir_fill_ctx*) context;
+
+	(void) data_reference;
+
+	if(ctx->show_streams) {
+		if(ctx->long_format) {
+			fprintf(stdout, "%" PRIPAD(13) PRIu64
+				"                        ",
+				PRAu64(data_size));
+		}
+
+		fprintf(stdout, "%" PRIbs ":%" PRIbs ":$DATA%s\n",
+			PRAbs(ctx->cur_name_length, ctx->cur_name),
+			PRAbs(name_length, name),
+			data_reference->resident ? " (resident)" :
+			" (non-resident)");
+	}
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	const char *const cmd = argv[0];
@@ -383,6 +448,20 @@ int main(int argc, char **argv)
 			(!strcmp(argv[1], "--show-all"))))
 		{
 			options.show_all = SYS_TRUE;
+			argv = &argv[1];
+			argc -= 1;
+		}
+		else if((!strcmp(argv[1], "-e") ||
+			(!strcmp(argv[1], "--show-eas"))))
+		{
+			options.show_eas = SYS_TRUE;
+			argv = &argv[1];
+			argc -= 1;
+		}
+		else if((!strcmp(argv[1], "-s") ||
+			(!strcmp(argv[1], "--show-streams"))))
+		{
+			options.show_streams= SYS_TRUE;
 			argv = &argv[1];
 			argc -= 1;
 		}
@@ -503,9 +582,13 @@ int main(int argc, char **argv)
 
 	context.vol = vol;
 	context.long_format = options.long_format;
+	context.show_eas = options.show_eas;
+	context.show_streams = options.show_streams;
 	visitor.context = &context;
 	visitor.node_long_entry = refsls_node_long_entry;
 	visitor.node_short_entry = refsls_node_short_entry;
+	visitor.node_ea = refsls_node_ea;
+	visitor.node_stream = refsls_node_stream;
 
 	err = refs_node_walk(
 		/* sys_device *dev */
@@ -533,6 +616,10 @@ int main(int argc, char **argv)
 
 	ret = (EXIT_SUCCESS);
 out:
+	if(context.cur_name) {
+		sys_free(&context.cur_name);
+	}
+
 	if(vol) {
 		refs_volume_destroy(&vol);
 	}
