@@ -199,6 +199,113 @@ static u64 logical_to_physical_block_number(
 	return physical_block_number;
 }
 
+static void print_file_flags(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const void *const base,
+		const void *const value)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	u32 file_flags = read_le32(value);
+
+	print_le32_hex("File flags", prefix, indent, base, value);
+	if(file_flags & REFS_FILE_ATTRIBUTE_READONLY) {
+		emit(prefix, indent + 1, "READONLY");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_READONLY);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_HIDDEN) {
+		emit(prefix, indent + 1, "HIDDEN");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_HIDDEN);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_SYSTEM) {
+		emit(prefix, indent + 1, "SYSTEM");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_SYSTEM);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_DIRECTORY) {
+		emit(prefix, indent + 1, "DIRECTORY");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_DIRECTORY);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_ARCHIVE) {
+		emit(prefix, indent + 1, "ARCHIVE");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_ARCHIVE);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_DEVICE) {
+		emit(prefix, indent + 1, "DEVICE");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_DEVICE);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_NORMAL) {
+		emit(prefix, indent + 1, "NORMAL");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_NORMAL);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_TEMPORARY) {
+		emit(prefix, indent + 1, "TEMPORARY");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_TEMPORARY);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_SPARSE_FILE) {
+		emit(prefix, indent + 1, "SPARSE_FILE");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_SPARSE_FILE);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+		emit(prefix, indent + 1, "REPARSE_POINT");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_REPARSE_POINT);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_COMPRESSED) {
+		emit(prefix, indent + 1, "COMPRESSED");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_COMPRESSED);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_OFFLINE) {
+		emit(prefix, indent + 1, "OFFLINE");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_OFFLINE);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_NOT_CONTENT_INDEXED) {
+		emit(prefix, indent + 1, "NOT_CONTENT_INDEXED");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_NOT_CONTENT_INDEXED);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_ENCRYPTED) {
+		emit(prefix, indent + 1, "ENCRYPTED");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_ENCRYPTED);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_INTEGRITY_STREAM) {
+		emit(prefix, indent + 1, "INTEGRITY_STREAM");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_INTEGRITY_STREAM);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_VIRTUAL) {
+		emit(prefix, indent + 1, "VIRTUAL");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_VIRTUAL);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_NO_SCRUB_DATA) {
+		emit(prefix, indent + 1, "NO_SCRUB_DATA");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_NO_SCRUB_DATA);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_EA) {
+		emit(prefix, indent + 1, "EA");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_EA);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_PINNED) {
+		emit(prefix, indent + 1, "PINNED");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_PINNED);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_UNPINNED) {
+		emit(prefix, indent + 1, "UNPINNED");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_UNPINNED);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_RECALL_ON_OPEN) {
+		emit(prefix, indent + 1, "RECALL_ON_OPEN");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_RECALL_ON_OPEN);
+	}
+	if(file_flags & REFS_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) {
+		emit(prefix, indent + 1, "RECALL_ON_DATA_ACCESS");
+		file_flags &= ~(REFS_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS);
+	}
+	if(file_flags) {
+		emit(prefix, indent + 1, "<Unknown: 0x%" PRIX32 ">",
+			PRAX32(file_flags));
+	}
+}
+
 static u32 parse_superblock_v1_level1_blocks_list(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -4320,7 +4427,7 @@ int parse_level3_long_value(
 		print_filetime(prefix, indent + 1,
 			"Last access time",
 			read_le64(&value[64]));
-		print_le32_hex("File flags", prefix, indent + 1, value,
+		print_file_flags(visitor, prefix, indent + 1, value,
 			&value[72]);
 		print_unknown32(prefix, indent + 1, value, &value[76]);
 
@@ -5232,8 +5339,7 @@ int parse_level3_short_value(
 		last_access_time);
 	print_le64_dechex("Allocated size", prefix, indent, value, &value[48]);
 	print_le64_dechex("File size", prefix, indent, value, &value[56]);
-	emit(prefix, indent, "File flags: 0x%" PRIX32,
-		PRAX32(file_flags));
+	print_file_flags(visitor, prefix, indent, value, &value[64]);
 	print_unknown32(prefix, indent, value, &value[68]);
 	if(value_size > 72) {
 		emit(prefix, indent, "Unknown @ 72:");
