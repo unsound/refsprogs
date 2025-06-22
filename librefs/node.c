@@ -4693,7 +4693,7 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x50 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Number of clusters (1)",
+				j += print_le64_dechex("Number of clusters",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x58 */
 			}
@@ -4706,22 +4706,22 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x64 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Number of clusters (2)",
+				j += print_le64_dechex("Allocated size (1)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x68 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Number of clusters (3)",
+				j += print_le64_dechex("Allocated size (2)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x70 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Number of clusters (4)",
+				j += print_le64_dechex("Allocated size (3)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x78 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Number of clusters (4)",
+				j += print_le64_dechex("Allocated size (4)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x80 */
 			}
