@@ -93,3 +93,23 @@ jobs:
       run: make check
     - name: make distcheck
       run: make distcheck
+
+  build-freebsd:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in FreeBSD
+      id: test
+      uses: vmactions/freebsd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install -y fusefs-libs autoconf automake libtool pkgconf
+        run: |
+          ./autogen.sh
+          ./configure
+          make
+          make check
+          make distcheck
