@@ -46,6 +46,10 @@ static struct refscat_options {
 	char *device_name;
 	sys_bool path_defined;
 	char *path;
+	sys_bool ea_defined;
+	char *ea;
+	sys_bool stream_defined;
+	char *stream;
 	sys_bool about;
 	sys_bool help;
 } options;
@@ -53,7 +57,8 @@ static struct refscat_options {
 static void print_help(FILE *out, const char *invoke_cmd)
 {
 	fprintf(out, BINARY_NAME " %s\n", VERSION);
-	fprintf(out, "usage: " BINARY_NAME " -p <file path> <device|file>\n");
+	fprintf(out, "usage: " BINARY_NAME " -p <file path> [-e <ea name>] "
+		"[-s <stream name>] <device|file>\n");
 }
 
 static void print_about(FILE *out)
@@ -66,7 +71,13 @@ typedef struct {
 	refs_volume *vol;
 	refschar *name;
 	u16 name_length;
+	char *ea_name;
+	size_t ea_name_length;
+	char *stream_name;
+	size_t stream_name_length;
 	sys_bool name_matches;
+	sys_bool stream_found;
+	u64 stream_non_resident_id;
 	u64 remaining_bytes;
 } refscat_print_data_ctx;
 
@@ -82,7 +93,8 @@ static int refscat_node_file_extent(
 	int err = 0;
 	char *buf = NULL;
 
-	if(context->name_matches) {
+	if(context->name_matches && !context->ea_name && !context->stream_name)
+	{
 		u64 extent_size = block_count * block_index_unit;
 		u64 valid_extent_size =
 			sys_min(extent_size, context->remaining_bytes);
@@ -90,6 +102,8 @@ static int refscat_node_file_extent(
 		u64 bytes_remaining = valid_extent_size;
 		size_t buf_size =
 			(size_t) sys_min(valid_extent_size, 1024UL * 1024U);
+
+		context->stream_found = SYS_TRUE;
 
 		err = sys_malloc(buf_size, &buf);
 		if(err) {
@@ -168,9 +182,11 @@ static int refscat_node_file_data(
 
 	int err = 0;
 
-	if(context->name_matches) {
+	if(context->name_matches && !context->ea_name && !context->stream_name)
+	{
 		ssize_t bytes_written = 0;
 
+		context->stream_found = SYS_TRUE;
 		context->remaining_bytes -= size;
 
 		bytes_written = write(STDOUT_FILENO, data, size);
@@ -233,7 +249,218 @@ static int refscat_node_long_entry(
 		file_name_length * sizeof(refschar)))
 	{
 		context->name_matches = SYS_TRUE;
-		context->remaining_bytes = file_size;
+		if(!(context->ea_name || context->stream_name)) {
+			context->remaining_bytes = file_size;
+		}
+	}
+
+	return err;
+}
+
+static int refscat_node_ea(
+		void *_context,
+		const char *name,
+		size_t name_length,
+		const void *data,
+		size_t data_size)
+{
+	refscat_print_data_ctx *const context =
+		(refscat_print_data_ctx*) _context;
+	int err = 0;
+
+	if(context->name_matches && name_length == context->ea_name_length &&
+		!memcmp(name, context->ea_name, name_length))
+	{
+		ssize_t bytes_written = 0;
+
+		context->stream_found = SYS_TRUE;
+		context->remaining_bytes = data_size;
+
+		bytes_written = write(STDOUT_FILENO, data, data_size);
+		if(bytes_written < 0) {
+			err = (err = errno) ? err : EIO;
+			sys_log_perror(err, "Error while writing "
+				"%" PRIuz " bytes to stdout",
+				PRAuz(data_size));
+			goto out;
+		}
+		else if((size_t) bytes_written != data_size) {
+			err = EIO;
+			sys_log_perror(errno, "Partial write of file "
+				"data to stdout: %" PRIuz " / "
+				"%" PRIuz " bytes written",
+				PRAuz((size_t) bytes_written),
+				PRAuz(data_size));
+			goto out;
+		}
+
+		context->remaining_bytes -= data_size;
+	}
+out:
+	return err;	
+}
+
+static int refscat_node_stream(
+		void *_context,
+		const char *name,
+		size_t name_length,
+		u64 data_size,
+		const refs_node_stream_data *data_reference)
+{
+	refscat_print_data_ctx *const context =
+		(refscat_print_data_ctx*) _context;
+	int err = 0;
+
+	if(!context->name_matches ||
+		name_length != context->stream_name_length ||
+		memcmp(name, context->stream_name, name_length))
+	{
+		/* No match. */
+		goto out;
+	}
+
+	context->stream_found = SYS_TRUE;
+	if(!context->remaining_bytes) {
+		context->remaining_bytes = data_size;
+	}
+
+	if(data_reference->resident) {
+		ssize_t bytes_written = 0;
+
+		sys_log_debug("Writing %" PRIuz " bytes of resident data to "
+			"stdout.", PRAuz(data_size));
+		bytes_written = write(STDOUT_FILENO,
+			data_reference->data.resident, data_size);
+		if(bytes_written < 0) {
+			err = (err = errno) ? err : EIO;
+			sys_log_perror(err, "Error while writing "
+				"%" PRIuz " bytes to stdout",
+				PRAuz(data_size));
+			goto out;
+		}
+		else if((size_t) bytes_written != data_size) {
+			err = EIO;
+			sys_log_perror(errno, "Partial write of file "
+				"data to stdout: %" PRIuz " / "
+				"%" PRIuz " bytes written",
+				PRAuz((size_t) bytes_written),
+				PRAuz(data_size));
+			goto out;
+		}
+
+		context->remaining_bytes -= data_size;
+	}
+	else {
+		context->stream_non_resident_id =
+			data_reference->data.non_resident.stream_id;
+	}
+out:
+	return err;
+}
+
+static int refscat_node_stream_extent(
+		void *_context,
+		u64 stream_id,
+		u64 first_block,
+		u32 block_index_unit,
+		u32 cluster_count)
+{
+	refscat_print_data_ctx *const context =
+		(refscat_print_data_ctx*) _context;
+	const u64 extent_size = cluster_count * context->vol->cluster_size;
+	const u64 valid_extent_size =
+		sys_min(extent_size, context->remaining_bytes);
+	const u64 aligned_extent_size =
+		(valid_extent_size + (context->vol->sector_size - 1)) &
+		~((u64) (context->vol->sector_size - 1));
+	const size_t buf_size =
+		(size_t) sys_min(aligned_extent_size, 1024UL * 1024U);
+
+	int err = 0;
+	char *buf = NULL;
+	u64 cur_pos = first_block * block_index_unit;
+	u64 bytes_remaining = valid_extent_size;
+	u64 aligned_bytes_remaining = aligned_extent_size;
+
+	sys_log_debug("Got stream extent with stream id 0x%" PRIX64 ", first "
+		"block 0x%" PRIX64 "...",
+		PRAX64(stream_id), PRAX64(first_block));
+
+	if(stream_id != context->stream_non_resident_id) {
+		/* Not the stream that we are looking for. */
+		goto out;
+	}
+
+	sys_log_debug("Reading %" PRIuz " bytes (%" PRIuz " sector-aligned "
+		"bytes) of non-resident named stream data from block "
+		"%" PRIu64 " / 0x%" PRIX64 " to stdout.",
+		PRAuz(bytes_remaining), PRAuz(aligned_bytes_remaining),
+		PRAu64(first_block), PRAX64(first_block));
+
+	err = sys_malloc(buf_size, &buf);
+	if(err) {
+		sys_log_perror(err, "Error while allocating temporary "
+			"buffer for printing data");
+		goto out;
+	}
+
+	while(bytes_remaining) {
+		const size_t bytes_to_read =
+			(size_t) sys_min(aligned_bytes_remaining, buf_size);
+		size_t bytes_read = 0;
+		ssize_t bytes_written = 0;
+
+		err = sys_device_pread(
+			/* sys_device *dev */
+			context->vol->dev,
+			/* u64 pos */
+			cur_pos,
+			/* size_t count */
+			bytes_to_read,
+			/* void *b */
+			buf);
+		if(err) {
+			sys_log_perror(err, "Error while reading data "
+				"from device offset %" PRIu64,
+				PRAu64(cur_pos));
+			goto out;
+		}
+
+		/* sys_device_pread ensures that we always read all of
+		 * the requested data or an error is thrown. */
+		bytes_read =
+			(bytes_to_read > bytes_remaining) ?
+			bytes_remaining : bytes_to_read;
+		context->remaining_bytes -= bytes_read;
+
+		bytes_written = write(STDOUT_FILENO, buf, bytes_read);
+		if(bytes_written < 0) {
+			err = errno;
+			sys_log_perror(err, "Error while writing "
+				"%" PRIuz " bytes to stdout",
+				PRAuz(bytes_read));
+			goto out;
+		}
+		else if((size_t) bytes_written != bytes_read) {
+			sys_log_perror(errno, "Partial write of file "
+				"data to stdout: %" PRIuz " / "
+				"%" PRIuz " bytes written",
+				PRAuz((size_t) bytes_written),
+				PRAuz(bytes_read));
+			goto out;
+		}
+
+		if(bytes_remaining == bytes_read) {
+			break;
+		}
+
+		cur_pos += bytes_read;
+		bytes_remaining -= bytes_read;
+		aligned_bytes_remaining -= bytes_read;
+	}
+out:
+	if(buf) {
+		sys_free(&buf);
 	}
 
 	return err;
@@ -270,6 +497,24 @@ int main(int argc, char **argv)
 			argv = &argv[2];
 			argc -= 2;
 		}
+		else if(argc > 3 &&
+			(!strcmp(argv[1], "-e") ||
+			(!strcmp(argv[1], "--ea"))))
+		{
+			options.ea_defined = SYS_TRUE;
+			options.ea = argv[2];
+			argv = &argv[2];
+			argc -= 2;
+		}
+		else if(argc > 3 &&
+			(!strcmp(argv[1], "-s") ||
+			(!strcmp(argv[1], "--stream"))))
+		{
+			options.stream_defined = SYS_TRUE;
+			options.stream = argv[2];
+			argv = &argv[2];
+			argc -= 2;
+		}
 		else if((!strcmp(argv[1], "-h") ||
 			!strcmp(argv[1], "--help")))
 		{
@@ -293,6 +538,11 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 2) {
+		print_help(stderr, cmd);
+		goto out;
+	}
+	else if(options.ea_defined && options.stream_defined) {
+		fprintf(stderr, "Error: Cannot specify both EA and stream.\n");
 		print_help(stderr, cmd);
 		goto out;
 	}
@@ -374,8 +624,8 @@ int main(int argc, char **argv)
 	}
 
 	if(!last_elementp || !*last_elementp) {
-		fprintf(stderr, "Error: The path \"%s\" is an invalid reference "
-			"to a file.\n", options.path);
+		fprintf(stderr, "Error: The path \"%s\" is an invalid "
+			"reference to a file.\n", options.path);
 		goto out;
 	}
 
@@ -400,10 +650,17 @@ int main(int argc, char **argv)
 
 	context.vol = vol;
 	context.name_length = (u16) name_length;
+	context.ea_name = options.ea_defined ? options.ea : NULL;
+	context.ea_name_length = options.ea_defined ? strlen(options.ea) : 0;
+	context.stream_name = options.stream_defined ? options.stream : NULL;
+	context.stream_name_length =
+		options.stream_defined ? strlen(options.stream) : 0;
 	visitor.context = &context;
 	visitor.node_long_entry = refscat_node_long_entry;
 	visitor.node_file_data = refscat_node_file_data;
 	visitor.node_file_extent = refscat_node_file_extent;
+	visitor.node_ea = refscat_node_ea;
+	visitor.node_stream = refscat_node_stream;
 
 #ifdef O_BINARY
 	setmode(fileno(stdout), O_BINARY);
@@ -437,9 +694,64 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
+	if(context.stream_non_resident_id) {
+		/* We encountered a non-resident stream. Iterate again to find
+		 * its associated stream extents. */
+		memset(&visitor, 0, sizeof(visitor));
+		visitor.context = &context;
+		visitor.node_stream_extent = refscat_node_stream_extent;
+
+		sys_log_debug("Walking the tree a second time to find "
+			"non-resident stream data for id %" PRIX64 "...",
+			PRAX64(context.stream_non_resident_id));
+		err = refs_node_walk(
+			/* sys_device *dev */
+			dev,
+			/* REFS_BOOT_SECTOR *bs */
+			vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&vol->block_map,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&parent_directory_object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+		if(err == -1) {
+			/* Manual break code, this one is expected. */
+			err = 0;
+		}
+		else if(err) {
+			sys_log_perror(err, "Error while listing directory");
+			goto out;
+		}
+	}
+
 	if(!context.name_matches) {
 		sys_log_error("Unable to find node \"%s\" in its parent "
 			"directory", last_elementp);
+		goto out;
+	}
+	else if(!context.stream_found) {
+		fprintf(stderr, "Unable to find %s stream%s%" PRIbs "%s in "
+			"node \"%s\".\n",
+			(context.ea_name ? "$EA" :
+			(context.stream_name ? "named" : "data")),
+			(context.ea_name || context.stream_name) ? " \"" : "",
+			PRAbs((context.ea_name || context.stream_name) ?
+				(context.ea_name ? context.ea_name_length :
+				context.stream_name_length) : 0,
+			(context.ea_name || context.stream_name) ?
+				(context.ea_name ? context.ea_name :
+				context.stream_name) : ""),
+			(context.ea_name || context.stream_name) ? "\"" : "",
+			options.path);
 		goto out;
 	}
 	else if(context.remaining_bytes) {

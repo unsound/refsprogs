@@ -121,7 +121,7 @@ int main(int argc, char **argv)
 	sys_device *dev = NULL;
 	sys_bool dev_open = SYS_FALSE;
 	char *pattern_buffer = NULL;
-	u32 read_buffer_size = 0;
+	size_t read_buffer_size = 0;
 	char *read_buffer = NULL;
 	u64 device_size = 0;
 	u64 cur_offset = 0;
@@ -256,7 +256,7 @@ int main(int argc, char **argv)
 		read_buffer_size = (u32) SIZE_MAX;
 	}
 
-	err = sys_malloc((size_t) read_buffer_size, &read_buffer);
+	err = sys_malloc(read_buffer_size, &read_buffer);
 	if(err) {
 		sys_log_perror(err, "Error while allocating read buffer");
 		goto out;

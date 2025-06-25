@@ -1,6 +1,6 @@
 .\" Copyright (c) 2022-2025 Erik Larsson
 .\"
-.TH REFSCAT 8 "May 2023" "refsprogs @VERSION@"
+.TH REFSCAT 8 "June 2025" "refsprogs @VERSION@"
 .SH NAME
 refscat \- Print the data of a file to standard output
 .SH SYNOPSIS
@@ -21,9 +21,19 @@ preceded by
 and the long name is preceded by
 .BR \-\- .
 .TP
+\fB\-e\fR, \fB\-\-ea\fR NAME
+Extract the data of the extended attribute (EA) named
+.B NAME
+attached to the specified file.
+.TP
 \fB\-p\fR, \fB\-\-path\fR PATH
 The path to the file that should be retrieved from the ReFS volume (must be a
 POSIX\-style absolute path, i.e. starting with a '/').
+.TP
+\fB\-s\fR, \fB\-\-stream\fR NAME
+Extract the data of the alternate data stream (ADS) named
+.B NAME
+attached to the specified file.
 .SH BUGS
 This utility is currently unable to look up all the extents of a file.
 Exploration of the metadata related to file extents is still ongoing, and this
