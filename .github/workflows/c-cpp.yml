@@ -113,3 +113,21 @@ jobs:
           make
           make check
           make distcheck
+
+  build-openbsd:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in OpenBSD
+      id: test
+      uses: vmactions/openbsd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg_add autoconf-2.72p0 automake-1.17 libtool pkgconf
+        run: |
+          AUTOCONF_VERSION=2.72 AUTOMAKE_VERSION=1.17 ./autogen.sh
+          ./configure CFLAGS='-I/usr/local/include' LDFLAGS='-L/usr/local/lib'
+          make
+          make check
+          make distcheck
