@@ -40,7 +40,7 @@
 #ifdef __linux__
 #include <linux/fs.h>
 #endif
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/disk.h>
 #endif
 #if defined(__OpenBSD__)
@@ -498,7 +498,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	}
 #endif
 
-#if defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
 	size_t sector_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DIOCGSECTORSIZE, &sector_size)) {
@@ -664,7 +664,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 	}
 #endif
 
-#if defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
 	size_t media_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DIOCGMEDIASIZE, &media_size)) {
