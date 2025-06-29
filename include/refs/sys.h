@@ -394,7 +394,7 @@ static inline int sys_device_open(sys_device **const dev,
 #endif
 		O_RDONLY);
 	if(fd == -1) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		*dev = (void*) ((intptr_t) fd);
@@ -408,7 +408,7 @@ static inline int sys_device_close(sys_device **const dev)
 	int err = 0;
 
 	if(close((int) ((intptr_t) *dev))) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		*dev = (void*) ((intptr_t) -1);
@@ -464,7 +464,7 @@ static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 		nbytes,
 		(off_t) offset);
 	if(res < 0) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else if((size_t) res != nbytes) {
 		err = EIO;
@@ -482,7 +482,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	int sector_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), BLKSSZGET, &sector_size)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		err = 0;
@@ -494,7 +494,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	uint32_t block_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DKIOCGETBLOCKSIZE, &block_size)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		err = 0;
@@ -506,7 +506,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	size_t sector_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DIOCGSECTORSIZE, &sector_size)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		*out_sector_size = (u32) sector_size;
@@ -520,7 +520,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	memset(&dl, 0, sizeof(dl));
 
 	if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		*out_sector_size = (u32) dl.d_secsize;
@@ -537,7 +537,7 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 
 		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO, &minfo) == -1)
 		{
-			err = errno;
+			err = (err = errno) ? err : EIO;
 		}
 		else {
 			*out_sector_size = (u32) minfo.dki_lbsize;
@@ -639,7 +639,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 	uint64_t device_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), BLKGETSIZE64, &device_size)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		err = 0;
@@ -651,7 +651,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 	uint32_t block_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DKIOCGETBLOCKSIZE, &block_size)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		uint64_t block_count = 0;
@@ -659,7 +659,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 		if(ioctl((int) ((intptr_t) dev), DKIOCGETBLOCKCOUNT,
 			&block_count))
 		{
-			err = errno;
+			err = (err = errno) ? err : EIO;
 		}
 		else {
 			err = 0;
@@ -672,7 +672,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 	size_t media_size = 0;
 
 	if(ioctl((int) ((intptr_t) dev), DIOCGMEDIASIZE, &media_size)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		*out_size = media_size;
@@ -687,13 +687,13 @@ static inline int sys_device_get_size(sys_device *const dev,
 	memset(&dl, 0, sizeof(dl));
 
 	if(fstat((int) ((intptr_t) dev), &stbuf)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else if(!S_ISBLK(stbuf.st_mode) && !S_ISCHR(stbuf.st_mode)) {
 		err = EINVAL;
 	}
 	else if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
-		err = errno;
+		err = (err = errno) ? err : EIO;
 	}
 	else {
 		const struct partition *const part =
@@ -713,7 +713,7 @@ static inline int sys_device_get_size(sys_device *const dev,
 
 		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO, &minfo) == -1)
 		{
-			err = errno;
+			err = (err = errno) ? err : EIO;
 		}
 		else {
 			*out_size =
