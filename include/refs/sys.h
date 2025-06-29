@@ -423,10 +423,12 @@ static inline int sys_device_close(sys_device **const dev)
 
 static inline ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset)
 {
+	errno = 0;
+
 	if(lseek(fd, offset, SEEK_SET) != offset ||
 		read(fd, buf, nbyte) != (ssize_t) nbyte)
 	{
-		return errno ? errno : EIO;
+		return -1;
 	}
 
 	return (ssize_t) nbyte;
@@ -434,10 +436,12 @@ static inline ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset)
 
 static inline ssize_t pwrite(int fd, void *buf, size_t nbyte, off_t offset)
 {
+	errno = 0;
+
 	if(lseek(fd, offset, SEEK_SET) != offset ||
 		write(fd, buf, nbyte) != (ssize_t) nbyte)
 	{
-		return errno ? errno : EIO;
+		return -1;
 	}
 
 	return (ssize_t) nbyte;
