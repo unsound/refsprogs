@@ -124,7 +124,7 @@ mingw*)
 	;;
 esac
 
-if test "x$enable_refs_fuse" == "xyes"; then
+if test "x$enable_refs_fuse" = "xyes"; then
 	# Checks for FUSE library.
 	FUSE_MODULE_CFLAGS=""
 	FUSE_MODULE_LIBS=""
