@@ -131,3 +131,21 @@ jobs:
           make
           make check
           make distcheck
+
+  build-dragonflybsd:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in DragonFly BSD
+      id: build
+      uses: vmactions/dragonflybsd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install -y fusefs-libs autoconf autoconf-switch automake libtool pkgconf
+        run: |
+          ./autogen.sh
+          ./configure
+          make
+          make check
+          make distcheck
