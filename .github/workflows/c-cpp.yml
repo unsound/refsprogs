@@ -167,3 +167,40 @@ jobs:
           make
           make check
           make distcheck
+
+  build-omnios:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in OmniOS
+      id: build
+      uses: vmactions/omnios-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install build-essential autoconf automake libtool pkg-config
+          pkg set-publisher -G '*' -g https://sfe.opencsw.org/localhostomnios localhostomnios
+          pkg install libfuse
+        run: |
+          ./autogen.sh
+          ./configure
+          make
+          make check
+
+  build-solaris:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in Solaris
+      id: build
+      uses: vmactions/solaris-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install base-developer-utilities gcc-c autoconf automake libtool pkg-config library/libfuse
+        run: |
+          ./autogen.sh
+          ./configure
+          make
+          make check
+          make distcheck
