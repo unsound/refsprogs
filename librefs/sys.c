@@ -43,7 +43,7 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 #else
 	iconv_t handle = (iconv_t) -1;
 #endif
-#if defined(sun) || defined(__sun) || defined(__NetBSD__)
+#if defined(__illumos__)
 	const char *ins_tmp = (const char*) ins;
 #else
 	char *ins_tmp = (char*) ins;
@@ -175,7 +175,7 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 #else
 	iconv_t handle = (iconv_t) -1;
 #endif
-#if defined(sun) || defined(__sun) || defined(__NetBSD__)
+#if defined(__illumos__)
 	const char *ins_tmp = ins;
 #else
 	char *ins_tmp = (char*) ins;

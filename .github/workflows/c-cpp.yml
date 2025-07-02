@@ -186,6 +186,7 @@ jobs:
           ./configure
           make
           make check
+          make distcheck
 
   build-solaris:
     runs-on: ubuntu-latest
