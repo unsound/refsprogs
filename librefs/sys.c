@@ -43,6 +43,11 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 #else
 	iconv_t handle = (iconv_t) -1;
 #endif
+#if defined(sun) || defined(__sun) || defined(__NetBSD__)
+	const char *ins_tmp = (const char*) ins;
+#else
+	char *ins_tmp = (char*) ins;
+#endif
 	size_t ins_remaining = 0;
 	size_t outs_capacity = 0;
 	size_t outs_remaining = 0;
@@ -110,7 +115,7 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 		/* iconv_t cd */
 		handle,
 		/* const char **restrict inbuf */
-		(char**) &ins,
+		&ins_tmp,
 		/* size_t *restrict inbytesleft */
 		&ins_remaining,
 		/* char **restrict outbuf */
@@ -170,7 +175,11 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 #else
 	iconv_t handle = (iconv_t) -1;
 #endif
+#if defined(sun) || defined(__sun) || defined(__NetBSD__)
 	const char *ins_tmp = ins;
+#else
+	char *ins_tmp = (char*) ins;
+#endif
 	size_t ins_remaining = ins_len;
 	size_t outs_capacity = 0;
 	size_t outs_remaining = 0;
@@ -224,7 +233,7 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 		/* iconv_t cd */
 		handle,
 		/* const char **restrict inbuf */
-		(char**) &ins_tmp,
+		&ins_tmp,
 		/* size_t *restrict inbytesleft */
 		&ins_remaining,
 		/* char **restrict outbuf */
