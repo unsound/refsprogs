@@ -63,6 +63,14 @@ solaris*)
 		PKG_CONFIG_PATH+=":/usr/lib/amd64/pkgconfig:/usr/gnu/lib/amd64/pkgconfig"
 	fi
 	export PKG_CONFIG_PATH
+
+	# The SFE repository has a broken fuse.pc file in the libfuse package.
+	# It claims that libfuse is installed in /usr, but it's really in
+	# /usr/gnu. To work around this we add the /usr/gnu/include path
+	# manually to CPPFLAGS and the library path /usr/gnu/lib/amd64 to
+	# LDFLAGS.
+	CPPFLAGS="${CPPFLAGS} -I/usr/gnu/include/fuse"
+	LDFLAGS="${LDFLAGS} -L/usr/gnu/lib/amd64"
 	;;
 *)
 	;;
