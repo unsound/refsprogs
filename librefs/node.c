@@ -701,8 +701,8 @@ static int parse_block_header(
 		print_unknown64(prefix, indent + 2, block, &header[0x10]);
 		emit(prefix, indent + 2, "Object ID @ %" PRIuz " / "
 			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
-			PRAuz(((u64) header - (u64) block) + 0x18),
-			PRAXz(((u64) header - (u64) block) + 0x18),
+			PRAuz(((size_t) header - (size_t) block) + 0x18),
+			PRAXz(((size_t) header - (size_t) block) + 0x18),
 			PRAu64(read_le64(&header[0x18])),
 			PRAX64(read_le64(&header[0x18])));
 	}
@@ -721,8 +721,8 @@ static int parse_block_header(
 	else {
 		emit(prefix, indent + 2, "Object ID @ %" PRIuz " / "
 			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
-			PRAuz(((u64) header - (u64) block) + 0x28),
-			PRAXz(((u64) header - (u64) block) + 0x28),
+			PRAuz(((size_t) header - (size_t) block) + 0x28),
+			PRAXz(((size_t) header - (size_t) block) + 0x28),
 			PRAu64(read_le64(&header[0x28])),
 			PRAX64(read_le64(&header[0x28])));
 	}
