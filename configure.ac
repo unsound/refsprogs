@@ -52,6 +52,18 @@ openbsd*)
 	CPPFLAGS="${CPPFLAGS} -I/usr/local/include"
 	LDFLAGS="${LDFLAGS} -L/usr/local/lib"
 	;;
+solaris*)
+	# Solaris doesn't include the /usr/lib/amd64/pkgconfig path by default,
+	# so add it automatically or fuse.pc won't be found.
+	# Openindiana/OmniOS can use the SFE version of libfuse, which is
+	# located in /usr/gnu, so add that one as well.
+	if test -z "${PKG_CONFIG_PATH}"; then
+		PKG_CONFIG_PATH="/usr/lib/amd64/pkgconfig:/usr/gnu/lib/amd64/pkgconfig"
+	else
+		PKG_CONFIG_PATH+=":/usr/lib/amd64/pkgconfig:/usr/gnu/lib/amd64/pkgconfig"
+	fi
+	export PKG_CONFIG_PATH
+	;;
 *)
 	;;
 esac
