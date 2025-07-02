@@ -44,6 +44,18 @@ AC_ARG_ENABLE(
 	[enable_refs_fuse="yes"]
 )
 
+# Amend default include/library paths depending on the platform.
+case "$target_os" in
+openbsd*)
+	# OpenBSD keeps iconv and other libraries in /usr/local but doesn't add
+	# those paths by default when compiling/linking so add them here.
+	CPPFLAGS="${CPPFLAGS} -I/usr/local/include"
+	LDFLAGS="${LDFLAGS} -L/usr/local/lib"
+	;;
+*)
+	;;
+esac
+
 # Programs
 AC_PROG_CC(gcc cc)
 AC_PROG_LN_S
@@ -124,7 +136,7 @@ mingw*)
 	;;
 esac
 
-if test "x$enable_refs_fuse" == "xyes"; then
+if test "x$enable_refs_fuse" = "xyes"; then
 	# Checks for FUSE library.
 	FUSE_MODULE_CFLAGS=""
 	FUSE_MODULE_LIBS=""
