@@ -338,7 +338,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 static inline int _sys_malloc(size_t size, void **out_ptr)
 {
-	return (*out_ptr = malloc(size)) ? 0 : errno;
+	int err;
+	return (*out_ptr = malloc(size)) ? 0 : ((err = errno) ? err : ENOMEM);
 }
 
 #define sys_malloc(size, out_ptr) \
@@ -346,7 +347,8 @@ static inline int _sys_malloc(size_t size, void **out_ptr)
 
 static inline int _sys_calloc(size_t size, void **out_ptr)
 {
-	return (*out_ptr = calloc(1, size)) ? 0 : errno;
+	int err;
+	return (*out_ptr = calloc(1, size)) ? 0 : ((err = errno) ? err : ENOMEM);
 }
 
 #define sys_calloc(size, out_ptr) \
@@ -354,7 +356,9 @@ static inline int _sys_calloc(size_t size, void **out_ptr)
 
 static inline int _sys_realloc(void *cur_ptr, size_t size, void **out_ptr)
 {
-	return (*out_ptr = realloc(cur_ptr, size)) ? 0 : errno;
+	int err;
+	return (*out_ptr = realloc(cur_ptr, size)) ? 0 :
+		((err = errno) ? err : ENOMEM);
 }
 
 #define sys_realloc(cur_ptr, size, out_ptr) \
