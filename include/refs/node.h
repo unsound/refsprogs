@@ -145,6 +145,8 @@ struct refs_node_crawl_context {
 	sys_device *dev;
 	REFS_BOOT_SECTOR *bs;
 	refs_block_map *block_map;
+	u32 cluster_size;
+	u32 block_size;
 	u32 block_index_unit;
 	u8 version_major;
 	u8 version_minor;
@@ -154,6 +156,8 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 		sys_device *const dev,
 		REFS_BOOT_SECTOR *const bs,
 		refs_block_map *const block_map,
+		const u32 cluster_size,
+		const u32 block_size,
 		const u32 block_index_unit,
 		const u8 version_major,
 		const u8 version_minor)
@@ -165,6 +169,10 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 		bs,
 		/* refs_block_map *block_map */
 		block_map,
+		/* u32 cluster_size */
+		cluster_size,
+		/* u32 block_size */
+		block_size,
 		/* u32 block_index_unit */
 		block_index_unit,
 		/* u8 version_major */

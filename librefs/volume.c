@@ -164,6 +164,9 @@ int refs_volume_create(
 	vol->bs = bs;
 	vol->sector_size = filesystem_sector_size;
 	vol->cluster_size = cluster_size;
+	vol->metadata_block_size =
+		(bs->version_major >= 3) ? sys_max(16U * 1024U, cluster_size) :
+		((cluster_size == 4096) ? 12U * 1024U : 16U * 1024U);
 	vol->sector_count = le64_to_cpu(bs->num_sectors);
 	vol->cluster_count =
 		vol->sector_count / le32_to_cpu(bs->sectors_per_cluster);
