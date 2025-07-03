@@ -28,7 +28,8 @@ MAINTAINERCLEANFILES=\
 SUBDIRS = \
 	include \
 	librefs \
-	refsprogs
+	util \
+	test
 
 doc_DATA = AUTHORS COPYING ChangeLog NEWS README
 
