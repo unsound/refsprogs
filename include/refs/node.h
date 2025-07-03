@@ -255,7 +255,7 @@ void refs_block_map_destroy(
  *      walk.
  *
  * @return
- *      @ref 0 on success and otherwise a non-0 errno value.
+ *      0 on success and otherwise a non-0 @p errno value.
  */
 int refs_node_walk(
 		sys_device *dev,

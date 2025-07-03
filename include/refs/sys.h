@@ -223,6 +223,15 @@ static inline u8 sys_fls64(u64 value)
 #define SYS_LOG_TRACE_ENABLED 0
 #endif
 
+/**
+ * No-op log handler that only exists to be able to statically check the format
+ * string and arguments for errors when logging is turned off.
+ *
+ * @param[in] fmt
+ *      @p printf format string for constructing the log message.
+ * @param[in] ...
+ *      Arguments to the @p printf format string (if any).
+ */
 static inline void sys_log_noop(const char *fmt, ...)
 	__attribute__((format(printf, 1, 2)));
 
@@ -231,6 +240,17 @@ static inline void sys_log_noop(const char *const fmt, ...)
 	(void) fmt;
 }
 
+/**
+ * No-op error-suffixed log handler that only exists to be able to statically
+ * check the format string and arguments for errors when logging is turned off.
+ *
+ * @param[in] err
+ *      The error thrown by the system.
+ * @param[in] fmt
+ *      @p printf format string for constructing the log message.
+ * @param[in] ...
+ *      Arguments to the @p printf format string (if any).
+ */
 static inline void sys_log_pnoop(int err, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 
@@ -592,13 +612,21 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 
 	if(err);
 	else if(DeviceIoControl(
+		/* _In_        HANDLE       hDevice */
 		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+		/* _In_        DWORD        dwIoControlCode */
 		IOCTL_DISK_GET_DRIVE_GEOMETRY,
+		/* _In_opt_    LPVOID       lpInBuffer */
 		NULL,
+		/* _In_        DWORD        nInBufferSize */
 		0,
+		/* _Out_opt_   LPVOID       lpOutBuffer */
 		buf,
+		/* _In_        DWORD        nOutBufferSize */
 		sizeof(buf),
+		/* _Out_opt_   LPDWORD      lpBytesReturned */
 		&bytes_returned,
+		/* _Inout_opt_ LPOVERLAPPED lpOverlapped */
 		NULL))
 	{
 		const DISK_GEOMETRY *const geom = (const DISK_GEOMETRY*) buf;
