@@ -1445,13 +1445,11 @@ out:
 
 static int parse_block_header_entry(
 		refs_node_walk_visitor *const visitor,
+		const size_t indent,
 		const u8 *const entry,
-		const u32 entry_size,
-		const u32 entry_offset,
-		const u32 entry_index)
+		const u32 entry_size)
 {
 	static const char *const prefix = "\t";
-	static const size_t indent = 1;
 
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -1459,11 +1457,6 @@ static int parse_block_header_entry(
 	int err = 0;
 	u32 i;
 
-	emit(prefix, 0, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / 0x%" PRIX32 ":",
-		PRAu32(entry_index),
-		"table header",
-		PRAu32(entry_offset),
-		PRAX32(entry_offset));
 	emit(prefix, indent, "Size: %" PRIu64,
 		PRAu64(entry_size));
 	emit(prefix, indent, "Header data offset?: %" PRIu64,
@@ -1496,18 +1489,17 @@ static int parse_block_header_entry(
 
 static int parse_block_allocation_entry(
 		refs_node_walk_visitor *const visitor,
+		const size_t indent,
 		const sys_bool is_v3,
 		const u8 *const entry,
 		const u32 entry_size,
 		const u32 entry_offset,
-		const u32 entry_index,
 		u32 *const out_flags,
 		u32 *const out_value_offsets_start,
 		u32 *const out_value_offsets_end,
 		u32 *const out_value_count)
 {
 	static const char *const prefix = "\t";
-	static const size_t indent = 1;
 
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -1515,27 +1507,25 @@ static int parse_block_allocation_entry(
 	int err = 0;
 	u32 i = 0;
 
-	emit(prefix, 0, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / 0x%" PRIX32 ":",
-		PRAu32(entry_index),
-		"allocation entry",
-		PRAu32(entry_offset),
-		PRAX32(entry_offset));
-	emit(prefix, indent, "Size: %" PRIu64,
-		PRAu64(entry_size));
-	emit(prefix, indent, "Free space offset: %" PRIu64,
-		PRAu64(read_le32(&entry[0x4])));
-	emit(prefix, indent, "Free space size: %" PRIu64,
-		PRAu64(read_le32(&entry[0x8])));
+	print_le32_dechex("Size", prefix, indent, entry, &entry[0x0]);
+	print_le32_dechex("Free space offset", prefix, indent, entry,
+		&entry[0x4]);
+	emit(prefix, indent + 1, "-> Real offset: %" PRIu64 " / 0x%" PRIX64,
+		PRAu64(read_le32(&entry[0x4]) + entry_offset),
+		PRAX64(read_le32(&entry[0x4]) + entry_offset));
+	print_le32_dechex("Free space size", prefix, indent, entry,
+		&entry[0x8]);
 
-	emit(prefix, indent, "Flags?: %" PRIu64 " / 0x%" PRIX64,
-		PRAu64(read_le32(&entry[0xC])),
-		PRAX64(read_le32(&entry[0xC])));
+	print_le32_dechex("Flags?", prefix, indent, entry, &entry[0xC]);
 	if(out_flags) {
 		*out_flags = read_le32(&entry[0xC]);
 	}
 
 	print_le32_dechex("Value offsets array start offset", prefix, indent,
 		entry, &entry[0x10]);
+	emit(prefix, indent + 1, "-> Real offset: %" PRIu64 " / 0x%" PRIX64,
+		PRAu64(read_le32(&entry[0x10]) + entry_offset),
+		PRAX64(read_le32(&entry[0x10]) + entry_offset));
 	if(out_value_offsets_start) {
 		*out_value_offsets_start = read_le32(&entry[0x10]);
 	}
@@ -1552,6 +1542,10 @@ static int parse_block_allocation_entry(
 	else {
 		print_le32_dechex("Value offsets array end offset", prefix,
 			indent, entry, &entry[0x18]);
+		emit(prefix, indent + 1, "-> Real offset: %" PRIu64 " / "
+			"0x%" PRIX64,
+			PRAu64(read_le32(&entry[0x18]) + entry_offset),
+			PRAX64(read_le32(&entry[0x18]) + entry_offset));
 		if(out_value_offsets_end) {
 			*out_value_offsets_end = read_le32(&entry[0x18]);
 		}
@@ -1563,6 +1557,10 @@ static int parse_block_allocation_entry(
 		if(is_v3) {
 			print_le32_dechex("Value offsets array end offset",
 				prefix, indent, entry, &entry[0x20]);
+			emit(prefix, indent + 1, "-> Real offset: %" PRIu64 " "
+				"/ 0x%" PRIX64,
+				PRAu64(read_le32(&entry[0x20]) + entry_offset),
+				PRAX64(read_le32(&entry[0x20]) + entry_offset));
 			if(out_value_offsets_end) {
 				*out_value_offsets_end =
 					read_le32(&entry[0x20]);
@@ -1741,6 +1739,7 @@ static int parse_generic_entry(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
+		const size_t indent,
 		const u64 object_id,
 		const u32 block_index_unit,
 		const sys_bool is_v3,
@@ -1777,8 +1776,6 @@ static int parse_generic_entry(
 			void *context),
 		u64 *const out_next_level_block_number)
 {
-	static const size_t indent = 1;
-
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
@@ -1807,26 +1804,26 @@ static int parse_generic_entry(
 		goto out;
 	}
 
-	emit(prefix, indent - 1, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
+	emit(prefix, indent, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
 		"0x%" PRIX32 ":",
 		PRAu32(entry_index),
 		"regular entry",
 		PRAu32(entry_offset),
 		PRAX32(entry_offset));
-	emit(prefix, indent, "Size: %" PRIu64 " / 0x%" PRIX64,
+	emit(prefix, indent + 1, "Size: %" PRIu64 " / 0x%" PRIX64,
 		PRAu64(entry_size),
 		PRAX64(entry_size));
 
-	print_le16_dechex("Key offset", prefix, indent, entry, &entry[0x4]);
+	print_le16_dechex("Key offset", prefix, indent + 1, entry, &entry[0x4]);
 	key_offset = read_le16(&entry[0x4]);
-	print_le16_dechex("Key size", prefix, indent, entry, &entry[0x6]);
+	print_le16_dechex("Key size", prefix, indent + 1, entry, &entry[0x6]);
 	key_size = read_le16(&entry[0x6]);
-	print_le16_dechex("Flags?", prefix, indent, entry, &entry[0x8]);
+	print_le16_dechex("Flags?", prefix, indent + 1, entry, &entry[0x8]);
 	value_offset = read_le16(&entry[0xA]);
-	print_le16_dechex("Value offset", prefix, indent, entry, &entry[0xA]);
+	print_le16_dechex("Value offset", prefix, indent + 1, entry, &entry[0xA]);
 	value_size = read_le16(&entry[0xC]);
-	print_le16_dechex("Value size", prefix, indent, entry, &entry[0xC]);
-	print_unknown16(prefix, indent, entry, &entry[0xE]);
+	print_le16_dechex("Value size", prefix, indent + 1, entry, &entry[0xC]);
+	print_unknown16(prefix, indent + 1, entry, &entry[0xE]);
 
 	i = 0x10;
 
@@ -1835,7 +1832,7 @@ static int parse_generic_entry(
 		(key_offset + key_size) <= value_offset)
 	{
 		if(i < key_offset) {
-			print_data_with_base(prefix, indent, i, entry_size,
+			print_data_with_base(prefix, indent + 1, i, entry_size,
 				&entry[i], key_offset - i);
 			i = key_offset;
 		}
@@ -1848,7 +1845,7 @@ static int parse_generic_entry(
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
-			indent + 1,
+			indent + 2,
 			/* u64 object_id */
 			object_id,
 			/* sys_bool is_v3 */
@@ -1873,7 +1870,7 @@ static int parse_generic_entry(
 	}
 
 	if(i < value_offset) {
-		print_data_with_base(prefix, indent, i, entry_size,
+		print_data_with_base(prefix, indent + 1, i, entry_size,
 			&entry[i], value_offset - i);
 		i = value_offset;
 	}
@@ -1887,7 +1884,7 @@ static int parse_generic_entry(
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
-			indent + 1,
+			indent + 2,
 			/* sys_bool is_v3 */
 			is_v3,
 			/* const u8 *value */
@@ -1909,7 +1906,7 @@ static int parse_generic_entry(
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
-			indent + 1,
+			indent + 2,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -1934,6 +1931,7 @@ out:
 static int parse_generic_block(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
+		const size_t indent,
 		const u64 cluster_number,
 		const u64 block_number,
 		const u64 block_queue_index,
@@ -2014,7 +2012,7 @@ static int parse_generic_block(
 		/* const char *prefix */
 		"",
 		/* size_t indent */
-		0,
+		indent,
 		/* u8 level */
 		level,
 		/* const u8 *block */
@@ -2041,17 +2039,21 @@ static int parse_generic_block(
 
 	entry = &block[i];
 	entry_size = read_le32(entry);
+	emit(prefix, indent, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
+		"0x%" PRIX32 ":",
+		PRAu32(0),
+		"table header",
+		PRAu32(i),
+		PRAX32(i));
 	err = parse_block_header_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
+		/* size_t indent */
+		indent + 1,
 		/* const u8 *entry */
 		entry,
 		/* u32 entry_size */
-		entry_size,
-		/* u32 entry_offset */
-		i,
-		/* u32 entry_index */
-		0);
+		entry_size);
 	if(err) {
 		goto out;
 	}
@@ -2074,19 +2076,25 @@ static int parse_generic_block(
 
 	entry = &block[i];
 	entry_size = read_le32(entry);
+	emit(prefix, indent, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
+		"0x%" PRIX32 ":",
+		PRAu32(1),
+		"allocation entry",
+		PRAu32(i),
+		PRAX32(i));
 	err = parse_block_allocation_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
+		/* size_t indent */
+		indent + 1,
 		/* sys_bool is_v3 */
 		is_v3,
 		/* const u8 *entry */
 		entry,
 		/* u32 entry_size */
 		entry_size,
-		/* size_t entry_offset */
+		/* u32 entry_offset */
 		i,
-		/* u32 entry_index */
-		1,
 		/* u32 *out_flags */
 		&flags,
 		/* u32 *out_value_offsets_start */
@@ -2210,6 +2218,8 @@ static int parse_generic_block(
 			!add_subnodes_in_offsets_order) ? visitor : NULL,
 			/* const char *prefix */
 			prefix,
+			/* size_t indent */
+			indent,
 			/* u64 object_id */
 			object_id,
 			/* u32 block_index_unit */
@@ -2351,8 +2361,8 @@ static int parse_generic_block(
 			}
 
 			if(i < smallest_matching_offset) {
-				print_data_with_base(prefix, 0, i, block_size,
-					&block[i],
+				print_data_with_base(prefix, indent, i,
+					block_size, &block[i],
 					smallest_matching_offset - i);
 			}
 
@@ -2367,6 +2377,8 @@ static int parse_generic_block(
 				visitor,
 				/* const char *prefix */
 				prefix,
+				/* size_t indent */
+				indent,
 				/* u64 object_id */
 				object_id,
 				/* u32 block_index_unit */
@@ -2445,15 +2457,15 @@ static int parse_generic_block(
 		}
 
 		if(i < value_offsets_start_real) {
-			print_data_with_base(prefix, 0, i, block_size,
+			print_data_with_base(prefix, indent, i, block_size,
 				&block[i],
 				value_offsets_start_real - i);
 		}
 
-		emit(prefix, 0, "Value offsets:");
+		emit(prefix, indent, "Value offsets:");
 		i = value_offsets_start_real;
 		for(; i < value_offsets_end_real; i += 4) {
-			emit(prefix, 1, "[%" PRIuz "]: %" PRIu16 " / "
+			emit(prefix, indent + 1, "[%" PRIuz "]: %" PRIu16 " / "
 				"0x%" PRIX16 " (absolute: %" PRIu32 " / "
 				"0x%" PRIX32 ") flags / unknown: "
 				"0x%" PRIX16,
@@ -2473,7 +2485,7 @@ static int parse_generic_block(
 	i = first_table_entry_end + value_offsets_end;
 out:
 	if(i < block_size) {
-		print_data_with_base(prefix, 0, i, block_size, &block[i],
+		print_data_with_base(prefix, indent, i, block_size, &block[i],
 			block_size - i);
 	}
 
@@ -3900,6 +3912,8 @@ static int parse_level2_block(
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
 		visitor,
+		/* size_t indent */
+		0,
 		/* u64 cluster_number */
 		cluster_number,
 		/* u64 block_number */
@@ -4279,6 +4293,64 @@ static int parse_level3_key(
 	return err;
 }
 
+static u16 parse_level3_attribute_header(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const size_t remaining_in_value,
+		const char *const attribute,
+		const u16 attribute_size,
+		const u16 attribute_index)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	u16 j = 0;
+
+	if(remaining_in_value - j < 2) {
+		goto out;
+	}
+
+	emit(prefix, indent + 1, "Attribute size @ %" PRIuz " / "
+		"0x%" PRIXz ": %" PRIu16 " / 0x%" PRIX16 "%s",
+		PRAuz(j),
+		PRAXz(j),
+		PRAu16(read_le16(&attribute[j])),
+		PRAX16(read_le16(&attribute[j])),
+		(attribute_size > remaining_in_value) ?
+		" (OVERFLOW)" : "");
+
+	j += 2;
+
+	if(remaining_in_value - j < 2) {
+		goto out;
+	}
+
+	j += print_unknown16(prefix, indent + 1, attribute,
+		&attribute[j]);
+
+	if(remaining_in_value - j < 2) {
+		goto out;
+	}
+
+	if(remaining_in_value - j < 4) {
+		goto out;
+	}
+
+	if(attribute_index <= 2) {
+		j += print_unknown32(prefix, indent + 1, attribute,
+			&attribute[j]);
+	}
+	else {
+		j += print_le16_hex("Attribute type 1", prefix,
+			indent + 1, attribute, &attribute[j]);
+		j += print_le16_hex("Attribute type 2", prefix,
+			indent + 1, attribute, &attribute[j]);
+	}
+out:
+	return j;
+}
+
 /**
  * Parse a long level 3 tree entry value.
  *
@@ -4326,7 +4398,7 @@ int parse_level3_long_value(
 	u16 attribute_size = 0;
 	u16 attribute_index = 0;
 	u32 attributes_offset = 0;
-	u16 number_of_attributes = 0;
+	u32 number_of_attributes = 0;
 	u16 offsets_start = 0;
 	u16 j = 0;
 	char *cstr = NULL;
@@ -4539,18 +4611,23 @@ int parse_level3_long_value(
 		(attribute_index - 2) < number_of_attributes))
 	{
 		const size_t offset_in_value = i;
-		const size_t remaining_in_value =
-			value_size - offset_in_value;
+		const size_t remaining_in_value = value_size - offset_in_value;
 		const u8 *attribute = &value[offset_in_value];
 		u16 remaining_in_attribute = 0;
 		u16 attribute_type = 0;
 		u16 attribute_type2 = 0;
 		u32 stream_type = 0;
 
-		attribute_size = read_le16(&attribute[0]);
+		attribute_size = 0;
+		if(remaining_in_value >= 2) {
+			attribute_size = read_le16(&attribute[0]);
+		}
 		if(!attribute_size) {
 			break;
 		}
+
+		remaining_in_attribute =
+			(u16) sys_min(attribute_size, remaining_in_value);
 
 		if(attribute_index == 1) {
 			emit(prefix, indent, "Attribute header @ %" PRIuz " / "
@@ -4563,10 +4640,10 @@ int parse_level3_long_value(
 				stream_type = read_le32(&attribute[0x1C]);
 			}
 
-			emit(prefix, indent, "Attribute %" PRIu16 "/%" PRIu16 " "
-				"@ %" PRIuz " / 0x%" PRIXz ":",
+			emit(prefix, indent, "Attribute %" PRIu16 " / "
+				"%" PRIu32 " @ %" PRIuz " / 0x%" PRIXz ":",
 				PRAu16((attribute_index - 2) + 1),
-				PRAu16(number_of_attributes),
+				PRAu32(number_of_attributes),
 				PRAuz(offset_in_value),
 				PRAXz(offset_in_value));
 		}
@@ -4575,42 +4652,61 @@ int parse_level3_long_value(
 
 		j = 0;
 
-		emit(prefix, indent + 1, "Attribute size @ %" PRIuz " / "
-			"0x%" PRIXz ": %" PRIu16 " / 0x%" PRIX16 "%s",
-			PRAuz(j),
-			PRAXz(j),
-			PRAu16(attribute_size),
-			PRAX16(attribute_size),
-			(attribute_size > remaining_in_value) ?
-			" (OVERFLOW)" : "");
 		if(remaining_in_value < 8) {
 			break;
 		}
 
-		j += 2;
-
-		remaining_in_attribute =
-			(u16) sys_min(attribute_size, remaining_in_value);
-
-		j += print_unknown16(prefix, indent + 1, attribute,
-			&attribute[j]);
-
-		attribute_type = read_le16(&attribute[j]);
-		attribute_type2 = read_le16(&attribute[j + 2]);
-		if(attribute_index <= 2) {
-			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
-		}
-		else {
-			j += print_le16_hex("Attribute type 1", prefix,
-				indent + 1, attribute, &attribute[j]);
-			j += print_le16_hex("Attribute type 2", prefix,
-				indent + 1, attribute, &attribute[j]);
-		}
+		attribute_type = read_le16(&attribute[j + 4]);
+		attribute_type2 = read_le16(&attribute[j + 6]);
 
 		if(attribute_index - 1 == 1 &&
 			remaining_in_attribute >= j + 0x18)
 		{
+#if 1
+			/* This has the same layout as the allocation entry in a
+			 * node. */
+			err = parse_block_allocation_entry(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* size_t indent */
+				indent,
+				/* sys_bool is_v3 */
+				is_v3,
+				/* const u8 *entry */
+				&attribute[j],
+				/* u32 entry_size */
+				remaining_in_attribute,
+				/* u32 entry_offset */
+				offset_in_value,
+				/* u32 *out_flags */
+				NULL,
+				/* u32 *out_value_offsets_start */
+				NULL,
+				/* u32 *out_value_offsets_end */
+				NULL,
+				/* u32 *out_value_count */
+				&number_of_attributes);
+			if(err) {
+				goto out;
+			}
+
+			j += remaining_in_attribute;
+#else
+			j += parse_level3_attribute_header(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* const char *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index);
 			/* Attributes header, seems to be:
 			 * - 40 / 0x28 bytes on version 3
 			 * - 32 / 0x20 bytes on version 1
@@ -4639,6 +4735,7 @@ int parse_level3_long_value(
 				j += print_unknown64(prefix, indent + 1,
 					attribute, &attribute[j]);
 			}
+#endif
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0028 &&
 			attribute_size >= 0x48)
@@ -4646,6 +4743,21 @@ int parse_level3_long_value(
 			u32 number_of_extents = 0;
 			u32 k;
 
+			j += parse_level3_attribute_header(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* const char *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index);
 			j += print_unknown16(prefix, indent + 1, attribute,
 				&attribute[j]); /* 0x08 */
 			j += print_unknown16(prefix, indent + 1, attribute,
@@ -4902,6 +5014,21 @@ int parse_level3_long_value(
 			u64 first_block = 0;
 			u64 block_count = 0;
 
+			j += parse_level3_attribute_header(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* const char *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index);
 			j += parse_level3_extent_attribute(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
@@ -4943,6 +5070,21 @@ int parse_level3_long_value(
 		{
 			/* This attribute type appears to be inline data for the
 			 * data stream. */
+			j += parse_level3_attribute_header(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* const char *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index);
 			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -5038,6 +5180,21 @@ int parse_level3_long_value(
 		{
 			/* This attribute type appears to be inline data for the
 			 * EA stream. Likely same format as the above. */
+			j += parse_level3_attribute_header(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* const char *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index);
 			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -5206,6 +5363,21 @@ int parse_level3_long_value(
 
 			/* This attribute type contains data relating to
 			 * alternate data streams. */
+			j += parse_level3_attribute_header(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* const char *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index);
 			if(remaining_in_attribute - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -5501,6 +5673,21 @@ int parse_level3_long_value(
 			u32 num_extents = 0;
 			u32 k;
 
+			j += parse_level3_attribute_header(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* const char *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index);
 			if(remaining_in_attribute - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -6199,6 +6386,8 @@ static int parse_level3_block(
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
 		visitor,
+		/* size_t indent */
+		0,
 		/* u64 cluster_number */
 		cluster_number,
 		/* u64 block_number */
@@ -6643,6 +6832,8 @@ static int crawl_volume_metadata(
 				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
 				NULL,
+				/* size_t indent */
+				0,
 				/* u64 cluster_number */
 				physical_block_number,
 				/* u64 block_number */
