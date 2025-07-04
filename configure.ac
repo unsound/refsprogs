@@ -1,7 +1,7 @@
 AC_PREREQ(2.59)
 AC_INIT([refsprogs],[2025.6.22],[catacombae@gmail.com])
 LIBREFS_VERSION="2"
-AC_CONFIG_SRCDIR([refsprogs/refsls.c])
+AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
 AC_CANONICAL_HOST
@@ -199,13 +199,14 @@ AC_CONFIG_FILES([
 	include/refs/Makefile
 	librefs/Makefile
 	librefs/librefs.pc
-	refsprogs/Makefile
-	refsprogs/redb.8
-	refsprogs/refs-fuse.8
-	refsprogs/refscat.8
-	refsprogs/refsinfo.8
-	refsprogs/refslabel.8
-	refsprogs/refsls.8
+	test/Makefile
+	util/Makefile
+	util/redb.8
+	util/refs-fuse.8
+	util/refscat.8
+	util/refsinfo.8
+	util/refslabel.8
+	util/refsls.8
 ])
 AC_OUTPUT
 

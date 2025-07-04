@@ -276,13 +276,9 @@ static int print_leaf_by_path(
 		goto out;
 	}
 
-	crawl_context.dev = vol->dev;
-	crawl_context.bs = vol->bs;
-	crawl_context.block_map = vol->block_map;
-	crawl_context.block_index_unit =
-		(vol->bs->version_major == 1) ? 16384 : vol->cluster_size;
-	crawl_context.version_major = vol->bs->version_major;
-	crawl_context.version_minor = vol->bs->version_minor;
+	crawl_context = refs_volume_init_node_crawl_context(
+		/* refs_volume *vol */
+		vol);
 	visitor.print_visitor.print_message = print_leaf_by_path_print_message;
 	if(!record) {
 		/* No record for this entry. Should only happen for the root

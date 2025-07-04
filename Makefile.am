@@ -2,7 +2,8 @@ AUTOMAKE_OPTIONS = gnu
 ACLOCAL_AMFLAGS = -I m4
 
 EXTRA_DIST = \
-	autogen.sh
+	autogen.sh \
+	Doxyfile
 
 MAINTAINERCLEANFILES=\
 	$(srcdir)/configure \
@@ -27,7 +28,8 @@ MAINTAINERCLEANFILES=\
 SUBDIRS = \
 	include \
 	librefs \
-	refsprogs
+	util \
+	test
 
 doc_DATA = AUTHORS COPYING ChangeLog NEWS README
 
