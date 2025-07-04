@@ -34,6 +34,7 @@ struct refs_volume {
 	size_t bs_size;
 	u32 sector_size;
 	u32 cluster_size;
+	u32 metadata_block_size;
 	u64 sector_count;
 	u64 cluster_count;
 	REFS_SUPERBLOCK_HEADER *sb;
@@ -79,6 +80,10 @@ static inline refs_node_crawl_context refs_volume_init_node_crawl_context(
 		vol->bs,
 		/* refs_block_map *block_map */
 		vol->block_map,
+		/* u32 cluster_size */
+		vol->cluster_size,
+		/* u32 block_size */
+		vol->metadata_block_size,
 		/* u32 block_index_unit */
 		(vol->bs->version_major == 1) ? 16384 : vol->cluster_size,
 		/* u8 version_major */
