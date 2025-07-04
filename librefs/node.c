@@ -2484,15 +2484,21 @@ static int parse_generic_block(
 				value_offsets_start_real - i);
 		}
 
-		emit(prefix, indent, "Value offsets:");
+		emit(prefix, indent, "Value offsets @ %" PRIu32 " / "
+			"0x%" PRIX32 ":",
+			PRAu32(value_offsets_start_real),
+			PRAX32(value_offsets_start_real));
 		i = value_offsets_start_real;
 		for(; i < value_offsets_end_real; i += 4) {
-			emit(prefix, indent + 1, "[%" PRIuz "]: %" PRIu16 " / "
+			emit(prefix, indent + 1, "[%" PRIuz "] @ %" PRIu32 " / "
+				"0x%" PRIX32 ": %" PRIu16 " / "
 				"0x%" PRIX16 " (absolute: %" PRIu32 " / "
 				"0x%" PRIX32 ") flags / unknown: "
 				"0x%" PRIX16,
 				PRAuz((i - value_offsets_start_real) /
 				4),
+				PRAu32(i),
+				PRAX32(i),
 				PRAu16(read_le16(&block[i])),
 				PRAX16(read_le16(&block[i])),
 				PRAu32(first_table_entry_end +
