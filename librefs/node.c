@@ -65,6 +65,7 @@ static int parse_level3_leaf_value(
 		const size_t indent,
 		const u64 object_id,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -1694,6 +1695,7 @@ static void parse_index_value(
 }
 
 static int parse_unknown_key(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -1709,6 +1711,7 @@ static int parse_unknown_key(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
+	(void) crawl_context;
 	(void) object_id;
 	(void) is_v3;
 	(void) is_index;
@@ -1729,6 +1732,7 @@ static int parse_unknown_leaf_value(
 		const size_t indent,
 		const u64 object_id,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -1746,6 +1750,7 @@ static int parse_unknown_leaf_value(
 	(void) block_index_unit;
 	(void) is_v3;
 	(void) key;
+	(void) key_offset;
 	(void) key_size;
 	(void) context;
 
@@ -1772,6 +1777,7 @@ static int parse_generic_entry(
 		const u32 entry_index,
 		void *const context,
 		int (*const parse_key)(
+			refs_node_crawl_context *crawl_context,
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
@@ -1790,6 +1796,7 @@ static int parse_generic_entry(
 			size_t indent,
 			u64 object_id,
 			const u8 *key,
+			u16 key_offset,
 			u16 key_size,
 			const u8 *value,
 			u16 value_offset,
@@ -1862,6 +1869,8 @@ static int parse_generic_entry(
 		key = &entry[i];
 
 		err = (parse_key ? parse_key : parse_unknown_key)(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1933,6 +1942,8 @@ static int parse_generic_entry(
 			object_id,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key ? key_size : 0,
 			/* const u8 *value */
@@ -1964,6 +1975,7 @@ static int parse_generic_block(
 		const sys_bool add_subnodes_in_offsets_order,
 		void *const context,
 		int (*const parse_key)(
+			refs_node_crawl_context *crawl_context,
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
@@ -1982,6 +1994,7 @@ static int parse_generic_block(
 			size_t indent,
 			u64 object_id,
 			const u8 *key,
+			u16 key_offset,
 			u16 key_size,
 			const u8 *value,
 			u16 value_offset,
@@ -2261,6 +2274,7 @@ static int parse_generic_block(
 			/* void *context */
 			context,
 			/* int (*parse_key)(
+			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
 			 *      const char *prefix,
 			 *      size_t indent,
@@ -2279,6 +2293,7 @@ static int parse_generic_block(
 			 *      size_t indent,
 			 *      u64 object_id,
 			 *      const u8 *key,
+			 *      u16 key_offset,
 			 *      u16 key_size,
 			 *      const u8 *value,
 			 *      u16 value_offset,
@@ -2420,6 +2435,7 @@ static int parse_generic_block(
 				/* void *context */
 				context,
 				/* int (*parse_key)(
+				 *      refs_node_crawl_context *crawl_context,
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
 				 *      const size_t indent,
@@ -2439,6 +2455,7 @@ static int parse_generic_block(
 				 *      u32 block_index_unit,
 				 *      sys_bool is_v3,
 				 *      const u8 *key,
+				 *      u16 key_offset,
 				 *      u16 key_size,
 				 *      const u8 *value,
 				 *      u16 value_size,
@@ -2568,6 +2585,7 @@ static int parse_level2_0x2_leaf_value(
 		const size_t indent,
 		const sys_bool is_v3,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -2589,6 +2607,7 @@ static int parse_level2_0x2_leaf_value(
 	u64 block_number = 0;
 
 	(void) key;
+	(void) key_offset;
 	(void) key_size;
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
@@ -2724,6 +2743,7 @@ static int parse_level2_0x3_leaf_value(
 		const u64 object_id,
 		const sys_bool is_v3,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -2744,6 +2764,7 @@ static int parse_level2_0x3_leaf_value(
 	u64 block_number = 0;
 
 	(void) object_id;
+	(void) key_offset;
 	(void) context;
 
 	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
@@ -2776,6 +2797,7 @@ static int parse_level2_0x4_leaf_value(
 		const u64 object_id,
 		const sys_bool is_v3,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -2792,6 +2814,7 @@ static int parse_level2_0x4_leaf_value(
 	u64 block_number = 0;
 
 	(void) object_id;
+	(void) key_offset;
 	(void) context;
 
 	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
@@ -2963,6 +2986,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		const size_t indent,
 		const u64 object_id,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -3013,6 +3037,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		const size_t indent,
 		const u64 object_id,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -3020,7 +3045,6 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		const u32 entry_size,
 		void *const context)
 {
-	const u32 block_index_unit = crawl_context->block_index_unit;
 	const sys_bool is_v3 =
 		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	refs_block_map *const mappings = (refs_block_map*) context;
@@ -3029,7 +3053,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 	block_range leaf_range;
 
 	(void) object_id;
-	(void) block_index_unit;
+	(void) key_offset;
 	(void) is_v3;
 	(void) key;
 	(void) key_size;
@@ -3233,6 +3257,7 @@ static int parse_level2_0x21_leaf_value(
 		const u64 object_id,
 		const sys_bool is_v3,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -3249,6 +3274,7 @@ static int parse_level2_0x21_leaf_value(
 	u64 block_number = 0;
 
 	(void) object_id;
+	(void) key_offset;
 	(void) context;
 
 	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
@@ -3371,6 +3397,7 @@ out:
 #endif
 
 static int parse_level2_key(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -3384,6 +3411,8 @@ static int parse_level2_key(
 		void *const context)
 {
 	int err = 0;
+
+	(void) crawl_context;
 
 	if(object_id == 0x2) {
 		err = parse_level2_0x2_key(
@@ -3529,6 +3558,8 @@ static int parse_level2_key(
 #endif
 	else {
 		err = parse_unknown_key(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -3563,6 +3594,7 @@ static int parse_level2_leaf_value(
 		const size_t indent,
 		const u64 object_id,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -3588,6 +3620,8 @@ static int parse_level2_leaf_value(
 			is_v3,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3613,6 +3647,8 @@ static int parse_level2_leaf_value(
 			is_v3,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3640,6 +3676,8 @@ static int parse_level2_leaf_value(
 			is_v3,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3667,6 +3705,8 @@ static int parse_level2_leaf_value(
 			object_id,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3694,6 +3734,8 @@ static int parse_level2_leaf_value(
 			object_id,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3724,6 +3766,8 @@ static int parse_level2_leaf_value(
 			is_v3,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3753,6 +3797,8 @@ static int parse_level2_leaf_value(
 			is_v3,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3781,6 +3827,8 @@ static int parse_level2_leaf_value(
 			is_v3,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3811,6 +3859,8 @@ static int parse_level2_leaf_value(
 			is_v3,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3839,6 +3889,8 @@ static int parse_level2_leaf_value(
 			object_id,
 			/* const u8 *key */
 			key,
+			/* u16 key_offset */
+			key_offset,
 			/* u16 key_size */
 			key_size,
 			/* const u8 *value */
@@ -3962,6 +4014,7 @@ static int parse_level2_block(
 		/* void *context */
 		(object_id == 0x2) ? &context : NULL,
 		/* int (*parse_key)(
+		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
@@ -3975,7 +4028,7 @@ static int parse_level2_block(
 		 *      void *context) */
 		parse_level2_key,
 		/* int (*parse_leaf_value)(
-		 *      refs_node_crawl_context *const crawl_context,
+		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
@@ -4041,6 +4094,137 @@ out:
 	return err;
 }
 
+static size_t parse_level3_extent_key(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const key,
+		const size_t key_size)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	size_t i = 0;
+
+	if(key_size < 0xE) {
+		return 0;
+	}
+
+	i += print_unknown64(prefix, indent, key, &key[0x0]);
+	i += print_unknown32(prefix, indent, key, &key[0x8]);
+	i += print_unknown16(prefix, indent, key, &key[0xC]);
+
+	return i;
+}
+
+static size_t parse_level3_extent_value(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u32 block_index_unit,
+		const sys_bool is_v3,
+		const u8 *const value,
+		const size_t value_size,
+		u64 *const out_first_block,
+		u64 *const out_block_count)
+{
+	const size_t block_count_offset = (is_v3 ? 0xE4 : 0xE0) - 0x10;
+	const size_t first_block_offset = (is_v3 ? 0xD0 : 0xE8) - 0x10;
+
+	u64 first_block = 0;
+	u64 block_count = 0;
+
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	size_t i = 0;
+
+	if(value_size < 0x4E - 0x10) {
+		return 0;
+	}
+
+	i += print_unknown32(prefix, indent, value, &value[i]); /* 0x10 */
+	i += print_unknown32(prefix, indent, value, &value[i]); /* 0x14 */
+	i += print_unknown32(prefix, indent, value, &value[i]); /* 0x18 */
+	i += print_unknown32(prefix, indent, value, &value[i]); /* 0x1C */
+	i += print_unknown32(prefix, indent, value, &value[i]); /* 0x20 */
+	i += print_unknown32(prefix, indent, value, &value[i]); /* 0x24 */
+	i += print_unknown64(prefix, indent, value, &value[i]); /* 0x28 */
+	i += print_unknown64(prefix, indent, value, &value[i]); /* 0x30 */
+	i += print_unknown64(prefix, indent, value, &value[i]); /* 0x38 */
+	i += print_unknown32(prefix, indent, value, &value[i]); /* 0x40 */
+	i += print_unknown16(prefix, indent, value, &value[i]); /* 0x44 */
+
+	if(i + 2 <= value_size) {
+		i += print_le16_dechex("Number of clusters", prefix, indent,
+			value, &value[i]); /* 0x46 */
+	}
+	/* 0x48:
+	 * After this, the first block offset and the block count offset
+	 * will differ depending on whether it's v1 or v3 and they won't even
+	 * appear in the same order, so the code to print them is a bit
+	 * convoluted. */
+	if(i < value_size) {
+		const size_t data_size =
+			sys_min(value_size,
+			sys_min(block_count_offset, first_block_offset)) - i;
+		print_data_with_base(prefix, indent, i,
+			value_size,
+			&value[i], data_size);
+		i += data_size;
+	}
+	if(block_count_offset < first_block_offset && i + 8 <= value_size) {
+		block_count = read_le64(&value[block_count_offset]);
+		emit(prefix, indent, "Block count @ %" PRIuz " / "
+			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64 " "
+			"(%" PRIu64 " bytes)",
+			PRAuz(i),
+			PRAXz(i),
+			PRAu64(block_count),
+			PRAX64(block_count),
+			PRAu64(block_count * block_index_unit));
+		i += 8;
+	}
+	if(i < first_block_offset) {
+		print_data_with_base(prefix, indent, i, value_size,
+			&value[i], first_block_offset - i);
+		i = first_block_offset;
+	}
+	if(i + 8 <= value_size) {
+		first_block = read_le64(&value[first_block_offset]);
+		emit(prefix, indent, "First block @ %" PRIuz " / 0x%" PRIXz ": "
+			"%" PRIu64 " / 0x%" PRIX64 " (%" PRIu64 " bytes)",
+			PRAuz(i),
+			PRAXz(i),
+			PRAu64(first_block),
+			PRAX64(first_block),
+			PRAu64(first_block * block_index_unit));
+		i += 8;
+	}
+	if(i < block_count_offset) {
+		print_data_with_base(prefix, indent, i, value_size,
+			&value[i], block_count_offset - i);
+		i = block_count_offset;
+	}
+	if(block_count_offset > first_block_offset && i + 8 <= value_size) {
+		block_count = read_le32(&value[block_count_offset]);
+		emit(prefix, indent, "Block count @ %" PRIuz " / "
+			"0x%" PRIXz ": %" PRIu32 " / 0x%" PRIX32 " "
+			"(%" PRIu64 " bytes)",
+			PRAuz(i),
+			PRAXz(i),
+			PRAu32(block_count),
+			PRAX32(block_count),
+			PRAu64(((u64) block_count) * block_index_unit));
+		i += 4;
+	}
+
+	*out_first_block = first_block;
+	*out_block_count = block_count;
+
+	return i;
+}
+
 static size_t parse_level3_extent_attribute(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -4067,84 +4251,40 @@ static size_t parse_level3_extent_attribute(
 		return 0;
 	}
 
-	print_unknown32(prefix, indent, attribute, &attribute[0x8]);
-	print_unknown32(prefix, indent, attribute, &attribute[0xC]);
-	print_unknown64(prefix, indent, attribute, &attribute[0x10]);
-	print_unknown64(prefix, indent, attribute, &attribute[0x18]);
-	print_unknown32(prefix, indent, attribute, &attribute[0x20]);
-	print_unknown32(prefix, indent, attribute, &attribute[0x24]);
-	print_unknown32(prefix, indent, attribute, &attribute[0x28]);
-	print_unknown32(prefix, indent, attribute, &attribute[0x2C]);
-	print_unknown32(prefix, indent, attribute, &attribute[0x30]);
-	print_unknown32(prefix, indent, attribute, &attribute[0x34]);
-	print_unknown64(prefix, indent, attribute, &attribute[0x38]);
-	print_unknown64(prefix, indent, attribute, &attribute[0x40]);
-	print_unknown64(prefix, indent, attribute, &attribute[0x48]);
-	print_unknown32(prefix, indent, attribute, &attribute[0x50]);
-	print_unknown16(prefix, indent, attribute, &attribute[0x54]);
-	i = 0x56;
+	i += parse_level3_extent_key(
+		/* refs_node_walk_visitor *visitor */
+		visitor,
+		/* const char *prefix */
+		prefix,
+		/* size_t indent */
+		indent,
+		/* const u8 *key */
+		&attribute[0x10],
+		/* size_t key_size */
+		attribute_size - 0x10);
 
-	if(i + 2 <= attribute_size) {
-		i += print_le16_dechex("Number of clusters", prefix, indent,
-			attribute, &attribute[i]);
-	}
-	if(i < attribute_size) {
-		const size_t data_size =
-			sys_min(attribute_size,
-			sys_min(block_count_offset, first_block_offset)) - i;
-		print_data_with_base(prefix, indent, i,
-			attribute_size,
-			&attribute[i], data_size);
-		i += data_size;
-	}
-	if(block_count_offset < first_block_offset && i + 8 <= attribute_size) {
-		block_count = read_le64(&attribute[block_count_offset]);
-		emit(prefix, indent, "Block count @ %" PRIuz " / "
-			"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64 " "
-			"(%" PRIu64 " bytes)",
-			PRAuz(i),
-			PRAXz(i),
-			PRAu64(block_count),
-			PRAX64(block_count),
-			PRAu64(block_count * block_index_unit));
-		i += 8;
-	}
-	if(i < first_block_offset) {
-		print_data_with_base(prefix, indent, i, attribute_size,
-			&attribute[i], first_block_offset - i);
-		i = first_block_offset;
-	}
-	if(i + 8 <= attribute_size) {
-		first_block = read_le64(&attribute[first_block_offset]);
-		emit(prefix, indent, "First block @ %" PRIuz " / 0x%" PRIXz ": "
-			"%" PRIu64 " / 0x%" PRIX64 " (%" PRIu64 " bytes)",
-			PRAuz(i),
-			PRAXz(i),
-			PRAu64(first_block),
-			PRAX64(first_block),
-			PRAu64(first_block * block_index_unit));
-		i += 8;
-	}
-	if(i < block_count_offset) {
-		print_data_with_base(prefix, indent, i, attribute_size,
-			&attribute[i], block_count_offset - i);
-		i = block_count_offset;
-	}
-	if(block_count_offset > first_block_offset && i + 8 <= attribute_size) {
-		block_count = read_le32(&attribute[block_count_offset]);
-		emit(prefix, indent, "Block count @ %" PRIuz " / "
-			"0x%" PRIXz ": %" PRIu32 " / 0x%" PRIX32 " (%" PRIu64 " "
-			"bytes)",
-			PRAuz(i),
-			PRAXz(i),
-			PRAu32(block_count),
-			PRAX32(block_count),
-			PRAu64(((u64) block_count) * block_index_unit));
-		i += 4;
-	}
+	/* XXX: This might be padding between key and value. */
+	i += print_unknown16(prefix, indent, attribute, &attribute[0x1E]);
 
-	*out_first_block = first_block;
-	*out_block_count = block_count;
+	i += parse_level3_extent_value(
+		/* refs_node_walk_visitor *visitor */
+		visitor,
+		/* const char *prefix */
+		prefix,
+		/* size_t indent */
+		indent,
+		/* u32 block_index_unit */
+		block_index_unit,
+		/* sys_bool is_v3 */
+		is_v3,
+		/* const u8 *value */
+		&attribute[0x20],
+		/* size_t value_size */
+		attribute_size - 0x20,
+		/* u64 *out_first_block */
+		out_first_block,
+		/* u64 *out_block_count */
+		out_block_count);
 
 	return i;
 }
@@ -4221,6 +4361,7 @@ static int parse_level3_object_id_key(
 }
 
 static int parse_level3_unknown_key(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -4235,6 +4376,7 @@ static int parse_level3_unknown_key(
 
 	int err = 0;
 
+	(void) crawl_context;
 	(void) context;
 
 	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
@@ -4248,6 +4390,7 @@ static int parse_level3_unknown_key(
 }
 
 static int parse_level3_key(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -4300,6 +4443,8 @@ static int parse_level3_key(
 	}
 	else {
 		err = parse_level3_unknown_key(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -4316,6 +4461,3092 @@ static int parse_level3_key(
 			entry_size,
 			/* void *context */
 			context);
+	}
+
+	return err;
+}
+
+static int parse_attribute_key(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const sys_bool is_v3,
+		const sys_bool is_index,
+		const u8 *const key,
+		const u16 key_offset,
+		const u16 key_size,
+		const u32 entry_size,
+		void *const context)
+{
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	int err = 0;
+	u32 stream_type;
+	u16 j = 0;
+	char *cstr = NULL;
+
+	(void) object_id;
+	(void) is_v3;
+	(void) is_index;
+
+	emit(prefix, indent - 1, "Key (attribute):");
+
+	if(key_size >= 0x10) {
+		stream_type = read_le32(&key[0x0C]);
+	}
+
+#if 0
+	if(attribute_index - 1 == 1 &&
+		key_size >= j + 0x08)
+	{
+#if 1
+		/* This has the same layout as the allocation entry in a
+		 * node. */
+		err = parse_block_allocation_entry(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* size_t indent */
+			indent,
+			/* sys_bool is_v3 */
+			is_v3,
+			/* const u8 *entry */
+			&key[j],
+			/* u32 entry_size */
+			key_size,
+			/* u32 entry_offset */
+			offset_in_value,
+			/* u32 *out_flags */
+			NULL,
+			/* u32 *out_value_offsets_start */
+			NULL,
+			/* u32 *out_value_offsets_end */
+			NULL,
+			/* u32 *out_value_count */
+			&number_of_attributes);
+		if(err) {
+			goto out;
+		}
+
+		j += key_size;
+#else
+		j += print_unknown32(prefix, indent, key,
+			&key[j]);
+		number_of_attributes = read_le16(&key[j]);
+		j += print_le16_dechex("Number of attributes", prefix,
+			indent, key, &key[j]);
+		j += print_unknown16(prefix, indent, key,
+			&key[j]);
+		j += print_unknown64(prefix, indent, key,
+			&key[j]);
+		if(key_size - j >= 0x8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]);
+		}
+		if(key_size - j >= 0x8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]);
+		}
+#endif
+	}
+	else
+#endif
+	if(key_offset == 0x0010 && key_size == 0x0028 && entry_size >= 0x48) {
+		u32 number_of_extents = 0;
+		u32 k;
+
+		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x10 */
+		j += print_unknown16(prefix, indent, key, &key[j]); /* 0x18 */
+		j += print_unknown16(prefix, indent, key, &key[j]); /* 0x1A */
+		j += print_le16_hex("Attribute type (unnamed $DATA)", prefix,
+			indent, key, &key[j]); /* 0x1C */
+		j += print_unknown16(prefix, indent, key, &key[j]); /* 0x1E */
+		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x20 */
+		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x28 */
+		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x30 */
+		/* Key ends here. */
+#if 0
+		j += print_unknown32(prefix, indent, key,
+			&key[j]); /* 0x38 */
+		j += print_unknown32(prefix, indent, key,
+			&key[j]); /* 0x3C */
+		j += print_unknown32(prefix, indent, key,
+			&key[j]); /* 0x40 */
+		j += print_unknown32(prefix, indent, key,
+			&key[j]); /* 0x44 */
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x48 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x4C */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x4E */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0x50 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Number of clusters",
+				prefix, indent,
+				key, &key[j]); /* 0x58 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x60 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x64 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (1)",
+				prefix, indent,
+				key, &key[j]); /* 0x68 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (2)",
+				prefix, indent,
+				key, &key[j]); /* 0x70 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (3)",
+				prefix, indent,
+				key, &key[j]); /* 0x78 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (4)",
+				prefix, indent,
+				key, &key[j]); /* 0x80 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0x88 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0x90 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0x98 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0xA0 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0xA8 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0xB0 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0xB8 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xC0 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xC4 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xC8 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xCC */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xD0 */
+		}
+		if(key_size - j >= 4) {
+			number_of_extents = read_le32(&key[j]);
+			j += print_le32_dechex("Number of extents",
+				prefix, indent,
+				key, &key[j]); /* 0xD4 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0xD8 */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0xE0 */
+		}
+
+		for(k = 0; k < number_of_extents; ++k) {
+			u64 first_block = 0;
+			u32 block_count = 0;
+
+			emit(prefix, indent, "Extent %" PRIu32 "/"
+				"%" PRIu32 ":",
+				PRAu32(k + 1),
+				PRAu32(number_of_extents));
+			if(key_size - j >= 8) {
+				first_block =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					read_le64(&key[j]));
+				j += print_le64_dechex("Extent start "
+					"physical block value", prefix,
+					indent + 1, key,
+					&key[j]);
+				emit(prefix, indent + 3, "Actual "
+					"physical block: %" PRIu64 " / "
+					"0x%" PRIX64 " (byte offset: "
+					"%" PRIu64 ")",
+					PRAu64(first_block),
+					PRAX64(first_block),
+					PRAu64(first_block *
+					block_index_unit));
+			}
+			else {
+				break;
+			}
+
+			if(key_size - j >= 4) {
+				j += print_le32_dechex("Flags (?)",
+					prefix, indent + 1, key,
+					&key[j]);
+			}
+			else {
+				break;
+			}
+
+			if(key_size - j >= 8) {
+				/* XXX: Misaligned? */
+				j += print_le64_dechex("Extent start "
+					"logical block", prefix,
+					indent + 1, key,
+					&key[j]);
+			}
+			else {
+				break;
+			}
+
+			if(key_size - j >= 4) {
+				block_count = read_le32(&key[j]);
+				j += print_le32_dechex("Extent block "
+					"count (?)", prefix, indent + 1,
+					key, &key[j]);
+			}
+			else {
+				break;
+			}
+
+			if(first_block && block_count && visitor &&
+				visitor->node_file_extent)
+			{
+				err = visitor->node_file_extent(
+					/* void *context */
+					visitor->context,
+					/* u64 first_block */
+					first_block,
+					/* u64 block_count */
+					block_count,
+					/* u32 block_index_unit */
+					block_index_unit);
+				if(err) {
+					goto out;
+				}
+			}
+		}
+
+		if(number_of_extents) {
+			if(key_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					key, &key[j]);
+			}
+			if(key_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					key, &key[j]);
+			}
+			if(key_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					key, &key[j]);
+			}
+			if(key_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					key, &key[j]);
+			}
+			if(key_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					key, &key[j]);
+			}
+			if(key_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					key, &key[j]);
+			}
+		}
+#endif
+	}
+	else if(key_offset == 0x0010 && key_size == 0x000E) {
+		/* This attribute type seems to hold extent info. */
+		u64 first_block = 0;
+		u64 block_count = 0;
+
+		j += parse_level3_extent_key(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size);
+	}
+	else if(key_offset == 0x0010 && key_size == 0x0010 &&
+		stream_type == 0x0080)
+	{
+		/* This attribute type appears to be inline data for the
+		 * data stream. */
+		u64 file_size = 0;
+
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x1A */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Attribute type (unnamed $DATA)",
+				prefix, indent, key, &key[j]); /* 0x1C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x20 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x24 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x28 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x2C */
+		}
+		if(key_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]); /* 0x30 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size 1",
+				prefix, indent,
+				key, &key[j]); /* 0x38 */
+		}
+		if(key_size - j >= 8) {
+			file_size = read_le64(&key[j]);
+			j += print_le64_dechex("Logical size 1",
+				prefix, indent,
+				key, &key[j]); /* 0x40 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Logical size 2",
+				prefix, indent,
+				key, &key[j]); /* 0x48 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size 2",
+				prefix, indent,
+				key, &key[j]); /* 0x50 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x58 */
+		}
+		if(visitor && visitor->node_file_data) {
+			err = visitor->node_file_data(
+				/* void *context */
+				visitor->context,
+				/* const void *data */
+				&key[j],
+				/* size_t size */
+				file_size);
+			if(err) {
+				goto out;
+			}
+		}
+	}
+	else if(key_offset == 0x0010 && key_size == 0x0010 &&
+		stream_type == 0x00E0)
+	{
+		/* This attribute type appears to be inline data for the
+		 * EA stream. Likely same format as the above. */
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x16 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Stream type ($EA)",
+				prefix, indent,
+				key, &key[j]); /* 0x1C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x20 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x24 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x28 */
+		}
+
+		/* After this, the EA list starts. */
+		while(key_size - j >= 8) {
+			u32 offset_to_next_ea = 0;
+			u32 ea_end_offset = 0;
+			u8 name_length = 0;
+			u16 data_length = 0;
+			const char *name = NULL;
+			const void *data = NULL;
+
+			if(key_size - j >= 4) {
+				offset_to_next_ea =
+					read_le32(&key[j]);
+				ea_end_offset = j + offset_to_next_ea;
+				j += print_le32_dechex("Offset to next "
+					"EA", prefix, indent,
+					key, &key[j]);
+				if(ea_end_offset > key_size) {
+					sys_log_warning("Offset to "
+						"next EA is outside "
+						"the bounds of the "
+						"attribute: "
+						"%" PRIu32 " > "
+						"%" PRIu32,
+						PRAu32(ea_end_offset),
+						PRAu32(key_size));
+					ea_end_offset = key_size;
+				}
+			}
+			if(ea_end_offset - j >= 1) {
+				j += print_u8_dechex("Flags", prefix,
+					indent,
+					key, &key[j]);
+			}
+			if(ea_end_offset - j >= 1) {
+				name_length = key[j];
+				j += print_u8_dechex("Name length",
+					prefix, indent,
+					key, &key[j]);
+			}
+			if(name_length > ea_end_offset - j) {
+				sys_log_warning("Name length exceeds "
+					"EA bounds: %" PRIu8 " > "
+					"%" PRIu32,
+					PRAu8(name_length),
+					PRAu32(ea_end_offset - j));
+			}
+			if(ea_end_offset - j >= 2) {
+				data_length = read_le16(&key[j]);
+				j += print_le16_dechex("Data length",
+					prefix, indent,
+					key, &key[j]);
+			}
+			name = (const char*) &key[j];
+			emit(prefix, indent, "Name @ %" PRIuz " / "
+				"0x%" PRIXz ": %" PRIbs,
+				PRAuz(j), PRAXz(j),
+				PRAbs(sys_min(ea_end_offset - j,
+				name_length), &key[j]));
+			if(ea_end_offset - j < name_length) {
+				break;
+			}
+			j += name_length;
+			print_u8_hex("Null terminator", prefix,
+				indent, key, &key[j]);
+			++j;
+			if(data_length > ea_end_offset - j) {
+				sys_log_warning("data length exceeds "
+					"EA bounds: %" PRIu8 " > "
+					"%" PRIu32,
+					PRAu8(data_length),
+					PRAu32(ea_end_offset - j));
+			}
+			data = &key[j];
+			emit(prefix, indent, "Data @ %" PRIuz " / "
+				"0x%" PRIXz ":",
+				PRAuz(j), PRAXz(j));
+			print_data_with_base(prefix, indent + 1, 0,
+				data_length, &key[j],
+				sys_min(ea_end_offset - j,
+				data_length));
+			if(visitor && visitor->node_ea) {
+				err = visitor->node_ea(
+					/* void *context */
+					visitor->context,
+					/* const char *name */
+					name,
+					/* size_t name_length */
+					name_length,
+					/* const void *data */
+					data,
+					/* size_t data_size */
+					data_length);
+				if(err) {
+					goto out;
+				}
+			}
+			if(ea_end_offset - j < data_length) {
+				break;
+			}
+			j += data_length;
+
+			if(j < ea_end_offset) {
+				print_data_with_base(prefix, indent,
+					j, ea_end_offset,
+					&key[j],
+					ea_end_offset - j);
+				j = ea_end_offset;
+			}
+		}
+	}
+	else if(key_offset == 0x0010 && stream_type == 0x000500B0) {
+		const u16 name_start = 0x10;
+		const u16 name_end = key_size;
+#if 0
+		u16 value_offset = 0;
+		u32 value_size = 0;
+#endif
+		size_t cstr_length = 0;
+		u32 data_size = 0;
+		sys_bool non_resident = SYS_FALSE;
+
+		/* This attribute type contains data about alternate data
+		 * streams. */
+#if 0
+		j += parse_level3_attribute_header(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* size_t remaining_in_value */
+			remaining_in_value,
+			/* const char *attribute */
+			key,
+			/* u16 attribute_size */
+			entry_size,
+			/* u16 attribute_index */
+			attribute_index);
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x08 */
+		}
+		if(key_size - j >= 2) {
+			value_offset = read_le16(&key[j]);
+			j += print_le16_dechex("Value offset", prefix,
+				indent, key,
+				&key[j]); /* 0x0A */
+		}
+		if(key_size - j >= 4) {
+			value_size = read_le32(&key[j]);
+			j += print_le32_dechex("Value size (1)", prefix,
+				indent, key,
+				&key[j]); /* 0x0C */
+		}
+#endif
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Value size (2)", prefix,
+				indent, key,
+				&key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x16 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Stream type (named $DATA)",
+				prefix, indent, key, &key[j]); /* 0x1C */
+		}
+
+#if 1 /* Not possible. Disable when confident. */
+		if(j < name_start) {
+			const u32 print_end =
+				sys_min(name_start,
+				key_size);
+			print_data_with_base(prefix, indent, j,
+				print_end, &key[j],
+				print_end - j);
+			j = print_end;
+		}
+#endif
+
+		if(key_size - j >= name_end - name_start) {
+			const u16 name_length =
+				(name_end - name_start) / sizeof(refschar);
+			err = sys_unistr_decode(
+				/* const refschar *ins */
+				(const refschar*) &key[name_start],
+				/* size_t ins_len */
+				name_length,
+				/* char **outs */
+				&cstr,
+				/* size_t *outs_len */
+				&cstr_length);
+			if(err) {
+				sys_log_perror(err, "Error while decoding name "
+					"in attribute key");
+				goto out;
+			}
+
+			emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
+				"(length: %" PRIuz "):",
+				PRAuz(j), PRAXz(j), PRAuz(cstr_length));
+			emit(prefix, indent + 1, "%" PRIbs,
+				PRAbs(cstr_length, cstr));
+			j += name_length * sizeof(refschar);
+		}
+
+		if(j < key_size) {
+			const u32 print_end = sys_min(key_size, key_size);
+			print_data_with_base(prefix, indent, j, print_end,
+				&key[j], print_end - j);
+			j = print_end;
+		}
+
+#if 0
+		emit(prefix, indent, "Value @ %" PRIuz " / "
+			"0x%" PRIXz " (size: %" PRIuz " / "
+			"0x%" PRIXz "):",
+			PRAuz(j), PRAXz(j), PRAuz(value_size),
+			PRAXz(value_size));
+
+		{
+			const u8 *const value = &key[j];
+			const u32 true_value_size =
+				sys_min(key_size - j,
+				value_size);
+			u16 k = 0;
+
+			if(true_value_size - k >= 4) {
+				u32 flags;
+
+				flags = read_le32(&value[k]);
+				k += print_le32_dechex("Flags", prefix,
+					indent + 1, value,
+					&value[k]);
+
+				if(flags & 0x10000000UL) {
+					flags &= ~0x10000000UL;
+					emit(prefix, indent + 3,
+						"NON_RESIDENT%s",
+						flags ? " |" : "");
+					non_resident = SYS_TRUE;
+				}
+				if(flags) {
+					emit(prefix, indent + 3,
+						"<unknown: "
+						"0x%" PRIu32 ">",
+						PRAu32(flags));
+				}
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_le32_dechex("Allocated size "
+					"(1)", prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				data_size = read_le32(&value[k]);
+				k += print_le32_dechex("Attribute size "
+					"(1)", prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_le32_dechex("Attribute size "
+					"(2)", prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_le32_dechex("Allocated size "
+					"(2)", prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k >= 4) {
+				k += print_unknown32(prefix, indent + 1,
+					value, &value[k]);
+			}
+			if(true_value_size - k > 0 && !non_resident) {
+				const u32 data_limit =
+					sys_min(data_size,
+					value_size - k);
+				refs_node_stream_data data;
+
+				memset(&data, 0, sizeof(data));
+
+				emit(prefix, indent + 1, "Resident "
+					"data @ %" PRIuz " / "
+					"0x%" PRIXz " (length: "
+					"%" PRIuz "):",
+					PRAuz(k), PRAXz(k),
+					PRAuz(data_size));
+
+				data.resident = SYS_TRUE;
+				data.data.resident = &value[k];
+
+				if(visitor && visitor->node_stream) {
+					err = visitor->node_stream(
+						/* void *context */
+						visitor->context,
+						/* const char *name */
+						cstr,
+						/* size_t name_length */
+						cstr_length,
+						/* u64 data_size */
+						data_size,
+						/* const
+						 * refs_node_stream_data
+						 * *data_reference */
+						&data);
+					if(err) {
+						goto out;
+					}
+				}
+
+				print_data_with_base(prefix, indent + 3,
+					k, k + data_limit, &value[k],
+					data_limit);
+				k += data_limit;
+			}
+			else if(non_resident) {
+				u64 stream_id = 0;
+
+				emit(prefix, indent + 1, "Non-resident "
+					"data @ %" PRIuz " / "
+					"0x%" PRIXz " (length: "
+					"%" PRIuz "):",
+					PRAuz(k), PRAXz(k),
+					PRAuz(data_size));
+				if(true_value_size - k >= 4) {
+					stream_id =
+						read_le64(&value[k]);
+					k += print_le64_dechex("Stream "
+						"ID", prefix,
+						indent + 3, value,
+						&value[k]);
+				}
+
+				if(visitor && visitor->node_stream &&
+					stream_id)
+				{
+					refs_node_stream_data data;
+
+					memset(&data, 0, sizeof(data));
+
+					data.resident = SYS_FALSE;
+					data.data.non_resident.stream_id
+						= stream_id;
+
+					err = visitor->node_stream(
+						/* void *context */
+						visitor->context,
+						/* const char *name */
+						cstr,
+						/* size_t name_length */
+						cstr_length,
+						/* u64 data_size */
+						data_size,
+						/* const
+						 * refs_node_stream_data
+						 * *data_reference */
+						&data);
+					if(err) {
+						goto out;
+					}
+				}
+				if(true_value_size - k >= 4) {
+					k += print_unknown32(prefix,
+						indent + 3, value,
+						&value[k]);
+				}
+			}
+
+			if(k < true_value_size) {
+				print_data_with_base(prefix, indent + 1,
+					k, true_value_size, &value[k],
+					true_value_size - k);
+				k = true_value_size;
+			}
+
+			j += k;
+		}
+#endif
+	}
+	else if(key_offset == 0x0010 && key_size == 0x50) {
+		u64 stream_id = 0;
+		u32 num_extents = 0;
+		u32 k;
+
+#if 0
+		j += parse_level3_attribute_header(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* size_t remaining_in_value */
+			remaining_in_value,
+			/* const char *attribute */
+			key,
+			/* u16 attribute_size */
+			entry_size,
+			/* u16 attribute_index */
+			attribute_index);
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x08 */
+		}
+		if(key_size - j >= 2) {
+			j += print_le16_dechex("Value offset", prefix,
+				indent, key,
+				&key[j]); /* 0x0A */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Value size (1)", prefix,
+				indent, key,
+				&key[j]); /* 0x0C */
+		}
+#endif
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Value size (2)", prefix,
+				indent, key,
+				&key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x16 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x1C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x20 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x24 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x28 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x2C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x30 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x34 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x38 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x3C */
+		}
+		if(key_size - j >= 4) {
+			stream_id = read_le64(&key[j]);
+			j += print_le32_dechex("Stream ID",
+				prefix, indent,
+				key, &key[j]); /* 0x40 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x44 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x48 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x4C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x50 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x54 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x58 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x5C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x60 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x64 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x68 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x6C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x70 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x74 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x78 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x7C */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Number of extents",
+				prefix, indent,
+				key, &key[j]); /* 0x80 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x84 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x88 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x8C */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (1)",
+				prefix, indent,
+				key, &key[j]); /* 0x90 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (2)",
+				prefix, indent,
+				key, &key[j]); /* 0x98 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (3)",
+				prefix, indent,
+				key, &key[j]); /* 0xA0 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (4)",
+				prefix, indent,
+				key, &key[j]); /* 0xA8 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xB0 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xB4 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xB8 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xBC */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xC0 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xC4 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xC8 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xCC */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xD0 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xD4 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xD8 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xDC */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xE0 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xE4 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xE8 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xEC */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xF0 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xF4 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0xF8 */
+		}
+		if(key_size - j >= 4) {
+			num_extents = read_le32(&key[j]);
+			j += print_le32_dechex("Number of extents (2)",
+				prefix, indent,
+				key, &key[j]); /* 0xFC */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x100 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x104 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x108 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x10C */
+		}
+
+		/* Iterate over extents in stream. */
+		for(k = 0; k < num_extents &&
+			(key_size - j) >= 24; ++k)
+		{
+			const u64 first_physical_block =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					read_le64(&key[j]));
+			/* TODO: Guessing that this is the number of
+			 * clusters in the extent. Not sure about it. */
+			const u32 cluster_count =
+				read_le32(&key[j + 20]);
+
+			emit(prefix, indent, "Extent %" PRIu32 "/"
+				"%" PRIu32 ":",
+				PRAu32(k + 1), PRAu32(num_extents));
+
+			j += print_le64_dechex("First block", prefix,
+				indent + 1,
+				key, &key[j]); /* 0x110 */
+			emit(prefix, indent + 2,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(first_physical_block),
+				PRAX64(first_physical_block),
+				PRAu64(first_physical_block *
+				block_index_unit));
+			if(visitor && visitor->node_stream_extent) {
+				err = visitor->node_stream_extent(
+					/* void *context */
+					visitor->context,
+					/* u64 stream_id */
+					stream_id,
+					/* u64 first_block */
+					first_physical_block,
+					/* u32 block_index_unit */
+					block_index_unit,
+					/* u32 cluster_count */
+					cluster_count);
+				if(err) {
+					goto out;
+				}
+			}
+
+			j += print_unknown32(prefix, indent + 1,
+				key, &key[j]); /* 0x118 */
+
+			j += print_unknown32(prefix, indent + 1,
+				key, &key[j]); /* 0x11C */
+
+			j += print_unknown32(prefix, indent + 1,
+				key, &key[j]); /* 0x120 */
+
+			j += print_le32_dechex("Number of clusters in "
+				"extent (?)", prefix, indent + 1,
+				key, &key[j]); /* 0x124 */
+		}
+	}
+	else if(key_offset == 0x10 && key_size == 0x00) {
+		/* This appears to contain an independently allocated
+		 * (non-resident) attribute list. */
+		u64 logical_blocks[4] = { 0, 0, 0, 0 };
+		u64 physical_blocks[4] = { 0, 0, 0, 0 };
+
+#if 0
+		j += parse_level3_attribute_header(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* size_t remaining_in_value */
+			remaining_in_value,
+			/* const char *attribute */
+			key,
+			/* u16 attribute_size */
+			entry_size,
+			/* u16 attribute_index */
+			attribute_index);
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x08 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x0A */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x0C */
+		}
+#endif
+		if(key_size - j >= 8) {
+			logical_blocks[0] = read_le64(&key[j]);
+			physical_blocks[0] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[0]);
+
+			j += print_le64_dechex("Block number 1", prefix,
+				indent,
+				key, &key[j]); /* 0x10 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[0]),
+				PRAX64(physical_blocks[0]),
+				PRAu64(physical_blocks[0] *
+				block_index_unit));
+		}
+		if(key_size - j >= 8) {
+			logical_blocks[1] = read_le64(&key[j]);
+			physical_blocks[1] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[1]);
+
+			j += print_le64_dechex("Block number 2", prefix,
+				indent,
+				key, &key[j]); /* 0x18 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[1]),
+				PRAX64(physical_blocks[1]),
+				PRAu64(physical_blocks[1] *
+				block_index_unit));
+		}
+		if(key_size - j >= 8) {
+			logical_blocks[2] = read_le64(&key[j]);
+			physical_blocks[2] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[2]);
+
+			j += print_le64_dechex("Block number 3", prefix,
+				indent,
+				key, &key[j]); /* 0x20 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[2]),
+				PRAX64(physical_blocks[2]),
+				PRAu64(physical_blocks[2] *
+				block_index_unit));
+		}
+		if(key_size - j >= 8) {
+			logical_blocks[3] = read_le64(&key[j]);
+			physical_blocks[3] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[3]);
+
+			j += print_le64_dechex("Block number 4", prefix,
+				indent,
+				key, &key[j]); /* 0x28 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[3]),
+				PRAX64(physical_blocks[3]),
+				PRAu64(physical_blocks[3] *
+				block_index_unit));
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_hex("Flags", prefix,
+				indent,
+				key, &key[j]); /* 0x30 */
+		}
+		if(key_size - j >= 8) {
+			j += print_le64_hex("Checksum", prefix,
+				indent,
+				key, &key[j]); /* 0x38 */
+		}
+
+		if(logical_blocks[0]) {
+			const size_t bytes_per_read =
+				sys_min(crawl_context->cluster_size,
+				crawl_context->block_size);
+
+			char *block = NULL;
+			size_t bytes_read = 0;
+			u8 i = 0;
+
+			err = sys_malloc(crawl_context->block_size,
+				&block);
+			if(err) {
+				sys_log_perror(err, "Error while "
+					"allocating %" PRIu32 " byte "
+					"block",
+					PRAu32(crawl_context->
+					block_size));
+				goto out;
+			}
+
+			while(bytes_read < crawl_context->block_size) {
+				sys_log_debug("Reading logical block "
+					"%" PRIu64 " / physical block "
+					"%" PRIu64 " into "
+					"%" PRIuz "-byte buffer %p at "
+					"buffer offset %" PRIuz,
+					PRAu64(logical_blocks[i]),
+					PRAu64(physical_blocks[i]),
+					PRAuz(crawl_context->
+					block_size),
+					block,
+					PRAuz(bytes_read));
+				err = sys_device_pread(
+					/* sys_device *dev */
+					crawl_context->dev,
+					/* u64 pos */
+					physical_blocks[i] *
+					block_index_unit,
+					/* size_t count */
+					bytes_per_read,
+					/* void *b */
+					&block[bytes_read]);
+				if(err) {
+					break;
+				}
+
+				bytes_read += bytes_per_read;
+				++i;
+			}
+			if(err) {
+				sys_log_pwarning(err, "Error while "
+					"reading %" PRIuz " bytes from "
+					"attribute block %" PRIu64 " "
+					"(offset %" PRIu64 ")",
+					PRAuz(crawl_context->
+					block_size),
+					PRAu64(physical_blocks[i]),
+					PRAu64(physical_blocks[i] *
+					block_index_unit));
+				goto out;
+			}
+
+			err = parse_generic_block(
+				/* refs_node_crawl_context
+				 *     *crawl_context */
+				crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* size_t indent */
+				indent + 1,
+				/* u64 cluster_number */
+				physical_blocks[0],
+				/* u64 block_number */
+				logical_blocks[0],
+				/* u64 block_queue_index */
+				0 /* Different block queue... */,
+				/* u8 level */
+				4,
+				/* const u8 *block */
+				block,
+				/* u32 block_size */
+				crawl_context->block_size,
+				/* block_queue *block_queue */
+				NULL,
+				/* sys_bool
+				 *     add_subnodes_in_offsets_order */
+				SYS_TRUE,
+				/* void *context */
+				context,
+				/* int (*parse_key)(
+				 *      refs_node_crawl_context *crawl_context,
+				 *      refs_node_walk_visitor *visitor,
+				 *      const char *prefix,
+				 *      size_t indent,
+				 *      u64 object_id,
+				 *      sys_bool is_index,
+				 *      sys_bool is_v3,
+				 *      const u8 *key,
+				 *      u16 key_offset,
+				 *      u16 key_size,
+				 *      u32 entry_size,
+				 *      void *context) */
+				parse_attribute_key,
+				/* int (*parse_leaf_value)(
+				 *      refs_node_crawl_context
+				 *          *crawl_context,
+				 *      refs_node_walk_visitor *visitor,
+				 *      const char *prefix,
+				 *      size_t indent,
+				 *      u64 object_id,
+				 *      const u8 *key,
+				 *      u16 key_size,
+				 *      const u8 *value,
+				 *      u16 value_offset,
+				 *      u16 value_size,
+				 *      u32 entry_size,
+				 *      void *context) */
+				parse_level3_leaf_value,
+				/* int (*leaf_entry_handler)(
+				 *      void *context,
+				 *      const u8 *data,
+				 *      u32 data_size,
+				 *      u32 node_type) */
+				NULL);
+			if(err) {
+				sys_log_pwarning(err, "Error while "
+					"parsing non-resident "
+					"attribute list");
+				goto out;
+			}
+		}
+	}
+	else {
+		/* Unknown type, but assume it conforms to the same initial key
+		 * structure as we've seen in the past. */
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x1A */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Attribute type (unknown)",
+				prefix, indent,
+				key, &key[j]); /* 0x1C */
+		}
+	}
+out:
+	if(j < key_size) {
+		print_data_with_base(prefix, indent, j, key_size, &key[j],
+			key_size - j);
+	}
+
+	if(cstr) {
+		sys_free(&cstr);
+	}
+
+	return err;
+}
+
+static int parse_attribute_leaf_value(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const u8 *const key,
+		const u16 key_offset,
+		const u16 key_size,
+		const u8 *const value,
+		const u16 value_offset,
+		const u16 value_size,
+		const u32 entry_size,
+		void *const context)
+{
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	int err = 0;
+	u32 stream_type;
+	u16 j = 0;
+	char *cstr = NULL;
+	size_t cstr_length = 0;
+
+	(void) object_id;
+
+	emit(prefix, indent - 1, "Value (attribute):");
+
+	if(key_size >= 0x10) {
+		stream_type = read_le32(&key[0x0C]);
+	}
+
+#if 0
+	if(attribute_index - 1 == 1 &&
+		key_size >= j + 0x08)
+	{
+#if 1
+		/* This has the same layout as the allocation entry in a
+		 * node. */
+		err = parse_block_allocation_entry(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* size_t indent */
+			indent,
+			/* sys_bool is_v3 */
+			is_v3,
+			/* const u8 *entry */
+			&key[j],
+			/* u32 entry_size */
+			key_size,
+			/* u32 entry_offset */
+			offset_in_value,
+			/* u32 *out_flags */
+			NULL,
+			/* u32 *out_value_offsets_start */
+			NULL,
+			/* u32 *out_value_offsets_end */
+			NULL,
+			/* u32 *out_value_count */
+			&number_of_attributes);
+		if(err) {
+			goto out;
+		}
+
+		j += key_size;
+#else
+		j += print_unknown32(prefix, indent, key,
+			&key[j]);
+		number_of_attributes = read_le16(&key[j]);
+		j += print_le16_dechex("Number of attributes", prefix,
+			indent, key, &key[j]);
+		j += print_unknown16(prefix, indent, key,
+			&key[j]);
+		j += print_unknown64(prefix, indent, key,
+			&key[j]);
+		if(key_size - j >= 0x8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]);
+		}
+		if(key_size - j >= 0x8) {
+			j += print_unknown64(prefix, indent,
+				key, &key[j]);
+		}
+#endif
+	}
+	else
+#endif
+	if(key_offset == 0x0010 && key_size == 0x0028 && entry_size >= 0x48) {
+		u32 number_of_extents = 0;
+		u32 k;
+
+#if 0
+		j += print_unknown64(prefix, indent, key,
+			&key[j]); /* 0x10 */
+		j += print_unknown16(prefix, indent, key,
+			&key[j]); /* 0x18 */
+		j += print_unknown16(prefix, indent, key,
+			&key[j]); /* 0x1A */
+		j += print_le16_hex("Attribute type (unnamed $DATA)", prefix,
+			indent, key,
+			&key[j]); /* 0x1C */
+		j += print_unknown16(prefix, indent, key,
+			&key[j]); /* 0x1E */
+		j += print_unknown64(prefix, indent, key,
+			&key[j]); /* 0x20 */
+		j += print_unknown64(prefix, indent, key,
+			&key[j]); /* 0x28 */
+		j += print_unknown64(prefix, indent, key,
+			&key[j]); /* 0x30 */
+		/* Key ends here. */
+#endif
+		j += print_unknown32(prefix, indent, value,
+			&value[j]); /* 0x38 */
+		j += print_unknown32(prefix, indent, value,
+			&value[j]); /* 0x3C */
+		j += print_unknown32(prefix, indent, value,
+			&value[j]); /* 0x40 */
+		j += print_unknown32(prefix, indent, value,
+			&value[j]); /* 0x44 */
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x48 */
+		}
+		if(value_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				value, &value[j]); /* 0x4C */
+		}
+		if(value_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				value, &value[j]); /* 0x4E */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0x50 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Number of clusters",
+				prefix, indent,
+				value, &value[j]); /* 0x58 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x60 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x64 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (1)",
+				prefix, indent,
+				value, &value[j]); /* 0x68 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (2)",
+				prefix, indent,
+				value, &value[j]); /* 0x70 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (3)",
+				prefix, indent,
+				value, &value[j]); /* 0x78 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (4)",
+				prefix, indent,
+				value, &value[j]); /* 0x80 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0x88 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0x90 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0x98 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0xA0 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0xA8 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0xB0 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0xB8 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xC0 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xC4 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xC8 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xCC */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xD0 */
+		}
+		if(value_size - j >= 4) {
+			number_of_extents = read_le32(&value[j]);
+			j += print_le32_dechex("Number of extents",
+				prefix, indent,
+				value, &value[j]); /* 0xD4 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0xD8 */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0xE0 */
+		}
+
+		for(k = 0; k < number_of_extents; ++k) {
+			u64 first_block = 0;
+			u32 block_count = 0;
+
+			emit(prefix, indent, "Extent %" PRIu32 "/"
+				"%" PRIu32 ":",
+				PRAu32(k + 1),
+				PRAu32(number_of_extents));
+			if(value_size - j >= 8) {
+				first_block =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					read_le64(&value[j]));
+				j += print_le64_dechex("Extent start physical "
+					"block value",
+					prefix, indent + 1, value, &value[j]);
+				emit(prefix, indent + 3, "Actual physical "
+					"block: %" PRIu64 " / 0x%" PRIX64 " "
+					"(byte offset: %" PRIu64 ")",
+					PRAu64(first_block),
+					PRAX64(first_block),
+					PRAu64(first_block * block_index_unit));
+			}
+			else {
+				break;
+			}
+
+			if(value_size - j >= 4) {
+				j += print_le32_dechex("Flags (?)",
+					prefix, indent + 1, value,
+					&value[j]);
+			}
+			else {
+				break;
+			}
+
+			if(value_size - j >= 8) {
+				/* XXX: Misaligned? */
+				j += print_le64_dechex("Extent start "
+					"logical block", prefix,
+					indent + 1, value,
+					&value[j]);
+			}
+			else {
+				break;
+			}
+
+			if(value_size - j >= 4) {
+				block_count = read_le32(&value[j]);
+				j += print_le32_dechex("Extent block "
+					"count (?)", prefix, indent + 1,
+					value, &value[j]);
+			}
+			else {
+				break;
+			}
+
+			if(first_block && block_count && visitor &&
+				visitor->node_file_extent)
+			{
+				err = visitor->node_file_extent(
+					/* void *context */
+					visitor->context,
+					/* u64 first_block */
+					first_block,
+					/* u64 block_count */
+					block_count,
+					/* u32 block_index_unit */
+					block_index_unit);
+				if(err) {
+					goto out;
+				}
+			}
+		}
+
+		if(number_of_extents) {
+			if(value_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					value, &value[j]);
+			}
+			if(value_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					value, &value[j]);
+			}
+			if(value_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					value, &value[j]);
+			}
+			if(value_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					value, &value[j]);
+			}
+			if(value_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					value, &value[j]);
+			}
+			if(value_size - j >= 4) {
+				j += print_unknown32(prefix, indent,
+					value, &value[j]);
+			}
+		}
+	}
+	else if(key_offset == 0x0010 && key_size == 0x000E) {
+		/* This attribute type seems to hold extent info. */
+		u64 first_block = 0;
+		u64 block_count = 0;
+
+		j += parse_level3_extent_value(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* u32 block_index_unit */
+			block_index_unit,
+			/* sys_bool is_v3 */
+			is_v3,
+			/* const u8 *value */
+			value,
+			/* size_t value_size */
+			value_size,
+			/* u64 *out_first_block */
+			&first_block,
+			/* u64 *out_block_count */
+			&block_count);
+		if(first_block && block_count && visitor &&
+			visitor->node_file_extent)
+		{
+			err = visitor->node_file_extent(
+				/* void *context */
+				visitor->context,
+				/* u64 first_block */
+				first_block,
+				/* u64 block_count */
+				block_count,
+				/* u32 block_index_unit */
+				block_index_unit);
+			if(err) {
+				goto out;
+			}
+		}
+	}
+	else if(key_offset == 0x0010 && key_size == 0x0010 &&
+		stream_type == 0x0080)
+	{
+		/* This attribute type appears to be inline data for the
+		 * data stream. */
+		u64 file_size = 0;
+
+#if 0
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x1A */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Attribute type ($DATA)",
+				prefix, indent,
+				key, &key[j]); /* 0x1C */
+		}
+		/* Key ends here (?). */
+#endif
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x20 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x24 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x28 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x2C */
+		}
+		if(value_size - j >= 8) {
+			j += print_unknown64(prefix, indent,
+				value, &value[j]); /* 0x30 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size 1",
+				prefix, indent,
+				value, &value[j]); /* 0x38 */
+		}
+		if(value_size - j >= 8) {
+			file_size = read_le64(&value[j]);
+			j += print_le64_dechex("Logical size 1",
+				prefix, indent,
+				value, &value[j]); /* 0x40 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Logical size 2",
+				prefix, indent,
+				value, &value[j]); /* 0x48 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size 2",
+				prefix, indent,
+				value, &value[j]); /* 0x50 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x58 */
+		}
+		if(visitor && visitor->node_file_data) {
+			err = visitor->node_file_data(
+				/* void *context */
+				visitor->context,
+				/* const void *data */
+				&value[j],
+				/* size_t size */
+				file_size);
+			if(err) {
+				goto out;
+			}
+		}
+	}
+	else if(key_offset == 0x0010 && key_size == 0x0010 &&
+		stream_type == 0x00E0)
+	{
+		/* This attribute type appears to be inline data for the
+		 * EA stream. Likely same format as the above. */
+#if 0
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x16 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Stream type ($EA)",
+				prefix, indent,
+				key, &key[j]); /* 0x1C */
+		}
+		/* Key ends here. */
+#endif
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x20 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x24 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x28 */
+		}
+
+		/* After this, the EA list starts. */
+		while(value_size - j >= 8) {
+			u32 offset_to_next_ea = 0;
+			u32 ea_end_offset = 0;
+			u8 name_length = 0;
+			u16 data_length = 0;
+			const char *name = NULL;
+			const void *data = NULL;
+
+			if(value_size - j >= 4) {
+				offset_to_next_ea =
+					read_le32(&value[j]);
+				ea_end_offset = j + offset_to_next_ea;
+				j += print_le32_dechex("Offset to next "
+					"EA", prefix, indent,
+					value, &value[j]);
+				if(ea_end_offset > value_size) {
+					sys_log_warning("Offset to "
+						"next EA is outside "
+						"the bounds of the "
+						"attribute: "
+						"%" PRIu32 " > "
+						"%" PRIu32,
+						PRAu32(ea_end_offset),
+						PRAu32(value_size));
+					ea_end_offset = value_size;
+				}
+			}
+			if(ea_end_offset - j >= 1) {
+				j += print_u8_dechex("Flags", prefix,
+					indent,
+					value, &value[j]);
+			}
+			if(ea_end_offset - j >= 1) {
+				name_length = value[j];
+				j += print_u8_dechex("Name length",
+					prefix, indent,
+					value, &value[j]);
+			}
+			if(name_length > ea_end_offset - j) {
+				sys_log_warning("Name length exceeds "
+					"EA bounds: %" PRIu8 " > "
+					"%" PRIu32,
+					PRAu8(name_length),
+					PRAu32(ea_end_offset - j));
+			}
+			if(ea_end_offset - j >= 2) {
+				data_length = read_le16(&value[j]);
+				j += print_le16_dechex("Data length",
+					prefix, indent,
+					value, &value[j]);
+			}
+			name = (const char*) &value[j];
+			emit(prefix, indent, "Name @ %" PRIuz " / "
+				"0x%" PRIXz ": %" PRIbs,
+				PRAuz(j), PRAXz(j),
+				PRAbs(sys_min(ea_end_offset - j,
+				name_length), &value[j]));
+			if(ea_end_offset - j < name_length) {
+				break;
+			}
+			j += name_length;
+			print_u8_hex("Null terminator", prefix,
+				indent, value, &value[j]);
+			++j;
+			if(data_length > ea_end_offset - j) {
+				sys_log_warning("data length exceeds "
+					"EA bounds: %" PRIu8 " > "
+					"%" PRIu32,
+					PRAu8(data_length),
+					PRAu32(ea_end_offset - j));
+			}
+			data = &value[j];
+			emit(prefix, indent, "Data @ %" PRIuz " / "
+				"0x%" PRIXz ":",
+				PRAuz(j), PRAXz(j));
+			print_data_with_base(prefix, indent + 1, 0,
+				data_length, &value[j],
+				sys_min(ea_end_offset - j,
+				data_length));
+			if(visitor && visitor->node_ea) {
+				err = visitor->node_ea(
+					/* void *context */
+					visitor->context,
+					/* const char *name */
+					name,
+					/* size_t name_length */
+					name_length,
+					/* const void *data */
+					data,
+					/* size_t data_size */
+					data_length);
+				if(err) {
+					goto out;
+				}
+			}
+			if(ea_end_offset - j < data_length) {
+				break;
+			}
+			j += data_length;
+
+			if(j < ea_end_offset) {
+				print_data_with_base(prefix, indent,
+					j, ea_end_offset,
+					&value[j],
+					ea_end_offset - j);
+				j = ea_end_offset;
+			}
+		}
+	}
+	else if(key_offset == 0x0010 && stream_type == 0x000500B0) {
+		const u16 name_start = 0x10;
+		const u16 name_end = key_size;
+
+		u32 data_size = 0;
+		sys_bool non_resident = SYS_FALSE;
+
+		/* This attribute type contains data about alternate data
+		 * streams. */
+#if 0
+		j += parse_level3_attribute_header(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* size_t remaining_in_value */
+			remaining_in_value,
+			/* const char *attribute */
+			key,
+			/* u16 attribute_size */
+			entry_size,
+			/* u16 attribute_index */
+			attribute_index);
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x08 */
+		}
+		if(key_size - j >= 2) {
+			value_offset = read_le16(&key[j]);
+			j += print_le16_dechex("Value offset", prefix,
+				indent, key,
+				&key[j]); /* 0x0A */
+		}
+		if(key_size - j >= 4) {
+			value_size = read_le32(&key[j]);
+			j += print_le32_dechex("Value size (1)", prefix,
+				indent, key,
+				&key[j]); /* 0x0C */
+		}
+#endif
+#if 0
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Value size (2)", prefix,
+				indent, key,
+				&key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x16 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Stream type (named "
+				"$DATA)",
+				prefix, indent,
+				key, &key[j]); /* 0x1C */
+		}
+
+#if 1 /* Not possible. Disable when confident. */
+		if(j < name_start) {
+			const u32 print_end =
+				sys_min(name_start,
+				key_size);
+			print_data_with_base(prefix, indent, j,
+				print_end, &key[j],
+				print_end - j);
+			j = print_end;
+		}
+#endif
+#endif
+		if(visitor && visitor->node_stream) {
+			const u16 name_length =
+				(name_end - name_start) / sizeof(refschar);
+			err = sys_unistr_decode(
+				/* const refschar *ins */
+				(const refschar*) &key[name_start],
+				/* size_t ins_len */
+				name_length,
+				/* char **outs */
+				&cstr,
+				/* size_t *outs_len */
+				&cstr_length);
+			if(err) {
+				sys_log_perror(err, "Error while decoding name "
+					"in attribute key");
+				goto out;
+			}
+
+#if 0
+			emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
+				"(length: %" PRIuz "):",
+				PRAuz(j), PRAXz(j), PRAuz(cstr_length));
+			emit(prefix, indent + 1, "%" PRIbs,
+				PRAbs(cstr_length, cstr));
+			j += name_length * sizeof(refschar);
+#endif
+		}
+
+#if 0
+		if(j < key_size) {
+			const u32 print_end = sys_min(key_size, key_size);
+			print_data_with_base(prefix, indent, j, print_end,
+				&key[j], print_end - j);
+			j = print_end;
+		}
+#endif
+
+#if 0
+		emit(prefix, indent, "Value @ %" PRIuz " / "
+			"0x%" PRIXz " (size: %" PRIuz " / "
+			"0x%" PRIXz "):",
+			PRAuz(j), PRAXz(j), PRAuz(value_size),
+			PRAXz(value_size));
+#endif
+
+		if(value_size - j >= 4) {
+			u32 flags;
+
+			flags = read_le32(&value[j]);
+			j += print_le32_dechex("Flags", prefix, indent,
+				value, &value[j]);
+
+			if(flags & 0x10000000UL) {
+				flags &= ~0x10000000UL;
+				emit(prefix, indent + 1, "NON_RESIDENT%s",
+					flags ? " |" : "");
+				non_resident = SYS_TRUE;
+			}
+			if(flags) {
+				emit(prefix, indent + 1,
+					"<unknown: 0x%" PRIu32 ">",
+					PRAu32(flags));
+			}
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_le32_dechex("Allocated size (1)", prefix,
+				indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			data_size = read_le32(&value[j]);
+			j += print_le32_dechex("Attribute size (1)", prefix,
+				indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_le32_dechex("Attribute size (2)", prefix,
+				indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_le32_dechex("Allocated size (2)", prefix,
+				indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+		if(value_size - j > 0 && !non_resident) {
+			const u32 data_limit =
+				sys_min(data_size, value_size - j);
+			refs_node_stream_data data;
+
+			memset(&data, 0, sizeof(data));
+
+			emit(prefix, indent, "Resident data @ %" PRIuz " / "
+				"0x%" PRIXz " (length: %" PRIuz "):",
+				PRAuz(j), PRAXz(j), PRAuz(data_size));
+
+			data.resident = SYS_TRUE;
+			data.data.resident = &value[j];
+
+			if(visitor && visitor->node_stream) {
+				err = visitor->node_stream(
+					/* void *context */
+					visitor->context,
+					/* const char *name */
+					cstr,
+					/* size_t name_length */
+					cstr_length,
+					/* u64 data_size */
+					data_size,
+					/* const refs_node_stream_data
+					 * *data_reference */
+					&data);
+				if(err) {
+					goto out;
+				}
+			}
+
+			print_data_with_base(prefix, indent + 1, j,
+				j + data_limit, &value[j], data_limit);
+			j += data_limit;
+		}
+		else if(non_resident) {
+			u64 stream_id = 0;
+
+			emit(prefix, indent, "Non-resident data @ %" PRIuz " / "
+				"0x%" PRIXz " (length: %" PRIuz "):",
+				PRAuz(j), PRAXz(j), PRAuz(data_size));
+			if(value_size - j >= 4) {
+				stream_id = read_le64(&value[j]);
+				j += print_le64_dechex("Stream ID", prefix,
+					indent + 1, value, &value[j]);
+			}
+
+			if(visitor && visitor->node_stream && stream_id) {
+				refs_node_stream_data data;
+
+				memset(&data, 0, sizeof(data));
+
+				data.resident = SYS_FALSE;
+				data.data.non_resident.stream_id = stream_id;
+
+				err = visitor->node_stream(
+					/* void *context */
+					visitor->context,
+					/* const char *name */
+					cstr,
+					/* size_t name_length */
+					cstr_length,
+					/* u64 data_size */
+					data_size,
+					/* const refs_node_stream_data
+					 * *data_reference */
+					&data);
+				if(err) {
+					goto out;
+				}
+			}
+			if(value_size - j >= 4) {
+				j += print_unknown32(prefix, indent + 1, value,
+					&value[j]);
+			}
+		}
+
+		if(j < value_size) {
+			print_data_with_base(prefix, indent, j, value_size,
+				&value[j], value_size - j);
+			j = value_size;
+		}
+	}
+	else if(key_offset == 0x0010 && key_size == 0x50) {
+		u64 stream_id = 0;
+		u32 num_extents = 0;
+		u32 k;
+
+#if 0
+		j += parse_level3_attribute_header(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* size_t remaining_in_value */
+			remaining_in_value,
+			/* const char *attribute */
+			key,
+			/* u16 attribute_size */
+			entry_size,
+			/* u16 attribute_index */
+			attribute_index);
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x08 */
+		}
+		if(key_size - j >= 2) {
+			j += print_le16_dechex("Value offset", prefix,
+				indent, key,
+				&key[j]); /* 0x0A */
+		}
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Value size (1)", prefix,
+				indent, key,
+				&key[j]); /* 0x0C */
+		}
+#endif
+#if 0
+		if(key_size - j >= 4) {
+			j += print_le32_dechex("Value size (2)", prefix,
+				indent, key,
+				&key[j]); /* 0x10 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x14 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x16 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x18 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x1C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x20 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x24 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x28 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x2C */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x30 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x34 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x38 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x3C */
+		}
+		if(key_size - j >= 4) {
+			stream_id = read_le64(&key[j]);
+			j += print_le32_dechex("Stream ID",
+				prefix, indent,
+				key, &key[j]); /* 0x40 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x44 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x48 */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x4C */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x50 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x54 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x58 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x5C */
+		}
+#endif
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x60 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x64 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x68 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x6C */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x70 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x74 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x78 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x7C */
+		}
+		if(value_size - j >= 4) {
+			j += print_le32_dechex("Number of extents",
+				prefix, indent,
+				value, &value[j]); /* 0x80 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x84 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x88 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x8C */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (1)",
+				prefix, indent,
+				value, &value[j]); /* 0x90 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (2)",
+				prefix, indent,
+				value, &value[j]); /* 0x98 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (3)",
+				prefix, indent,
+				value, &value[j]); /* 0xA0 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_dechex("Allocated size (4)",
+				prefix, indent,
+				value, &value[j]); /* 0xA8 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xB0 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xB4 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xB8 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xBC */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xC0 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xC4 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xC8 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xCC */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xD0 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xD4 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xD8 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xDC */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xE0 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xE4 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xE8 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xEC */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xF0 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xF4 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0xF8 */
+		}
+		if(value_size - j >= 4) {
+			num_extents = read_le32(&value[j]);
+			j += print_le32_dechex("Number of extents (2)",
+				prefix, indent,
+				value, &value[j]); /* 0xFC */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x100 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x104 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x108 */
+		}
+		if(value_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				value, &value[j]); /* 0x10C */
+		}
+
+		/* Iterate over extents in stream. */
+		for(k = 0; k < num_extents &&
+			(value_size - j) >= 24; ++k)
+		{
+			const u64 first_physical_block =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					read_le64(&value[j]));
+			/* TODO: Guessing that this is the number of
+			 * clusters in the extent. Not sure about it. */
+			const u32 cluster_count =
+				read_le32(&value[j + 20]);
+
+			emit(prefix, indent, "Extent %" PRIu32 "/"
+				"%" PRIu32 ":",
+				PRAu32(k + 1), PRAu32(num_extents));
+
+			j += print_le64_dechex("First block", prefix,
+				indent + 1,
+				value, &value[j]); /* 0x110 */
+			emit(prefix, indent + 2,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(first_physical_block),
+				PRAX64(first_physical_block),
+				PRAu64(first_physical_block *
+				block_index_unit));
+			if(visitor && visitor->node_stream_extent) {
+				err = visitor->node_stream_extent(
+					/* void *context */
+					visitor->context,
+					/* u64 stream_id */
+					stream_id,
+					/* u64 first_block */
+					first_physical_block,
+					/* u32 block_index_unit */
+					block_index_unit,
+					/* u32 cluster_count */
+					cluster_count);
+				if(err) {
+					goto out;
+				}
+			}
+
+			j += print_unknown32(prefix, indent + 1,
+				value, &value[j]); /* 0x118 */
+
+			j += print_unknown32(prefix, indent + 1,
+				value, &value[j]); /* 0x11C */
+
+			j += print_unknown32(prefix, indent + 1,
+				value, &value[j]); /* 0x120 */
+
+			j += print_le32_dechex("Number of clusters in "
+				"extent (?)", prefix, indent + 1,
+				value, &value[j]); /* 0x124 */
+		}
+	}
+	else if(key_offset == 0x10 && key_size == 0x00) {
+		/* This appears to contain an independently allocated
+		 * (non-resident) attribute list. */
+		u64 logical_blocks[4] = { 0, 0, 0, 0 };
+		u64 physical_blocks[4] = { 0, 0, 0, 0 };
+
+#if 0
+		j += parse_level3_attribute_header(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* size_t remaining_in_value */
+			remaining_in_value,
+			/* const char *attribute */
+			key,
+			/* u16 attribute_size */
+			entry_size,
+			/* u16 attribute_index */
+			attribute_index);
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x08 */
+		}
+		if(key_size - j >= 2) {
+			j += print_unknown16(prefix, indent,
+				key, &key[j]); /* 0x0A */
+		}
+		if(key_size - j >= 4) {
+			j += print_unknown32(prefix, indent,
+				key, &key[j]); /* 0x0C */
+		}
+#endif
+		if(value_size - j >= 8) {
+			logical_blocks[0] = read_le64(&value[j]);
+			physical_blocks[0] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[0]);
+
+			j += print_le64_dechex("Block number 1", prefix,
+				indent,
+				value, &value[j]); /* 0x10 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[0]),
+				PRAX64(physical_blocks[0]),
+				PRAu64(physical_blocks[0] *
+				block_index_unit));
+		}
+		if(value_size - j >= 8) {
+			logical_blocks[1] = read_le64(&value[j]);
+			physical_blocks[1] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[1]);
+
+			j += print_le64_dechex("Block number 2", prefix,
+				indent,
+				value, &value[j]); /* 0x18 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[1]),
+				PRAX64(physical_blocks[1]),
+				PRAu64(physical_blocks[1] *
+				block_index_unit));
+		}
+		if(value_size - j >= 8) {
+			logical_blocks[2] = read_le64(&value[j]);
+			physical_blocks[2] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[2]);
+
+			j += print_le64_dechex("Block number 3", prefix,
+				indent,
+				value, &value[j]); /* 0x20 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[2]),
+				PRAX64(physical_blocks[2]),
+				PRAu64(physical_blocks[2] *
+				block_index_unit));
+		}
+		if(value_size - j >= 8) {
+			logical_blocks[3] = read_le64(&value[j]);
+			physical_blocks[3] =
+				logical_to_physical_block_number(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_blocks[3]);
+
+			j += print_le64_dechex("Block number 4", prefix,
+				indent,
+				value, &value[j]); /* 0x28 */
+			emit(prefix, indent + 1,
+				"-> Physical block: %" PRIu64 " / "
+				"0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_blocks[3]),
+				PRAX64(physical_blocks[3]),
+				PRAu64(physical_blocks[3] *
+				block_index_unit));
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_hex("Flags", prefix,
+				indent,
+				value, &value[j]); /* 0x30 */
+		}
+		if(value_size - j >= 8) {
+			j += print_le64_hex("Checksum", prefix,
+				indent,
+				value, &value[j]); /* 0x38 */
+		}
+
+		if(logical_blocks[0]) {
+			const size_t bytes_per_read =
+				sys_min(crawl_context->cluster_size,
+				crawl_context->block_size);
+
+			char *block = NULL;
+			size_t bytes_read = 0;
+			u8 i = 0;
+
+			err = sys_malloc(crawl_context->block_size,
+				&block);
+			if(err) {
+				sys_log_perror(err, "Error while "
+					"allocating %" PRIu32 " byte "
+					"block",
+					PRAu32(crawl_context->
+					block_size));
+				goto out;
+			}
+
+			while(bytes_read < crawl_context->block_size) {
+				sys_log_debug("Reading logical block "
+					"%" PRIu64 " / physical block "
+					"%" PRIu64 " into "
+					"%" PRIuz "-byte buffer %p at "
+					"buffer offset %" PRIuz,
+					PRAu64(logical_blocks[i]),
+					PRAu64(physical_blocks[i]),
+					PRAuz(crawl_context->
+					block_size),
+					block,
+					PRAuz(bytes_read));
+				err = sys_device_pread(
+					/* sys_device *dev */
+					crawl_context->dev,
+					/* u64 pos */
+					physical_blocks[i] *
+					block_index_unit,
+					/* size_t count */
+					bytes_per_read,
+					/* void *b */
+					&block[bytes_read]);
+				if(err) {
+					break;
+				}
+
+				bytes_read += bytes_per_read;
+				++i;
+			}
+			if(err) {
+				sys_log_pwarning(err, "Error while "
+					"reading %" PRIuz " bytes from "
+					"attribute block %" PRIu64 " "
+					"(offset %" PRIu64 ")",
+					PRAuz(crawl_context->
+					block_size),
+					PRAu64(physical_blocks[i]),
+					PRAu64(physical_blocks[i] *
+					block_index_unit));
+				goto out;
+			}
+
+			err = parse_generic_block(
+				/* refs_node_crawl_context
+				 *     *crawl_context */
+				crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* size_t indent */
+				indent + 1,
+				/* u64 cluster_number */
+				physical_blocks[0],
+				/* u64 block_number */
+				logical_blocks[0],
+				/* u64 block_queue_index */
+				0 /* Different block queue... */,
+				/* u8 level */
+				4,
+				/* const u8 *block */
+				block,
+				/* u32 block_size */
+				crawl_context->block_size,
+				/* block_queue *block_queue */
+				NULL,
+				/* sys_bool
+				 *     add_subnodes_in_offsets_order */
+				SYS_TRUE,
+				/* void *context */
+				context,
+				/* int (*parse_key)(
+				 *      refs_node_crawl_context *crawl_context,
+				 *      refs_node_walk_visitor *visitor,
+				 *      const char *prefix,
+				 *      size_t indent,
+				 *      u64 object_id,
+				 *      sys_bool is_index,
+				 *      sys_bool is_v3,
+				 *      const u8 *key,
+				 *      u16 key_offset,
+				 *      u16 key_size,
+				 *      u32 entry_size,
+				 *      void *context) */
+				parse_attribute_key,
+				/* int (*parse_leaf_value)(
+				 *      refs_node_crawl_context
+				 *          *crawl_context,
+				 *      refs_node_walk_visitor *visitor,
+				 *      const char *prefix,
+				 *      size_t indent,
+				 *      u64 object_id,
+				 *      const u8 *key,
+				 *      u16 key_offset,
+				 *      u16 key_size,
+				 *      const u8 *value,
+				 *      u16 value_offset,
+				 *      u16 value_size,
+				 *      u32 entry_size,
+				 *      void *context) */
+				parse_attribute_leaf_value,
+				/* int (*leaf_entry_handler)(
+				 *      void *context,
+				 *      const u8 *data,
+				 *      u32 data_size,
+				 *      u32 node_type) */
+				NULL);
+			if(err) {
+				sys_log_pwarning(err, "Error while "
+					"parsing non-resident "
+					"attribute list");
+				goto out;
+			}
+		}
+	}
+out:
+	if(j < value_size) {
+		print_data_with_base(prefix, indent, j, value_size, &value[j],
+			value_size - j);
+	}
+
+	if(cstr) {
+		sys_free(&cstr);
 	}
 
 	return err;
@@ -4798,8 +8029,8 @@ int parse_level3_long_value(
 				&attribute[j]); /* 0x18 */
 			j += print_unknown16(prefix, indent + 1, attribute,
 				&attribute[j]); /* 0x1A */
-			j += print_le16_hex("Attribute type ($DATA)", prefix,
-				indent + 1, attribute,
+			j += print_le16_hex("Attribute type (unnamed $DATA)",
+				prefix, indent + 1, attribute,
 				&attribute[j]); /* 0x1C */
 			j += print_unknown16(prefix, indent + 1, attribute,
 				&attribute[j]); /* 0x1E */
@@ -5057,6 +8288,10 @@ int parse_level3_long_value(
 				attribute_size,
 				/* u16 attribute_index */
 				attribute_index);
+			j += print_unknown32(prefix, indent, attribute,
+				&attribute[0x8]);
+			j += print_unknown32(prefix, indent, attribute,
+				&attribute[0xC]);
 			j += parse_level3_extent_attribute(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
@@ -5142,7 +8377,8 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x1A */
 			}
 			if(attribute_size - j >= 4) {
-				j += print_le32_dechex("Attribute type ($DATA)",
+				j += print_le32_dechex("Attribute type "
+					"(unnamed $DATA)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x1C */
 			}
@@ -6269,6 +9505,8 @@ int parse_level3_long_value(
 					/* void *context */
 					context,
 					/* int (*parse_key)(
+					 *      refs_node_crawl_context
+					 *          *crawl_context,
 					 *      refs_node_walk_visitor *visitor,
 					 *      const char *prefix,
 					 *      size_t indent,
@@ -6280,7 +9518,7 @@ int parse_level3_long_value(
 					 *      u16 key_size,
 					 *      u32 entry_size,
 					 *      void *context) */
-					parse_level3_key,
+					parse_attribute_key,
 					/* int (*parse_leaf_value)(
 					 *      refs_node_crawl_context
 					 *          *crawl_context,
@@ -6295,7 +9533,7 @@ int parse_level3_long_value(
 					 *      u16 value_size,
 					 *      u32 entry_size,
 					 *      void *context) */
-					parse_level3_leaf_value,
+					parse_attribute_leaf_value,
 					/* int (*leaf_entry_handler)(
 					 *      void *context,
 					 *      const u8 *data,
@@ -6551,6 +9789,7 @@ static int parse_level3_leaf_value(
 		const size_t indent,
 		const u64 object_id,
 		const u8 *const key,
+		const u16 key_offset,
 		const u16 key_size,
 		const u8 *const value,
 		const u16 value_offset,
@@ -6566,6 +9805,7 @@ static int parse_level3_leaf_value(
 	int err = 0;
 
 	(void) object_id;
+	(void) key_offset;
 	(void) entry_size;
 
 	if(key_type == 0x30 && dirent_type == 0x1) {
@@ -6698,6 +9938,7 @@ static int parse_level3_block(
 		/* void *context */
 		&block_queue,
 		/* int (*parse_key)(
+		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
@@ -7165,6 +10406,7 @@ static int crawl_volume_metadata(
 				/* void *context */
 				(object_id == 0xB) ? mappings : NULL,
 				/* int (*parse_key)(
+				 *      refs_node_crawl_context *crawl_context,
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
 				 *      size_t indent,
