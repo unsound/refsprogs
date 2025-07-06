@@ -4966,6 +4966,9 @@ static int parse_attribute_key(
 						PRAu32(key_size));
 					ea_end_offset = key_size;
 				}
+				else if(ea_end_offset <= j) {
+					break;
+				}
 			}
 			if(ea_end_offset - j >= 1) {
 				j += print_u8_dechex("Flags", prefix,
@@ -5001,6 +5004,9 @@ static int parse_attribute_key(
 				break;
 			}
 			j += name_length;
+			if(ea_end_offset - j < 1) {
+				break;
+			}
 			print_u8_hex("Null terminator", prefix,
 				indent, key, &key[j]);
 			++j;
@@ -6560,6 +6566,9 @@ static int parse_attribute_leaf_value(
 						PRAu32(value_size));
 					ea_end_offset = value_size;
 				}
+				else if(ea_end_offset <= j) {
+					break;
+				}
 			}
 			if(ea_end_offset - j >= 1) {
 				j += print_u8_dechex("Flags", prefix,
@@ -6592,6 +6601,9 @@ static int parse_attribute_leaf_value(
 				PRAbs(sys_min(ea_end_offset - j,
 				name_length), &value[j]));
 			if(ea_end_offset - j < name_length) {
+				break;
+			}
+			if(ea_end_offset - j < 1) {
 				break;
 			}
 			j += name_length;
@@ -8532,6 +8544,9 @@ int parse_level3_long_value(
 							PRAu32(attribute_size));
 						ea_end_offset = attribute_size;
 					}
+					else if(ea_end_offset <= j) {
+						break;
+					}
 				}
 				if(ea_end_offset - j >= 1) {
 					j += print_u8_dechex("Flags", prefix,
@@ -8567,6 +8582,9 @@ int parse_level3_long_value(
 					break;
 				}
 				j += name_length;
+				if(ea_end_offset - j < 1) {
+					break;
+				}
 				print_u8_hex("Null terminator", prefix,
 					indent + 1, attribute, &attribute[j]);
 				++j;
