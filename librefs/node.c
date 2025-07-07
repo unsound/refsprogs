@@ -4887,6 +4887,7 @@ static int parse_attribute_key(
 			j += print_unknown32(prefix, indent,
 				key, &key[j]); /* 0x58 */
 		}
+
 		if(visitor && visitor->node_file_data) {
 			err = visitor->node_file_data(
 				/* void *context */
@@ -4966,6 +4967,9 @@ static int parse_attribute_key(
 						PRAu32(key_size));
 					ea_end_offset = key_size;
 				}
+				else if(ea_end_offset <= j) {
+					break;
+				}
 			}
 			if(ea_end_offset - j >= 1) {
 				j += print_u8_dechex("Flags", prefix,
@@ -5001,6 +5005,9 @@ static int parse_attribute_key(
 				break;
 			}
 			j += name_length;
+			if(ea_end_offset - j < 1) {
+				break;
+			}
 			print_u8_hex("Null terminator", prefix,
 				indent, key, &key[j]);
 			++j;
@@ -6478,6 +6485,17 @@ static int parse_attribute_leaf_value(
 			j += print_unknown32(prefix, indent,
 				value, &value[j]); /* 0x58 */
 		}
+
+		emit(prefix, indent + 1, "Resident data @ %" PRIu16 " / "
+			"0x%" PRIX16, PRAu16(j), PRAX16(j));
+		if(value_size > j) {
+			const size_t resident_bytes =
+				sys_min(file_size, value_size - j);
+			print_data_with_base(prefix, indent + 2, 0,
+				resident_bytes, &value[j], resident_bytes);
+			j += resident_bytes;
+		}
+
 		if(visitor && visitor->node_file_data) {
 			err = visitor->node_file_data(
 				/* void *context */
@@ -6560,6 +6578,9 @@ static int parse_attribute_leaf_value(
 						PRAu32(value_size));
 					ea_end_offset = value_size;
 				}
+				else if(ea_end_offset <= j) {
+					break;
+				}
 			}
 			if(ea_end_offset - j >= 1) {
 				j += print_u8_dechex("Flags", prefix,
@@ -6592,6 +6613,9 @@ static int parse_attribute_leaf_value(
 				PRAbs(sys_min(ea_end_offset - j,
 				name_length), &value[j]));
 			if(ea_end_offset - j < name_length) {
+				break;
+			}
+			if(ea_end_offset - j < 1) {
 				break;
 			}
 			j += name_length;
@@ -8426,6 +8450,18 @@ int parse_level3_long_value(
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x58 */
 			}
+
+			emit(prefix, indent + 1, "Resident data @ %" PRIu16 " "
+				"/ 0x%" PRIX16, PRAu16(j), PRAX16(j));
+			if(attribute_size > j) {
+				const size_t resident_bytes =
+					sys_min(file_size, attribute_size - j);
+				print_data_with_base(prefix, indent + 2, 0,
+					resident_bytes, &attribute[j],
+					resident_bytes);
+				j += resident_bytes;
+			}
+
 			if(visitor && visitor->node_file_data) {
 				err = visitor->node_file_data(
 					/* void *context */
@@ -8532,6 +8568,9 @@ int parse_level3_long_value(
 							PRAu32(attribute_size));
 						ea_end_offset = attribute_size;
 					}
+					else if(ea_end_offset <= j) {
+						break;
+					}
 				}
 				if(ea_end_offset - j >= 1) {
 					j += print_u8_dechex("Flags", prefix,
@@ -8567,6 +8606,9 @@ int parse_level3_long_value(
 					break;
 				}
 				j += name_length;
+				if(ea_end_offset - j < 1) {
+					break;
+				}
 				print_u8_hex("Null terminator", prefix,
 					indent + 1, attribute, &attribute[j]);
 				++j;

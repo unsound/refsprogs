@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.6.22],[catacombae@gmail.com])
-LIBREFS_VERSION="2"
+AC_INIT([refsprogs],[2025.7.4],[catacombae@gmail.com])
+LIBREFS_VERSION="3"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
