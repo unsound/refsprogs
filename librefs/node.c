@@ -5079,7 +5079,7 @@ static int parse_attribute_key(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -5387,7 +5387,7 @@ static int parse_attribute_key(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -5741,7 +5741,7 @@ static int parse_attribute_key(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -5864,7 +5864,7 @@ static int parse_attribute_key(
 				sys_min(crawl_context->cluster_size,
 				crawl_context->block_size);
 
-			char *block = NULL;
+			u8 *block = NULL;
 			size_t bytes_read = 0;
 			u8 i = 0;
 
@@ -6686,7 +6686,7 @@ static int parse_attribute_leaf_value(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -6956,7 +6956,7 @@ static int parse_attribute_leaf_value(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -7312,7 +7312,7 @@ static int parse_attribute_leaf_value(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -7435,7 +7435,7 @@ static int parse_attribute_leaf_value(
 				sys_min(crawl_context->cluster_size,
 				crawl_context->block_size);
 
-			char *block = NULL;
+			u8 *block = NULL;
 			size_t bytes_read = 0;
 			u8 i = 0;
 
@@ -7581,7 +7581,7 @@ static u16 parse_level3_attribute_header(
 		const char *const prefix,
 		const size_t indent,
 		const size_t remaining_in_value,
-		const char *const attribute,
+		const u8 *const attribute,
 		const u16 attribute_size,
 		const u16 attribute_index)
 {
@@ -7984,7 +7984,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8035,7 +8035,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8306,7 +8306,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8366,7 +8366,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8489,7 +8489,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8678,7 +8678,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8988,7 +8988,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -9340,7 +9340,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -9462,7 +9462,7 @@ int parse_level3_long_value(
 					sys_min(crawl_context->cluster_size,
 					crawl_context->block_size);
 
-				char *block = NULL;
+				u8 *block = NULL;
 				size_t bytes_read = 0;
 				u8 i = 0;
 
