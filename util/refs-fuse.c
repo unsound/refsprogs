@@ -540,6 +540,7 @@ static int refs_fuse_op_getattr_visit_short_entry(
 		u16 file_name_length,
 		u32 file_flags,
 		u64 object_id,
+		u64 hard_link_id,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -552,6 +553,7 @@ static int refs_fuse_op_getattr_visit_short_entry(
 	(void) file_name;
 	(void) file_name_length;
 	(void) object_id;
+	(void) hard_link_id;
 	(void) record;
 	(void) record_size;
 
@@ -1085,6 +1087,7 @@ static int refs_fuse_op_readdir_visit_directory_entry(
 		u16 file_name_length,
 		u32 file_flags,
 		u64 object_id,
+		u64 hard_link_id,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -1095,6 +1098,7 @@ static int refs_fuse_op_readdir_visit_directory_entry(
 		size_t record_size)
 {
 	(void) object_id;
+	(void) hard_link_id;
 	(void) record;
 	(void) record_size;
 
@@ -1264,6 +1268,7 @@ static int refs_fuse_op_win_get_attributes_visit_short_entry(
 		u16 file_name_length,
 		u32 file_flags,
 		u64 object_id,
+		u64 hard_link_id,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -1276,6 +1281,7 @@ static int refs_fuse_op_win_get_attributes_visit_short_entry(
 	(void) file_name;
 	(void) file_name_length;
 	(void) object_id;
+	(void) hard_link_id;
 	(void) create_time;
 	(void) last_access_time;
 	(void) last_write_time;

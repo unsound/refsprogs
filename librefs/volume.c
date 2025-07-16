@@ -269,6 +269,7 @@ static int refs_volume_lookup_node_short_entry(
 		const refschar *file_name,
 		u16 file_name_length,
 		u32 file_flags,
+		u64 hard_link_id,
 		u64 object_id,
 		u64 create_time,
 		u64 last_access_time,
@@ -285,6 +286,7 @@ static int refs_volume_lookup_node_short_entry(
 	int err = 0;
 
 	(void) file_flags;
+	(void) hard_link_id;
 	(void) create_time;
 	(void) last_access_time;
 	(void) last_write_time;
