@@ -1,6 +1,7 @@
 MAINTAINERCLEANFILES = $(srcdir)/Makefile.in
 
 publicheaders = \
+	fsapi.h \
 	layout.h \
 	node.h \
 	sys.h \

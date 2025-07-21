@@ -65,6 +65,8 @@ static int refsls_node_long_entry(
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size);
 
@@ -81,6 +83,8 @@ static int refsls_node_short_entry(
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size);
 
@@ -320,6 +324,8 @@ static int refsls_node_long_entry(
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size)
 {
@@ -329,6 +335,8 @@ static int refsls_node_long_entry(
 	(void) last_write_time;
 	(void) last_mft_change_time;
 	(void) allocated_size;
+	(void) key;
+	(void) key_size;
 	(void) record;
 	(void) record_size;
 
@@ -368,6 +376,8 @@ static int refsls_node_short_entry(
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size)
 {
@@ -377,6 +387,8 @@ static int refsls_node_short_entry(
 	(void) last_write_time;
 	(void) last_mft_change_time;
 	(void) allocated_size;
+	(void) key;
+	(void) key_size;
 	(void) record;
 	(void) record_size;
 
@@ -414,6 +426,8 @@ static int refsls_node_hardlink_entry(
 		u64 last_mft_change_time,
 		u64 file_size,
 		u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *record,
 		size_t record_size)
 {
@@ -423,6 +437,8 @@ static int refsls_node_hardlink_entry(
 	(void) last_write_time;
 	(void) last_mft_change_time;
 	(void) allocated_size;
+	(void) key;
+	(void) key_size;
 	(void) record;
 	(void) record_size;
 
@@ -650,6 +666,8 @@ int main(int argc, char **argv)
 		vol,
 		/* const char *path */
 		options.path ? options.path : "/",
+		/* size_t path_length */
+		options.path ? strlen(options.path) : 1,
 		/* const u64 *start_object_id */
 		NULL,
 		/* u64 *out_parent_directory_object_id */
@@ -657,6 +675,10 @@ int main(int argc, char **argv)
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
 		/* sys_bool *out_is_short_entry */
+		NULL,
+		/* u8 *key */
+		NULL,
+		/* size_t key_size */
 		NULL,
 		/* u8 **out_record */
 		NULL,

@@ -7767,6 +7767,10 @@ int parse_level3_long_value(
 			file_size,
 			/* u64 allocated_size */
 			allocated_size,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size,
 			/* const u8 *record */
 			value,
 			/* size_t record_size */
@@ -7802,6 +7806,10 @@ int parse_level3_long_value(
 			file_size,
 			/* u64 allocated_size */
 			allocated_size,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size,
 			/* const u8 *record */
 			value,
 			/* size_t record_size */
@@ -9749,7 +9757,7 @@ int parse_level3_short_value(
 		(value_size < (is_v3 ? 8 : 0) + 8) ? 0 :
 		read_le64(&value[is_v3 ? 8 : 0]);
 	const u64 hard_link_id =
-		(!is_v3 || value_size < 0) ? 0 : read_le64(&value[0]);
+		(!is_v3 || value_size < 0 + 8) ? 0 : read_le64(&value[0]);
 	const u64 creation_time =
 		(value_size < 16 + 8) ? 0 : read_le64(&value[16]);
 	const u64 last_data_modification_time =
@@ -9798,6 +9806,10 @@ int parse_level3_short_value(
 			file_size,
 			/* u64 allocated_size */
 			allocated_size,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size,
 			/* const u8 *record */
 			value,
 			/* size_t record_size */

@@ -233,6 +233,8 @@ static int print_leaf_by_path(
 	sys_bool is_short_entry = SYS_FALSE;
 	u8 *record = NULL;
 	size_t record_size = 0;
+	u8 *key = NULL;
+	size_t key_size = 0;
 	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
 
@@ -250,6 +252,8 @@ static int print_leaf_by_path(
 		vol,
 		/* const char *path */
 		path,
+		/* size_t path_length */
+		strlen(path),
 		/* const u64 *start_object_id */
 		NULL,
 		/* u64 *out_parent_directory_object_id */
@@ -258,6 +262,10 @@ static int print_leaf_by_path(
 		&directory_object_id,
 		/* sys_bool *out_is_short_entry */
 		&is_short_entry,
+		/* u8 *key */
+		&key,
+		/* size_t key_size */
+		&key_size,
 		/* u8 **out_record */
 		&record,
 		/* size_t *out_record_size */
@@ -299,9 +307,9 @@ static int print_leaf_by_path(
 			/* size_t indent */
 			1,
 			/* const u8 *key */
-			NULL,
+			key,
 			/* u16 key_size */
-			0,
+			key_size,
 			/* const u8 *value */
 			record,
 			/* u16 value_offset */
@@ -357,6 +365,10 @@ static int print_leaf_by_path(
 out:
 	if(record) {
 		sys_free(&record);
+	}
+
+	if(key) {
+		sys_free(&key);
 	}
 
 	return err;

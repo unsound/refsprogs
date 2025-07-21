@@ -96,6 +96,8 @@ struct refs_node_walk_visitor {
 		u64 last_mft_change_time,
 		u64 file_size,
 		u64 allocated_size,
+		const u8 *key,
+		size_t key_size,
 		const u8 *record,
 		size_t record_size);
 	int (*node_short_entry)(
@@ -111,6 +113,8 @@ struct refs_node_walk_visitor {
 		u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *key,
+		size_t key_size,
 		const u8 *record,
 		size_t record_size);
 	int (*node_hardlink_entry)(
@@ -124,6 +128,8 @@ struct refs_node_walk_visitor {
 		u64 last_mft_change_time,
 		u64 file_size,
 		u64 allocated_size,
+		const u8 *key,
+		size_t key_size,
 		const u8 *record,
 		size_t record_size);
 	int (*node_file_extent)(
@@ -194,6 +200,16 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 		/* u8 version_minor */
 		version_minor
 	};
+
+	sys_log_debug("Initialized crawl context with:");
+	sys_log_debug("    dev: %p", ctx.dev);
+	sys_log_debug("    bs: %p", ctx.bs);
+	sys_log_debug("    block_map: %p", ctx.block_map);
+	sys_log_debug("    cluster_size: %" PRIu32, PRAu32(ctx.cluster_size));
+	sys_log_debug("    block_size: %" PRIu32, PRAu32(ctx.block_size));
+	sys_log_debug("    block_index_unit: %" PRIu32, PRAu32(ctx.block_index_unit));
+	sys_log_debug("    version_major: %" PRIu8, PRAu8(ctx.version_major));
+	sys_log_debug("    version_minor: %" PRIu8, PRAu8(ctx.version_minor));
 
 	return ctx;
 }

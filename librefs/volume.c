@@ -47,7 +47,6 @@ int refs_volume_create(
 	u32 sectors_per_cluster = 0;
 	u32 cluster_size = 0;
 	REFS_BOOT_SECTOR *bs = NULL;
-	size_t bytes_read = 0;
 
 	err = sys_malloc(sizeof(*vol), &vol);
 	if(err) {
@@ -208,23 +207,27 @@ typedef struct {
 	sys_bool is_short_entry;
 	sys_bool is_directory;
 	u64 directory_object_id;
+	u8 **key;
+	size_t *key_size;
 	u8 **record;
 	size_t *record_size;
 } refs_volume_lookup_context;
 
 static int refs_volume_lookup_node_long_entry(
-		void *_context,
-		const refschar *file_name,
-		u16 file_name_length,
-		u32 file_flags,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *record,
-		size_t record_size)
+		void *const _context,
+		const refschar *const file_name,
+		const u16 file_name_length,
+		const u32 file_flags,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
 	refs_volume_lookup_context *const context =
 		(refs_volume_lookup_context*) _context;
@@ -247,6 +250,19 @@ static int refs_volume_lookup_node_long_entry(
 		context->is_short_entry = SYS_FALSE;
 		context->is_directory = SYS_FALSE;
 
+		if(context->key) {
+			err = sys_malloc(key_size, context->key);
+			if(err) {
+				goto out;
+			}
+
+			memcpy(*context->key, key, key_size);
+		}
+
+		if(context->key_size) {
+			*context->key_size = key_size;
+		}
+
 		if(context->record) {
 			err = sys_malloc(record_size, context->record);
 			if(err) {
@@ -265,27 +281,28 @@ out:
 }
 
 static int refs_volume_lookup_node_short_entry(
-		void *_context,
-		const refschar *file_name,
-		u16 file_name_length,
-		u32 file_flags,
-		u64 hard_link_id,
-		u64 object_id,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *record,
-		size_t record_size)
+		void *const _context,
+		const refschar *const file_name,
+		const u16 file_name_length,
+		const u32 file_flags,
+		const u64 object_id,
+		const u64 hard_link_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
 	refs_volume_lookup_context *const context =
 		(refs_volume_lookup_context*) _context;
 
 	int err = 0;
 
-	(void) file_flags;
 	(void) hard_link_id;
 	(void) create_time;
 	(void) last_access_time;
@@ -303,7 +320,20 @@ static int refs_volume_lookup_node_short_entry(
 		context->is_directory =
 			(file_flags & 0x10000000) ? SYS_TRUE : SYS_FALSE;
 		context->directory_object_id =
-			(file_flags & 0x10000000) ? object_id : 0;
+			context->is_directory ? object_id : 0;
+
+		if(context->key) {
+			err = sys_malloc(key_size, context->key);
+			if(err) {
+				goto out;
+			}
+
+			memcpy(*context->key, key, key_size);
+		}
+
+		if(context->key_size) {
+			*context->key_size = key_size;
+		}
 
 		if(context->record) {
 			err = sys_malloc(record_size, context->record);
@@ -421,20 +451,21 @@ out:
 static int refs_volume_lookup(
 		refs_volume *const vol,
 		const void *const path,
+		const size_t path_length,
 		const u64 *const start_object_id,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
+		u8 **const out_key,
+		size_t *const out_key_size,
 		u8 **const out_record,
 		size_t *const out_record_size)
 {
-	const size_t path_size = strlen(path);
-
 	int err = 0;
 	refs_node_walk_visitor visitor;
 	refs_volume_lookup_context context;
 	const void *cur_path = path;
-	size_t cur_path_length = path_size;
+	size_t cur_path_length = path_length;
 	u64 cur_object_id = start_object_id ? *start_object_id : 0x600;
 	refschar *cur_element = NULL;
 	size_t cur_element_capacity = 255;
@@ -454,8 +485,8 @@ static int refs_volume_lookup(
 	while(1) {
 		cur_element_length = cur_element_capacity;
 
-		sys_log_debug("Processing path element \"%.*s\"...",
-			(int) cur_path_length, (const char*) cur_path);
+		sys_log_debug("Processing path element \"%" PRIbs "\"...",
+			PRAbs(cur_path_length, (const char*) cur_path));
 		err = next_path_element(
 			/* const void **path */
 			&cur_path,
@@ -472,7 +503,7 @@ static int refs_volume_lookup(
 		}
 
 		cur_path_length =
-			path_size - ((size_t) cur_path - (size_t) path);
+			path_length - ((size_t) cur_path - (size_t) path);
 
 		memset(&context, 0, sizeof(context));
 		context.name = cur_element;
@@ -480,6 +511,16 @@ static int refs_volume_lookup(
 
 		if(!cur_path_length) {
 			/* Final element. */
+			if(out_key) {
+				*out_key = NULL;
+				context.key = out_key;
+			}
+
+			if(out_key_size) {
+				*out_key_size = 0;
+				context.key_size = out_key_size;
+			}
+
 			if(out_record) {
 				*out_record = NULL;
 				context.record = out_record;
@@ -558,26 +599,31 @@ out:
 int refs_volume_lookup_by_posix_path(
 		refs_volume *const vol,
 		const char *const path,
+		const size_t path_length,
 		const u64 *const start_object_id,
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
+		u8 **const out_key,
+		size_t *const out_key_size,
 		u8 **const out_record,
 		size_t *const out_record_size)
 {
 	int err = 0;
 	const char *cur_path = path;
+	size_t cur_path_length = path_length;
 
-	if(cur_path[0] != '/') {
+	if(!cur_path_length || cur_path[0] != '/') {
 		err = EINVAL;
 		goto out;
 	}
 
-	while(cur_path[0] == '/') {
+	while(cur_path_length && cur_path[0] == '/') {
 		++cur_path;
+		--cur_path_length;
 	}
 
-	if(!cur_path[0]) {
+	if(!cur_path_length) {
 		/* The request is for the root directory. We can't supply a
 		 * record for it, only the object ID. */
 		if(out_parent_directory_object_id) {
@@ -604,6 +650,8 @@ int refs_volume_lookup_by_posix_path(
 		vol,
 		/* const void *path */
 		cur_path,
+		/* size_t cur_path_length */
+		cur_path_length,
 		/* const u64 *start_object_id */
 		start_object_id,
 		/* u64 *out_parent_directory_object_id */
@@ -612,6 +660,10 @@ int refs_volume_lookup_by_posix_path(
 		out_directory_object_id,
 		/* sys_bool *out_is_short_entry */
 		out_is_short_entry,
+		/* u8 **out_key */
+		out_key,
+		/* size_t *out_key_size */
+		out_key_size,
 		/* u8 **out_record */
 		out_record,
 		/* size_t *out_record_size */

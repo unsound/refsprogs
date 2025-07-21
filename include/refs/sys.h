@@ -73,6 +73,11 @@ typedef u64 le64;
 
 typedef le16 refschar;
 
+typedef struct {
+	u64 tv_sec;
+	u32 tv_nsec;
+} sys_timespec;
+
 static inline u16 le16_to_cpup(const le16 *const value)
 {
 	return (((u16) ((const u8*) value)[1]) << 8) |
@@ -329,6 +334,13 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 #define sys_log_trace sys_log_noop
 #endif
 
+#if SYS_LOG_TRACE_ENABLED
+#define sys_log_ptrace(err, fmt, ...) \
+	fprintf(stderr, "[TRACE] " fmt ": %s\n", ##__VA_ARGS__, strerror(err))
+#else
+#define sys_log_ptrace sys_log_pnoop
+#endif
+
 #define SYS_TRUE 1
 #define SYS_FALSE 0
 #define sys_bool u8
@@ -373,22 +385,48 @@ static inline void _sys_free(void **out_ptr)
 #define sys_free(out_ptr) \
 	_sys_free((void**) (out_ptr))
 
+#ifdef HAVE_STRNDUP
+static inline void sys_strndup(const char *str, size_t len, char **dupstr)
+{
+	int err = 0;
+
+	if(!(*dupstr = strndup(str, len))) {
+		err = (err = errno) ? err : ENOMEM;
+	}
+
+	return err;
+}
+#else
+int sys_strndup(const char *str, size_t len, char **dupstr);
+#endif /* defined(HAVE_STRNDUP) ... */
+
 #define PRIdz "zd"
 #define PRIuz "zu"
 #define PRIXz "zX"
 #define PRIbs ".*s"
 
+#define PRAoz(arg) ((size_t) (arg))
 #define PRAdz(arg) ((ssize_t) (arg))
 #define PRAuz(arg) ((size_t) (arg))
+#define PRAxz(arg) ((size_t) (arg))
 #define PRAXz(arg) ((size_t) (arg))
 #define PRAbs(precision, arg) ((int) (precision)), ((const char*) (arg))
+#define PRAo8(arg) ((uint8_t) (arg))
+#define PRAd8(arg) ((int8_t) (arg))
 #define PRAu8(arg) ((uint8_t) (arg))
+#define PRAx8(arg) ((uint8_t) (arg))
 #define PRAX8(arg) ((uint8_t) (arg))
+#define PRAo16(arg) ((uint16_t) (arg))
+#define PRAd16(arg) ((int16_t) (arg))
 #define PRAu16(arg) ((uint16_t) (arg))
+#define PRAx16(arg) ((uint16_t) (arg))
 #define PRAX16(arg) ((uint16_t) (arg))
+#define PRAo32(arg) ((uint32_t) (arg))
 #define PRAd32(arg) ((int32_t) (arg))
 #define PRAu32(arg) ((uint32_t) (arg))
+#define PRAx32(arg) ((uint32_t) (arg))
 #define PRAX32(arg) ((uint32_t) (arg))
+#define PRAo64(arg) ((uint64_t) (arg))
 #define PRAd64(arg) ((int64_t) (arg))
 #define PRAu64(arg) ((uint64_t) (arg))
 #define PRAx64(arg) ((uint64_t) (arg))
