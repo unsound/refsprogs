@@ -3,7 +3,7 @@ refsprogs
 
 The purpose of this project is to provide utilities for accessing data on ReFS
 volumes. As ReFS lacks documentation the utilites are dependent on independent
-exploration of the on-disk format, and thus cannot yet be relied upon.
+exploration of the on-disk format, and thus cannot yet be fully relied upon.
 
 Currently the following utilities exist:
 
@@ -13,9 +13,8 @@ A utility that prints the ReFS tree data, as much as we currently understand it.
 
 refscat
 -------
-A utility that prints the data of a file on an ReFS volume. This utility is
-currently very limited and can only print the first extent of a file (or if
-you're unlucky, nothing at all).
+A utility that prints the data of a file, extended attribute (EA) or an
+alternate data stream on an ReFS volume.
 
 refsinfo
 --------
@@ -31,6 +30,8 @@ refsls
 A utility that lists files on an ReFS volume. The '-R' switch allows recursive
 listing, while '-a' shows hidden files and '-l' uses a long format including
 timestamps.
+If the '-e' option is supplied, extended attributes (EAs) are listed and the
+'-s' option lists alternate data streams.
 
 refs-fuse
 ---------
