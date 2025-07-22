@@ -32,5 +32,6 @@ librefs_la_SOURCES = \
 	fsapi.c \
 	node.c \
 	rb_tree.c \
+	rb_tree.h \
 	sys.c \
 	volume.c
