@@ -24,6 +24,7 @@
 #endif
 
 #include "fsapi.h"
+#include "fsapi_refs.h"
 
 #include "layout.h"
 #include "node.h"
@@ -38,6 +39,7 @@ static const size_t cached_nodes_max = 1024;
 struct fsapi_volume {
 	refs_volume *vol;
 	fsapi_node *root_node;
+	fsapi_refs_xattr_mode xattr_mode;
 
 	struct rb_tree *cache_tree;
 	size_t cached_nodes_count;
@@ -1140,6 +1142,9 @@ int fsapi_volume_mount(
 		fsapi_node **out_root_node,
 		fsapi_volume_attributes *out_attrs)
 {
+	const fsapi_refs_custom_mount_options *const refs_mount_options =
+		(const fsapi_refs_custom_mount_options*) custom_mount_options;
+
 	int err = 0;
 	fsapi_volume *vol = NULL;
 	fsapi_node *root_node = NULL;
@@ -1147,11 +1152,6 @@ int fsapi_volume_mount(
 
 	if(!read_only) {
 		sys_log_error("Read/write support not implemented yet.");
-		err = EINVAL;
-		goto out;
-	}
-	else if(custom_mount_options) {
-		sys_log_error("Custom mount options not yet implemented.");
 		err = EINVAL;
 		goto out;
 	}
@@ -1220,6 +1220,12 @@ int fsapi_volume_mount(
 
 	vol->vol = rvol;
 	vol->root_node = root_node;
+	if(refs_mount_options) {
+		vol->xattr_mode = refs_mount_options->xattr_mode;
+	}
+	else {
+		vol->xattr_mode = FSAPI_REFS_XATTR_MODE_STREAMS;
+	}
 
 	*out_vol = vol;
 	if(out_root_node) {
@@ -1881,5 +1887,431 @@ out:
 		"size=%" PRIuz ", iohandler=%p): Leaving with",
 		__FUNCTION__, vol, node, PRAu64(offset), PRAuz(size),
 		iohandler);
+	return err;
+}
+
+typedef struct {
+	refs_volume *vol;
+	sys_bool show_eas;
+	sys_bool show_streams;
+	void *context;
+	int (*xattr_handler)(
+		void *context,
+		const char *name,
+		size_t name_length,
+		size_t size);
+} fsapi_node_list_extended_attributes_context;
+
+static int fsapi_node_list_extended_attributes_visit_ea(
+		void *const context,
+		const char *const name,
+		const size_t name_length,
+		const void *const data,
+		const size_t data_size)
+{
+	fsapi_node_list_extended_attributes_context *const ctx =
+		(fsapi_node_list_extended_attributes_context*) context;
+
+	int err = 0;
+
+	(void) data;
+
+	if(ctx->show_eas) {
+		err = ctx->xattr_handler(
+			/* void *context */
+			ctx->context,
+			/* const char *name */
+			name,
+			/* size_t name_length */
+			name_length,
+			/* size_t size */
+			data_size);
+	}
+
+	return err;
+}
+
+static int fsapi_node_list_extended_attributes_visit_stream(
+		void *const context,
+		const char *const name,
+		const size_t name_length,
+		const u64 data_size,
+		const refs_node_stream_data *const data_reference)
+{
+	fsapi_node_list_extended_attributes_context *const ctx =
+		(fsapi_node_list_extended_attributes_context*) context;
+
+	int err = 0;
+
+	(void) data_reference;
+
+	if(ctx->show_streams) {
+		err = ctx->xattr_handler(
+			/* void *context */
+			ctx->context,
+			/* const char *name */
+			name,
+			/* size_t name_length */
+			name_length,
+			/* size_t size */
+			data_size);
+	}
+
+	return err;
+}
+
+int fsapi_node_list_extended_attributes(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		void *context,
+		int (*xattr_handler)(
+			void *context,
+			const char *name,
+			size_t name_length,
+			size_t size))
+{
+	int err = 0;
+
+	fsapi_node_list_extended_attributes_context xattr_context;
+	refs_node_crawl_context crawl_context;
+	refs_node_walk_visitor visitor;
+
+	memset(&xattr_context, 0, sizeof(xattr_context));
+	memset(&crawl_context, 0, sizeof(crawl_context));
+	memset(&visitor, 0, sizeof(visitor));
+
+	if(node == vol->root_node || node->is_short_entry) {
+		/* TODO: Check where root node's streams and EAs are located. */
+		err = 0;
+		goto out;
+	}
+
+	xattr_context.vol = vol->vol;
+	if(vol->xattr_mode == FSAPI_REFS_XATTR_MODE_BOTH ||
+		vol->xattr_mode == FSAPI_REFS_XATTR_MODE_EAS)
+	{
+		xattr_context.show_eas = SYS_TRUE;
+	}
+	if(vol->xattr_mode == FSAPI_REFS_XATTR_MODE_BOTH ||
+		vol->xattr_mode == FSAPI_REFS_XATTR_MODE_STREAMS)
+	{
+		xattr_context.show_streams = SYS_TRUE;
+	}
+	xattr_context.context = context;
+	xattr_context.xattr_handler = xattr_handler;
+
+	crawl_context = refs_volume_init_node_crawl_context(
+		/* refs_volume *vol */
+		vol->vol);
+	visitor.context = &xattr_context;
+	visitor.node_ea = fsapi_node_list_extended_attributes_visit_ea;
+	visitor.node_stream = fsapi_node_list_extended_attributes_visit_stream;
+
+	err = parse_level3_long_value(
+		/* refs_node_crawl_context *crawl_context */
+		&crawl_context,
+		/* refs_node_walk_visitor *visitor */
+		&visitor,
+		/* const char *prefix */
+		"",
+		/* size_t indent */
+		1,
+		/* const u8 *key */
+		node->key,
+		/* u16 key_size */
+		node->key_size,
+		/* const u8 *value */
+		node->record,
+		/* u16 value_offset */
+		0,
+		/* u16 value_size */
+		node->record_size,
+		/* void *context */
+		NULL);
+	if(err == -1) {
+		err = 0;
+	}
+	else if(err) {
+		sys_log_perror(err, "Error while parsing node for listing "
+			"extended attributes");
+	}
+out:
+	return err;
+}
+
+typedef struct {
+	refs_volume *vol;
+	const char *xattr_name;
+	size_t xattr_name_length;
+	u64 offset;
+	size_t size;
+	fsapi_iohandler *iohandler;
+	sys_bool stream_found;
+	u64 stream_non_resident_id;
+	u64 remaining_bytes;
+} fsapi_node_read_extended_attribute_context;
+
+static int fsapi_node_read_extended_attribute_visit_ea(
+		void *const _context,
+		const char *const name,
+		const size_t name_length,
+		const void *const data,
+		const size_t data_size)
+{
+	fsapi_node_read_extended_attribute_context *const context =
+		(fsapi_node_read_extended_attribute_context*) _context;
+
+	int err = 0;
+
+	if(name_length != context->xattr_name_length ||
+		memcmp(name, context->xattr_name, name_length))
+	{
+		/* No match. */
+		goto out;
+	}
+
+	context->stream_found = SYS_TRUE;
+	context->remaining_bytes = data_size;
+
+	err = context->iohandler->copy_data(
+		/* void *context */
+		context->iohandler->context,
+		/* const void *data */
+		data,
+		/* size_t size */
+		data_size);
+	if(err) {
+		goto out;
+	}
+
+	context->remaining_bytes -= data_size;
+
+	/* Stop iterating since we found our match. */
+	err = -1;
+out:
+	return err;
+}
+
+static int fsapi_node_read_extended_attribute_visit_stream(
+		void *const _context,
+		const char *const name,
+		const size_t name_length,
+		const u64 data_size,
+		const refs_node_stream_data *const data_reference)
+{
+	fsapi_node_read_extended_attribute_context *const context =
+		(fsapi_node_read_extended_attribute_context*) _context;
+	int err = 0;
+
+	if(name_length != context->xattr_name_length ||
+		memcmp(name, context->xattr_name, name_length))
+	{
+		/* No match. */
+		goto out;
+	}
+
+	context->stream_found = SYS_TRUE;
+	if(!context->remaining_bytes) {
+		context->remaining_bytes = data_size;
+	}
+
+	if(data_reference->resident) {
+		err = context->iohandler->copy_data(
+			/* void *context */
+			context->iohandler->context,
+			/* const void *data */
+			data_reference->data.resident,
+			/* size_t size */
+			data_size);
+		if(err) {
+			goto out;
+		}
+
+		context->remaining_bytes -= data_size;
+	}
+	else {
+		context->stream_non_resident_id =
+			data_reference->data.non_resident.stream_id;
+	}
+
+	/* Stop iterating since we found our match. Stream extents will be
+	 * iterated over separately as they may precede this entry. */
+	err = -1;
+out:
+	return err;
+}
+
+static int fsapi_node_read_extended_attribute_visit_stream_extent(
+		void *const _context,
+		const u64 stream_id,
+		const u64 first_block,
+		const u32 block_index_unit,
+		const u32 cluster_count)
+{
+	fsapi_node_read_extended_attribute_context *const context =
+		(fsapi_node_read_extended_attribute_context*) _context;
+	const u64 read_offset = first_block * block_index_unit;
+	const u64 extent_size = cluster_count * context->vol->cluster_size;
+	const u64 valid_extent_size =
+		sys_min(extent_size, context->remaining_bytes);
+
+	int err = 0;
+
+	sys_log_debug("Got stream extent with stream id 0x%" PRIX64 ", first "
+		"block 0x%" PRIX64 "...",
+		PRAX64(stream_id), PRAX64(first_block));
+
+	if(stream_id != context->stream_non_resident_id) {
+		/* Not the stream that we are looking for. */
+		goto out;
+	}
+
+	err = context->iohandler->handle_io(
+		/* void *context */
+		context->iohandler->context,
+		/* sys_device *dev */
+		context->vol->dev,
+		/* u64 offset */
+		read_offset,
+		/* size_t size */
+		valid_extent_size);
+	if(err) {
+		goto out;
+	}
+
+	context->remaining_bytes -= valid_extent_size;
+
+	/* Stop iterating since we found our match. Stream extents will be
+	 * iterated over separately as they may precede this entry. */
+	err = -1;
+out:
+	return err;
+}
+
+int fsapi_node_read_extended_attribute(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *xattr_name,
+		size_t xattr_name_length,
+		u64 offset,
+		size_t size,
+		fsapi_iohandler *iohandler)
+{
+	int err = 0;
+
+	fsapi_node_read_extended_attribute_context context;
+	refs_node_crawl_context crawl_context;
+	refs_node_walk_visitor visitor;
+
+	memset(&context, 0, sizeof(context));
+	memset(&crawl_context, 0, sizeof(crawl_context));
+	memset(&visitor, 0, sizeof(visitor));
+
+	if(node == vol->root_node || node->is_short_entry) {
+		/* TODO: Check where root node's streams and EAs are located. */
+		err = ENOENT;
+		goto out;
+	}
+
+	crawl_context = refs_volume_init_node_crawl_context(
+		/* refs_volume *vol */
+		vol->vol);
+	context.vol = vol->vol;
+	context.xattr_name = xattr_name;
+	context.xattr_name_length = xattr_name_length;
+	context.offset = offset;
+	context.size = size;
+	context.iohandler = iohandler;
+	visitor.context = &context;
+	visitor.node_ea = fsapi_node_read_extended_attribute_visit_ea;
+	visitor.node_stream = fsapi_node_read_extended_attribute_visit_stream;
+
+	err = parse_level3_long_value(
+		/* refs_node_crawl_context *crawl_context */
+		&crawl_context,
+		/* refs_node_walk_visitor *visitor */
+		&visitor,
+		/* const char *prefix */
+		"",
+		/* size_t indent */
+		1,
+		/* const u8 *key */
+		node->key,
+		/* u16 key_size */
+		node->key_size,
+		/* const u8 *value */
+		node->record,
+		/* u16 value_offset */
+		0,
+		/* u16 value_size */
+		node->record_size,
+		/* void *context */
+		NULL);
+	if(err == -1) {
+		/* Manual break code, this one is expected. */
+		err = 0;
+	}
+	else if(err) {
+		sys_log_perror(err, "Error while parsing node for listing "
+			"extended attributes");
+		goto out;
+	}
+	else {
+		/* If there's no break code we should return ENOENT. */
+		err = ENOENT;
+		goto out;
+	}
+
+	if(context.stream_non_resident_id) {
+		/* We encountered a non-resident stream. Iterate again to find
+		 * its associated stream extents. */
+		memset(&visitor, 0, sizeof(visitor));
+		visitor.context = &context;
+		visitor.node_stream_extent =
+			fsapi_node_read_extended_attribute_visit_stream_extent;
+
+		sys_log_debug("Walking the entry a second time to find "
+			"non-resident stream data for id %" PRIX64 "...",
+			PRAX64(context.stream_non_resident_id));
+		err = parse_level3_long_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
+			/* refs_node_walk_visitor *visitor */
+			&visitor,
+			/* const char *prefix */
+			"",
+			/* size_t indent */
+			1,
+			/* const u8 *key */
+			node->key,
+			/* u16 key_size */
+			node->key_size,
+			/* const u8 *value */
+			node->record,
+			/* u16 value_offset */
+			0,
+			/* u16 value_size */
+			node->record_size,
+			/* void *context */
+			NULL);
+		if(err == -1) {
+			/* Manual break code, this one is expected. */
+			err = 0;
+		}
+		else if(err) {
+			sys_log_perror(err, "Error while listing directory");
+			goto out;
+		}
+		else {
+			sys_log_error("Couldn't find stream extent with id "
+				"%" PRIu64 " for extended attributes "
+				"\"%" PRIbs "\".",
+				PRAu64(context.stream_non_resident_id),
+				PRAbs(xattr_name_length, xattr_name));
+			err = EIO;
+			goto out;
+		}
+	}
+out:
 	return err;
 }

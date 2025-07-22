@@ -601,6 +601,268 @@ out:
 	return -err;
 }
 
+typedef struct {
+	const char *name;
+	size_t name_length;
+	size_t size;
+} refs_fuse_getxattr_context;
+
+static int refs_fuse_op_getxattr_xattr_handler(
+		void *const _context,
+		const char *const name,
+		const size_t name_length,
+		const size_t size)
+{
+	refs_fuse_getxattr_context *const context =
+		(refs_fuse_getxattr_context*) _context;
+
+	int err = 0;
+
+	if(name_length != context->name_length ||
+		memcmp(name, context->name, name_length))
+	{
+		/* Not the xattr that we are looking for. Move on to the
+		 * next one. */
+		goto out;
+	}
+
+	context->size = size;
+	err = -1;
+out:
+	return err;
+}
+
+#ifdef __APPLE__
+static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
+		size_t size, uint32_t position)
+#else
+static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
+		size_t size)
+#endif
+{
+	fsapi_volume *const vol =
+		(fsapi_volume*) fuse_get_context()->private_data;
+#ifndef __APPLE__
+	const uint32_t position = 0;
+#endif
+
+	int err = 0;
+	fsapi_node *node = NULL;
+	refs_fuse_getxattr_context context;
+	fsapi_iohandler_buffer_context buffer_context;
+
+	memset(&context, 0, sizeof(context));
+	memset(&buffer_context, 0, sizeof(buffer_context));
+
+	sys_log_debug("%s(path=\"%s\", name=\"%s\", buf=%p, "
+		"size=%" PRIuz ", position=%" PRIu32 ")",
+		__FUNCTION__, path, name, buf, PRAuz(size), PRAu32(position));
+
+	err = fsapi_node_lookup(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *parent_node */
+		NULL,
+		/* const char *path */
+		path,
+		/* size_t path_length */
+		strlen(path),
+		/* fsapi_node **out_child_node */
+		&node,
+		/* fsapi_node_attributes *out_attributes */
+		NULL);
+	if(err) {
+		goto out;
+	}
+	else if(!node) {
+		err = ENOENT;
+		goto out;
+	}
+
+	if(!buf) {
+		context.name = name;
+		context.name_length = strlen(name);
+
+		err = fsapi_node_list_extended_attributes(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node *node */
+			node,
+			/* void *context */
+			&context,
+			/* int (*xattr_handler)(
+			 *     void *context,
+			 *     const char *name,
+			 *     size_t name_length,
+			 *     size_t size) */
+			refs_fuse_op_getxattr_xattr_handler);
+		if(err == -1) {
+			err = 0;
+		}
+		else if(err) {
+			goto out;
+		}
+		else {
+			err = ENOENT;
+		}
+	}
+	else {
+		fsapi_iohandler iohandler;
+
+		memset(&iohandler, 0, sizeof(iohandler));
+
+		buffer_context.buf.rw = buf;
+		buffer_context.remaining_size = size;
+		buffer_context.is_read = SYS_TRUE;
+
+		iohandler.context = &buffer_context;
+		iohandler.handle_io = fsapi_iohandler_buffer_handle_io;
+		iohandler.copy_data = fsapi_iohandler_buffer_copy_data;
+
+		err = fsapi_node_read_extended_attribute(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node *node */
+			node,
+			/* const char *xattr_name */
+			name,
+			/* size_t xattr_name_length */
+			strlen(name),
+			/* u64 offset */
+			position,
+			/* size_t size */
+			size,
+			/* fsapi_iohandler *iohandler */
+			&iohandler);
+	}
+	if(err == ENOENT) {
+		/* Transform to ENOATTR (macOS/BSD) / ENODATA (Linux,
+		 * ...?). */
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || \
+defined(__OpenBSD__) || defined(__DragonFly__)
+		err = ENOATTR;
+#else
+		err = ENODATA;
+#endif
+	}
+out:
+	if(node) {
+		fsapi_node_release(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node **node */
+			&node);
+	}
+
+	return err ? -err :
+		(buf ? size - buffer_context.remaining_size : context.size);
+}
+
+typedef struct {
+	char *buf;
+	size_t size;
+} refs_fuse_listxattr_context;
+
+static int refs_fuse_op_listxattr_xattr_handler(
+		void *const _context,
+		const char *const name,
+		const size_t name_length,
+		const size_t size)
+{
+	refs_fuse_listxattr_context *const context =
+		(refs_fuse_listxattr_context*) _context;
+
+	int err = 0;
+
+	(void) size;
+
+	if(!context->buf) {
+		if(context->size > SIZE_MAX - (name_length + 1)) {
+			/* Prevent overflow of size_t field. */
+			goto out;
+		}
+
+		context->size += name_length + 1;
+	}
+	else if(name_length + 1 > context->size) {
+		err = ERANGE;
+		goto out;
+	}
+	else {
+		memcpy(context->buf, name, name_length);
+		context->buf[name_length] = '\0';
+		context->buf = &context->buf[name_length + 1];
+		context->size -= name_length + 1;
+	}
+out:
+	return err;
+}
+
+static int refs_fuse_op_listxattr(const char *path, char *buf, size_t size)
+{
+	fsapi_volume *const vol =
+		(fsapi_volume*) fuse_get_context()->private_data;
+
+	int err = 0;
+	fsapi_node *node = NULL;
+	refs_fuse_listxattr_context context;
+
+	memset(&context, 0, sizeof(context));
+
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ")",
+		__FUNCTION__, path, buf, PRAuz(size));
+
+	err = fsapi_node_lookup(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *parent_node */
+		NULL,
+		/* const char *path */
+		path,
+		/* size_t path_length */
+		strlen(path),
+		/* fsapi_node **out_child_node */
+		&node,
+		/* fsapi_node_attributes *out_attributes */
+		NULL);
+	if(err) {
+		goto out;
+	}
+	else if(!node) {
+		err = ENOENT;
+		goto out;
+	}
+
+	if(buf) {
+		context.buf = buf;
+		context.size = size;
+	}
+
+	err = fsapi_node_list_extended_attributes(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* void *context */
+		&context,
+		/* int (*xattr_handler)(
+		 *     void *context,
+		 *     const char *name,
+		 *     size_t name_length,
+		 *     size_t size) */
+		refs_fuse_op_listxattr_xattr_handler);
+out:
+	if(node) {
+		fsapi_node_release(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node **node */
+			&node);
+	}
+
+	return err ? -err : (buf ? size - context.size : context.size);
+}
+
 #if defined(_WIN32)
 static uint32_t refs_fuse_op_win_get_attributes(const char *path)
 {
@@ -674,6 +936,15 @@ struct fuse_operations refs_fuse_operations = {
 	/* int (*readdir) (const char *, void *, fuse_fill_dir_t, off_t,
 	 *         struct fuse_file_info *) */
 	.readdir = refs_fuse_op_readdir,
+#ifdef __APPLE__
+	/* int (*getxattr) (const char *, const char *, char *, size_t,
+	 *     uint32_t); */
+#else
+	/* int (*getxattr) (const char *, const char *, char *, size_t); */
+#endif
+	.getxattr = refs_fuse_op_getxattr,
+	/* int (*listxattr) (const char *, char *, size_t); */
+	.listxattr = refs_fuse_op_listxattr,
 #ifdef _WIN32
 	/* uint32_t (*win_get_attributes) (const char *fn) */
 	.win_get_attributes = refs_fuse_op_win_get_attributes,
