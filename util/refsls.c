@@ -65,6 +65,8 @@ static int refsls_node_long_entry(
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size);
 
@@ -74,12 +76,15 @@ static int refsls_node_short_entry(
 		const u16 file_name_length,
 		const u32 file_flags,
 		const u64 object_id,
+		const u64 hard_link_id,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size);
 
@@ -105,6 +110,7 @@ typedef struct {
 	char *prefix;
 	char *cur_name;
 	size_t cur_name_length;
+	u64 cur_hard_link_id;
 } refsls_list_dir_fill_ctx;
 
 static int refsls_print_dirent(
@@ -115,7 +121,8 @@ static int refsls_print_dirent(
 		const u32 file_flags,
 		const u64 last_access_time,
 		const u64 file_size,
-		const u64 directory_object_id)
+		const u64 directory_object_id,
+		const u64 hard_link_target_id)
 {
 	refsls_list_dir_fill_ctx *const ctx =
 		(refsls_list_dir_fill_ctx*) context;
@@ -133,19 +140,32 @@ static int refsls_print_dirent(
 	if(ctx->cur_name) {
 		sys_free(&ctx->cur_name);
 	}
+	ctx->cur_name_length = 0;
+	ctx->cur_hard_link_id = 0;
 
-	err = sys_unistr_decode(
-		name,
-		name_len,
-		&cstr,
-		&cstr_len);
-	if(err) {
-		fprintf(stderr, "Error: Failed to decode filename string.\n");
-		goto out;
+	if(name) {
+		err = sys_unistr_decode(
+			/* const refschar *ins */
+			name,
+			/* size_t ins_len */
+			name_len,
+			/* char **outs */
+			&cstr,
+			/* size_t *outs_len */
+			&cstr_len);
+		if(err) {
+			fprintf(stderr, "Error: Failed to decode filename "
+				"string.\n");
+			goto out;
+		}
+
+		ctx->cur_name = cstr;
+		ctx->cur_name_length = cstr_len;
+	}
+	else {
+		ctx->cur_hard_link_id = hard_link_target_id;
 	}
 
-	ctx->cur_name = cstr;
-	ctx->cur_name_length = cstr_len;
 
 	{
 		if(options.long_format) {
@@ -198,7 +218,20 @@ static int refsls_print_dirent(
 			fprintf(stdout, "%s/", ctx->prefix);
 		}
 
-		fprintf(stdout, "%" PRIbs, PRAbs(cstr_len, cstr));
+		if(name) {
+			fprintf(stdout, "%" PRIbs, PRAbs(cstr_len, cstr));
+		}
+		else {
+			fprintf(stdout, "<Hard link entry with id "
+				"0x%" PRIX64 ">", PRAX64(hard_link_target_id));
+		}
+
+		if(name && hard_link_target_id) {
+			fprintf(stdout, " -> <Hard linked to id 0x%" PRIX64 " "
+				"in directory 0x%" PRIX64 ">",
+				PRAX64(hard_link_target_id),
+				PRAX64(directory_object_id));
+		}
 	}
 
 	fprintf(stdout, "\n");
@@ -291,6 +324,8 @@ static int refsls_node_long_entry(
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size)
 {
@@ -300,6 +335,8 @@ static int refsls_node_long_entry(
 	(void) last_write_time;
 	(void) last_mft_change_time;
 	(void) allocated_size;
+	(void) key;
+	(void) key_size;
 	(void) record;
 	(void) record_size;
 
@@ -319,6 +356,8 @@ static int refsls_node_long_entry(
 		/* u64 file_size */
 		file_size,
 		/* u64 directory_object_id */
+		0,
+		/* u64 hard_link_target_id */
 		0);
 
 	return err;
@@ -330,12 +369,15 @@ static int refsls_node_short_entry(
 		const u16 file_name_length,
 		const u32 file_flags,
 		const u64 object_id,
+		const u64 hard_link_id,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size)
 {
@@ -345,6 +387,8 @@ static int refsls_node_short_entry(
 	(void) last_write_time;
 	(void) last_mft_change_time;
 	(void) allocated_size;
+	(void) key;
+	(void) key_size;
 	(void) record;
 	(void) record_size;
 
@@ -364,7 +408,59 @@ static int refsls_node_short_entry(
 		/* u64 file_size */
 		file_size,
 		/* u64 directory_object_id */
-		object_id);
+		object_id,
+		/* u64 hard_link_target_id */
+		hard_link_id);
+
+	return err;
+}
+
+static int refsls_node_hardlink_entry(
+		void *context,
+		u64 hard_link_id,
+		u64 parent_id,
+		u32 file_flags,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		u64 file_size,
+		u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *record,
+		size_t record_size)
+{
+	int err = 0;
+
+	(void) create_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	err = refsls_print_dirent(
+		/* void *const context */
+		context,
+		/* sys_bool is_directory */
+		(file_flags & 0x10000000) ? SYS_TRUE : SYS_FALSE,
+		/* const refschar *name */
+		NULL,
+		/* size_t name_len */
+		0,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 last_access_time */
+		last_access_time,
+		/* u64 file_size */
+		file_size,
+		/* u64 directory_object_id */
+		parent_id,
+		/* u64 hard_link_target_id */
+		hard_link_id);
 
 	return err;
 }
@@ -388,9 +484,17 @@ static int refsls_node_ea(
 				PRAu64(data_size));
 		}
 
-		fprintf(stdout, "%" PRIbs ":$EA:%" PRIbs "\n",
-			PRAbs(ctx->cur_name_length, ctx->cur_name),
-			PRAbs(name_length, name));
+		if(ctx->cur_name) {
+			fprintf(stdout, "%" PRIbs ":$EA:%" PRIbs "\n",
+				PRAbs(ctx->cur_name_length, ctx->cur_name),
+				PRAbs(name_length, name));
+		}
+		else {
+			fprintf(stdout, "<Hard link entry with id "
+				"0x%" PRIX64 ">:$EA:%" PRIbs "\n",
+				PRAX64(ctx->cur_hard_link_id),
+				PRAbs(name_length, name));
+		}
 	}
 
 	return 0;
@@ -415,11 +519,21 @@ static int refsls_node_stream(
 				PRAu64(data_size));
 		}
 
-		fprintf(stdout, "%" PRIbs ":%" PRIbs ":$DATA%s\n",
-			PRAbs(ctx->cur_name_length, ctx->cur_name),
-			PRAbs(name_length, name),
-			data_reference->resident ? " (resident)" :
-			" (non-resident)");
+		if(ctx->cur_name) {
+			fprintf(stdout, "%" PRIbs ":%" PRIbs ":$DATA%s\n",
+				PRAbs(ctx->cur_name_length, ctx->cur_name),
+				PRAbs(name_length, name),
+				data_reference->resident ? " (resident)" :
+				" (non-resident)");
+		}
+		else {
+			fprintf(stdout, "<Hard link entry with id "
+				"0x%" PRIX64 ">:%" PRIbs ":$DATA%s\n",
+				PRAX64(ctx->cur_hard_link_id),
+				PRAbs(name_length, name),
+				data_reference->resident ? " (resident)" :
+				" (non-resident)");
+		}
 	}
 
 	return 0;
@@ -552,6 +666,8 @@ int main(int argc, char **argv)
 		vol,
 		/* const char *path */
 		options.path ? options.path : "/",
+		/* size_t path_length */
+		options.path ? strlen(options.path) : 1,
 		/* const u64 *start_object_id */
 		NULL,
 		/* u64 *out_parent_directory_object_id */
@@ -559,6 +675,10 @@ int main(int argc, char **argv)
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
 		/* sys_bool *out_is_short_entry */
+		NULL,
+		/* u8 *key */
+		NULL,
+		/* size_t key_size */
 		NULL,
 		/* u8 **out_record */
 		NULL,
@@ -587,6 +707,7 @@ int main(int argc, char **argv)
 	visitor.context = &context;
 	visitor.node_long_entry = refsls_node_long_entry;
 	visitor.node_short_entry = refsls_node_short_entry;
+	visitor.node_hardlink_entry = refsls_node_hardlink_entry;
 	visitor.node_ea = refsls_node_ea;
 	visitor.node_stream = refsls_node_stream;
 

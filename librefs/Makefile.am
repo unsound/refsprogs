@@ -29,6 +29,8 @@ librefs_la_LDFLAGS  = \
 librefs_la_LIBADD  = \
 	$(COMMON_LIBS)
 librefs_la_SOURCES = \
+	fsapi.c \
 	node.c \
+	rb_tree.c \
 	sys.c \
 	volume.c

@@ -4360,6 +4360,42 @@ static int parse_level3_object_id_key(
 	return err;
 }
 
+static int parse_level3_hardlink_key(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const key,
+		const u16 key_offset,
+		const u16 key_size,
+		void *const context)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	int err = 0;
+	size_t i = 0;
+
+	(void) context;
+
+	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
+		"hard link", PRAu16(key_offset), PRAX16(key_offset));
+
+	i += print_le16_dechex("Key type", prefix, indent, key, &key[i]);
+	i += print_unknown16(prefix, indent, key, &key[i]);
+	i += print_unknown32(prefix, indent, key, &key[i]);
+	i += print_le64_dechex("Hard link ID", prefix, indent, key, &key[i]);
+	i += print_le64_dechex("Parent directory ID", prefix, indent, key,
+		&key[i]);
+
+	if(i < key_size) {
+		print_data_with_base(prefix, indent, i, key_size, &key[i],
+			key_size - i);
+		i = key_size;
+	}
+
+	return err;
+}
+
 static int parse_level3_unknown_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -4426,6 +4462,23 @@ static int parse_level3_key(
 	}
 	else if(key_size == 16 && read_le64(&key[0]) == 0x0) {
 		err = parse_level3_object_id_key(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* const u8 *key */
+			key,
+			/* u16 key_offset */
+			key_offset,
+			/* u16 key_size */
+			key_size,
+			/* void *context */
+			context);
+	}
+	else if(key_size >= 24 && read_le16(&key[0]) == 0x40) {
+		err = parse_level3_hardlink_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -5079,7 +5132,7 @@ static int parse_attribute_key(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -5387,7 +5440,7 @@ static int parse_attribute_key(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -5741,7 +5794,7 @@ static int parse_attribute_key(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -5864,7 +5917,7 @@ static int parse_attribute_key(
 				sys_min(crawl_context->cluster_size,
 				crawl_context->block_size);
 
-			char *block = NULL;
+			u8 *block = NULL;
 			size_t bytes_read = 0;
 			u8 i = 0;
 
@@ -6686,7 +6739,7 @@ static int parse_attribute_leaf_value(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -6956,7 +7009,7 @@ static int parse_attribute_leaf_value(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -7312,7 +7365,7 @@ static int parse_attribute_leaf_value(
 			indent,
 			/* size_t remaining_in_value */
 			remaining_in_value,
-			/* const char *attribute */
+			/* const u8 *attribute */
 			key,
 			/* u16 attribute_size */
 			entry_size,
@@ -7435,7 +7488,7 @@ static int parse_attribute_leaf_value(
 				sys_min(crawl_context->cluster_size,
 				crawl_context->block_size);
 
-			char *block = NULL;
+			u8 *block = NULL;
 			size_t bytes_read = 0;
 			u8 i = 0;
 
@@ -7480,6 +7533,7 @@ static int parse_attribute_leaf_value(
 				++i;
 			}
 			if(err) {
+				sys_free(&block);
 				sys_log_pwarning(err, "Error while "
 					"reading %" PRIuz " bytes from "
 					"attribute block %" PRIu64 " "
@@ -7555,6 +7609,7 @@ static int parse_attribute_leaf_value(
 				 *      u32 data_size,
 				 *      u32 node_type) */
 				NULL);
+			sys_free(&block);
 			if(err) {
 				sys_log_pwarning(err, "Error while "
 					"parsing non-resident "
@@ -7581,7 +7636,7 @@ static u16 parse_level3_attribute_header(
 		const char *const prefix,
 		const size_t indent,
 		const size_t remaining_in_value,
-		const char *const attribute,
+		const u8 *const attribute,
 		const u16 attribute_size,
 		const u16 attribute_index)
 {
@@ -7655,6 +7710,7 @@ int parse_level3_long_value(
 	const u32 block_index_unit = crawl_context->block_index_unit;
 	const sys_bool is_v3 =
 		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	const u16 key_type = (key_size < 2) ? 0 : read_le16(&key[0]);
 	const u64 creation_time =
 		(value_size < 40 + 8) ? 0 : read_le64(&value[40]);
 	const u64 last_access_time =
@@ -7688,7 +7744,10 @@ int parse_level3_long_value(
 
 	(void) context;
 
-	if(visitor && visitor->node_long_entry) {
+	sys_log_debug("Long value for key type 0x%" PRIX16 ".",
+		PRAX16(key_type));
+
+	if(visitor && key_type == 0x0030U && visitor->node_long_entry) {
 		err = visitor->node_long_entry(
 			/* void *context */
 			visitor->context,
@@ -7710,6 +7769,49 @@ int parse_level3_long_value(
 			file_size,
 			/* u64 allocated_size */
 			allocated_size,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size,
+			/* const u8 *record */
+			value,
+			/* size_t record_size */
+			value_size);
+		if(err) {
+			goto out;
+		}
+	}
+	else if(visitor && key_type == 0x0040U && key_size >= 24 &&
+		visitor->node_hardlink_entry)
+	{
+		const u64 hard_link_id = read_le64(&key[8]);
+		const u64 parent_id = read_le64(&key[16]);
+
+		err = visitor->node_hardlink_entry(
+			/* void *context */
+			visitor->context,
+			/* u64 hard_link_id */
+			hard_link_id,
+			/* u64 parent_id */
+			parent_id,
+			/* u32 file_flags */
+			file_flags,
+			/* u64 create_time */
+			creation_time,
+			/* u64 last_access_time */
+			last_access_time,
+			/* u64 last_write_time */
+			last_data_modification_time,
+			/* u64 last_mft_change_time */
+			last_mft_modification_time,
+			/* u64 file_size */
+			file_size,
+			/* u64 allocated_size */
+			allocated_size,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size,
 			/* const u8 *record */
 			value,
 			/* size_t record_size */
@@ -7984,7 +8086,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8035,7 +8137,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8306,7 +8408,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8366,7 +8468,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8489,7 +8591,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8678,7 +8780,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -8988,7 +9090,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -9340,7 +9442,7 @@ int parse_level3_long_value(
 				indent,
 				/* size_t remaining_in_value */
 				remaining_in_value,
-				/* const char *attribute */
+				/* const u8 *attribute */
 				attribute,
 				/* u16 attribute_size */
 				attribute_size,
@@ -9462,7 +9564,7 @@ int parse_level3_long_value(
 					sys_min(crawl_context->cluster_size,
 					crawl_context->block_size);
 
-				char *block = NULL;
+				u8 *block = NULL;
 				size_t bytes_read = 0;
 				u8 i = 0;
 
@@ -9516,6 +9618,7 @@ int parse_level3_long_value(
 						PRAu64(physical_blocks[i]),
 						PRAu64(physical_blocks[i] *
 						block_index_unit));
+					sys_free(&block);
 					continue;
 				}
 
@@ -9582,6 +9685,7 @@ int parse_level3_long_value(
 					 *      u32 data_size,
 					 *      u32 node_type) */
 					NULL);
+				sys_free(&block);
 				if(err) {
 					sys_log_pwarning(err, "Error while "
 						"parsing non-resident "
@@ -9656,6 +9760,8 @@ int parse_level3_short_value(
 	const u64 object_id =
 		(value_size < (is_v3 ? 8 : 0) + 8) ? 0 :
 		read_le64(&value[is_v3 ? 8 : 0]);
+	const u64 hard_link_id =
+		(!is_v3 || value_size < 0 + 8) ? 0 : read_le64(&value[0]);
 	const u64 creation_time =
 		(value_size < 16 + 8) ? 0 : read_le64(&value[16]);
 	const u64 last_data_modification_time =
@@ -9690,6 +9796,8 @@ int parse_level3_short_value(
 			file_flags,
 			/* u64 object_id */
 			object_id,
+			/* u64 hard_link_id */
+			hard_link_id,
 			/* u64 create_time */
 			creation_time,
 			/* u64 last_access_time */
@@ -9702,6 +9810,10 @@ int parse_level3_short_value(
 			file_size,
 			/* u64 allocated_size */
 			allocated_size,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size,
 			/* const u8 *record */
 			value,
 			/* size_t record_size */
@@ -9725,7 +9837,9 @@ int parse_level3_short_value(
 	 * fsutil.
 	 */
 	if(is_v3) {
-		print_unknown64(prefix, indent, value, &value[0]);
+		/* Technically only from version 3.5 onwards. */
+		print_le64_dechex("Hard link ID", prefix, indent, value,
+			&value[0]);
 	}
 
 	emit(prefix, indent, "Object ID: %" PRIu64 " / 0x%" PRIX64,
@@ -9850,8 +9964,9 @@ static int parse_level3_leaf_value(
 	(void) key_offset;
 	(void) entry_size;
 
-	if(key_type == 0x30 && dirent_type == 0x1) {
-		/* File. */
+	if((key_type == 0x0030 && dirent_type == 0x0001) || /* Regular file. */
+		key_type == 0x0040) /* Hardlinked file. */
+	{
 		err = parse_level3_long_value(
 			/* refs_node_crawl_context *context */
 			crawl_context,
@@ -10325,8 +10440,14 @@ static int crawl_volume_metadata(
 	else if(memcmp(primary_level2_blocks, secondary_level2_blocks,
 		primary_level2_blocks_count * 24))
 	{
-		sys_log_warning("Mismatching level 2 block data in "
-			"level 1 blocks. Proceeding with primary...");
+		if(block_map && *block_map) {
+			sys_log_debug("Mismatching level 2 block data in "
+				"level 1 blocks. Proceeding with primary...");
+		}
+		else {
+			sys_log_warning("Mismatching level 2 block data in "
+				"level 1 blocks. Proceeding with primary...");
+		}
 	}
 
 	level2_queue.block_numbers = primary_level2_blocks;

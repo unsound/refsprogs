@@ -76,7 +76,11 @@ typedef struct {
 	char *stream_name;
 	size_t stream_name_length;
 	sys_bool name_matches;
+	sys_bool is_hard_link;
+	sys_bool hard_link_found;
 	sys_bool stream_found;
+	u64 hard_link_parent_object_id;
+	u64 hard_link_id;
 	u64 stream_non_resident_id;
 	u64 remaining_bytes;
 } refscat_print_data_ctx;
@@ -93,7 +97,9 @@ static int refscat_node_file_extent(
 	int err = 0;
 	char *buf = NULL;
 
-	if(context->name_matches && !context->ea_name && !context->stream_name)
+	if(context->name_matches &&
+		(!context->is_hard_link || context->hard_link_found) &&
+		!context->ea_name && !context->stream_name)
 	{
 		u64 extent_size = block_count * block_index_unit;
 		u64 valid_extent_size =
@@ -182,7 +188,9 @@ static int refscat_node_file_data(
 
 	int err = 0;
 
-	if(context->name_matches && !context->ea_name && !context->stream_name)
+	if(context->name_matches &&
+		(!context->is_hard_link || context->hard_link_found) &&
+		!context->ea_name && !context->stream_name)
 	{
 		ssize_t bytes_written = 0;
 
@@ -222,6 +230,8 @@ static int refscat_node_long_entry(
 		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
 		const u8 *const record,
 		const size_t record_size)
 {
@@ -236,6 +246,8 @@ static int refscat_node_long_entry(
 	(void) last_write_time;
 	(void) last_mft_change_time;
 	(void) allocated_size;
+	(void) key;
+	(void) key_size;
 	(void) record;
 	(void) record_size;
 
@@ -257,6 +269,127 @@ static int refscat_node_long_entry(
 	return err;
 }
 
+static int refscat_node_short_entry(
+		void *_context,
+		const le16 *file_name,
+		u16 file_name_length,
+		u32 file_flags,
+		u64 object_id,
+		u64 hard_link_id,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *record,
+		size_t record_size)
+{
+	refscat_print_data_ctx *const context =
+		(refscat_print_data_ctx*) _context;
+
+	(void) file_flags;
+	(void) object_id;
+	(void) hard_link_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	if(context->name_matches) {
+		/* We have found our match, so break here. */
+		return -1;
+	}
+
+	if(file_name_length == context->name_length &&
+		!memcmp(file_name, context->name,
+		file_name_length * sizeof(refschar)))
+	{
+		context->name_matches = SYS_TRUE;
+		if(hard_link_id) {
+			sys_log_debug("Got short entry for hard link with id "
+				"%" PRIu64 " / parent %" PRIu64,
+				PRAu64(hard_link_id), PRAu64(object_id));
+			if(context->is_hard_link) {
+				sys_log_critical("Got short entry but we are "
+					"already hardlinked? Internal error.");
+				return EIO;
+			}
+			context->is_hard_link = SYS_TRUE;
+			context->hard_link_id = hard_link_id;
+			context->hard_link_parent_object_id = object_id;
+		}
+		else if(!(context->ea_name || context->stream_name)) {
+			context->remaining_bytes = file_size;
+		}
+
+		/* We don't expect anything else of interest here. This is a
+		 * short value and doesn't have any attributes. So break. */
+		return -1;
+	}
+
+	return 0;
+}
+
+static int refscat_node_hardlink_entry(
+		void *const _context,
+		const u64 hard_link_id,
+		const u64 parent_id,
+		const u32 file_flags,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	refscat_print_data_ctx *const context =
+		(refscat_print_data_ctx*) _context;
+
+	int err = 0;
+
+	(void) file_flags;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	if(context->hard_link_found) {
+		/* We have found our match, so break here. */
+		return -1;
+	}
+
+	sys_log_debug("Got hardlink entry with id: %" PRIu64 " / parent: "
+		"%" PRIu64, PRAu64(hard_link_id), PRAu64(parent_id));
+	if(context->hard_link_id == hard_link_id &&
+		context->hard_link_parent_object_id == parent_id)
+	{
+		context->hard_link_found = SYS_TRUE;
+
+		if(!(context->ea_name || context->stream_name)) {
+			context->remaining_bytes = file_size;
+		}
+	}
+
+	return err;
+}
+
 static int refscat_node_ea(
 		void *_context,
 		const char *name,
@@ -268,7 +401,9 @@ static int refscat_node_ea(
 		(refscat_print_data_ctx*) _context;
 	int err = 0;
 
-	if(context->name_matches && name_length == context->ea_name_length &&
+	if(context->name_matches &&
+		(!context->is_hard_link || context->hard_link_found) &&
+		name_length == context->ea_name_length &&
 		!memcmp(name, context->ea_name, name_length))
 	{
 		ssize_t bytes_written = 0;
@@ -312,6 +447,7 @@ static int refscat_node_stream(
 	int err = 0;
 
 	if(!context->name_matches ||
+		(context->is_hard_link && !context->hard_link_found) ||
 		name_length != context->stream_name_length ||
 		memcmp(name, context->stream_name, name_length))
 	{
@@ -595,6 +731,8 @@ int main(int argc, char **argv)
 		vol,
 		/* const char *path */
 		options.path ? options.path : "/",
+		/* size_t path_length */
+		options.path ? strlen(options.path) : 1,
 		/* const u64 *start_object_id */
 		NULL,
 		/* u64 *out_parent_directory_object_id */
@@ -602,6 +740,10 @@ int main(int argc, char **argv)
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
 		/* sys_bool *out_is_short_entry */
+		NULL,
+		/* u8 *key */
+		NULL,
+		/* size_t key_size */
 		NULL,
 		/* u8 **out_record */
 		NULL,
@@ -657,6 +799,7 @@ int main(int argc, char **argv)
 		options.stream_defined ? strlen(options.stream) : 0;
 	visitor.context = &context;
 	visitor.node_long_entry = refscat_node_long_entry;
+	visitor.node_short_entry = refscat_node_short_entry;
 	visitor.node_file_data = refscat_node_file_data;
 	visitor.node_file_extent = refscat_node_file_extent;
 	visitor.node_ea = refscat_node_ea;
@@ -692,6 +835,59 @@ int main(int argc, char **argv)
 	else if(err) {
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
+	}
+
+	if(context.is_hard_link) {
+		/* We encountered a hard linked entry. Iterate over the node
+		 * again to find the hard link target. */
+
+		parent_directory_object_id = context.hard_link_parent_object_id;
+
+		visitor.context = &context;
+		visitor.node_short_entry = NULL;
+		visitor.node_long_entry = NULL;
+		visitor.node_hardlink_entry = refscat_node_hardlink_entry;
+
+		sys_log_debug("Walking directory 0x%" PRIX64 " to find hard "
+			"link target for id 0x%" PRIX64 "...",
+			PRAX64(context.hard_link_parent_object_id),
+			PRAX64(context.hard_link_id));
+		err = refs_node_walk(
+			/* sys_device *dev */
+			dev,
+			/* REFS_BOOT_SECTOR *bs */
+			vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&vol->block_map,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&parent_directory_object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+		if(err == -1) {
+			/* Manual break code, this one is expected. */
+			err = 0;
+		}
+		else if(err) {
+			sys_log_perror(err, "Error while listing directory");
+			goto out;
+		}
+
+		if(!context.hard_link_found) {
+			sys_log_error("Unable to find hard link with id "
+				"0x%" PRIX64 " in parent directory "
+				"0x%" PRIX64 ".",
+				PRAX64(context.hard_link_id),
+				PRAX64(context.hard_link_parent_object_id));
+			goto out;
+		}
 	}
 
 	if(context.stream_non_resident_id) {

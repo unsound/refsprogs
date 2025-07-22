@@ -41,8 +41,6 @@ refs_fuse_CFLAGS = \
 	$(FUSE_MODULE_CFLAGS) \
 	$(refs_common_cflags)
 refs_fuse_SOURCES = \
-	rb_tree.h \
-	rb_tree.c \
 	refs-fuse.c
 endif # ENABLE_REFS_FUSE
 

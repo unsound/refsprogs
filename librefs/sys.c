@@ -34,6 +34,21 @@ static iconv_t iconv_decode_handle = (iconv_t) -1;
 static iconv_t iconv_encode_handle = (iconv_t) -1;
 #endif
 
+#ifndef HAVE_STRNDUP
+int sys_strndup(const char *str, size_t len, char **dupstr)
+{
+	int err = 0;
+
+	err = sys_malloc(len + 1, dupstr);
+	if(!err) {
+		memcpy(*dupstr, str, len);
+		(*dupstr)[len] = '\0';
+	}
+
+	return err;
+}
+#endif
+
 int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 		char **const outs, size_t *const outs_len)
 {
