@@ -7533,6 +7533,7 @@ static int parse_attribute_leaf_value(
 				++i;
 			}
 			if(err) {
+				sys_free(&block);
 				sys_log_pwarning(err, "Error while "
 					"reading %" PRIuz " bytes from "
 					"attribute block %" PRIu64 " "
@@ -7608,6 +7609,7 @@ static int parse_attribute_leaf_value(
 				 *      u32 data_size,
 				 *      u32 node_type) */
 				NULL);
+			sys_free(&block);
 			if(err) {
 				sys_log_pwarning(err, "Error while "
 					"parsing non-resident "
@@ -9616,6 +9618,7 @@ int parse_level3_long_value(
 						PRAu64(physical_blocks[i]),
 						PRAu64(physical_blocks[i] *
 						block_index_unit));
+					sys_free(&block);
 					continue;
 				}
 
@@ -9682,6 +9685,7 @@ int parse_level3_long_value(
 					 *      u32 data_size,
 					 *      u32 node_type) */
 					NULL);
+				sys_free(&block);
 				if(err) {
 					sys_log_pwarning(err, "Error while "
 						"parsing non-resident "
