@@ -10440,8 +10440,14 @@ static int crawl_volume_metadata(
 	else if(memcmp(primary_level2_blocks, secondary_level2_blocks,
 		primary_level2_blocks_count * 24))
 	{
-		sys_log_warning("Mismatching level 2 block data in "
-			"level 1 blocks. Proceeding with primary...");
+		if(block_map && *block_map) {
+			sys_log_debug("Mismatching level 2 block data in "
+				"level 1 blocks. Proceeding with primary...");
+		}
+		else {
+			sys_log_warning("Mismatching level 2 block data in "
+				"level 1 blocks. Proceeding with primary...");
+		}
 	}
 
 	level2_queue.block_numbers = primary_level2_blocks;
