@@ -204,8 +204,12 @@ typedef struct {
 	refschar *name;
 	size_t name_length;
 	sys_bool found;
+	sys_bool is_hard_link;
+	sys_bool hard_link_found;
 	sys_bool is_short_entry;
 	sys_bool is_directory;
+	u64 hard_link_id;
+	u64 hard_link_parent_object_id;
 	u64 directory_object_id;
 	u8 **key;
 	size_t *key_size;
@@ -242,40 +246,44 @@ static int refs_volume_lookup_node_long_entry(
 	(void) file_size;
 	(void) allocated_size;
 
-	if(file_name_length == context->name_length &&
-		!memcmp(file_name, context->name,
+	if(file_name_length != context->name_length ||
+		memcmp(file_name, context->name,
 		file_name_length * sizeof(refschar)))
 	{
-		context->found = SYS_TRUE;
-		context->is_short_entry = SYS_FALSE;
-		context->is_directory = SYS_FALSE;
-
-		if(context->key) {
-			err = sys_malloc(key_size, context->key);
-			if(err) {
-				goto out;
-			}
-
-			memcpy(*context->key, key, key_size);
-		}
-
-		if(context->key_size) {
-			*context->key_size = key_size;
-		}
-
-		if(context->record) {
-			err = sys_malloc(record_size, context->record);
-			if(err) {
-				goto out;
-			}
-
-			memcpy(*context->record, record, record_size);
-		}
-
-		if(context->record_size) {
-			*context->record_size = record_size;
-		}
+		goto out;
 	}
+
+	context->found = SYS_TRUE;
+	context->is_short_entry = SYS_FALSE;
+	context->is_directory = SYS_FALSE;
+
+	if(context->key) {
+		err = sys_malloc(key_size, context->key);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->key, key, key_size);
+	}
+
+	if(context->key_size) {
+		*context->key_size = key_size;
+	}
+
+	if(context->record) {
+		err = sys_malloc(record_size, context->record);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->record, record, record_size);
+	}
+
+	if(context->record_size) {
+		*context->record_size = record_size;
+	}
+
+	err = -1;
 out:
 	return err;
 }
@@ -311,14 +319,23 @@ static int refs_volume_lookup_node_short_entry(
 	(void) file_size;
 	(void) allocated_size;
 
-	if(file_name_length == context->name_length &&
-		!memcmp(file_name, context->name,
+	if(file_name_length != context->name_length ||
+		memcmp(file_name, context->name,
 		file_name_length * sizeof(refschar)))
 	{
-		context->found = SYS_TRUE;
+		goto out;
+	}
+
+	context->found = SYS_TRUE;
+	if(!(file_flags & 0x10000000UL) && hard_link_id) {
+		context->is_hard_link = SYS_TRUE;
+		context->hard_link_id = hard_link_id;
+		context->hard_link_parent_object_id = object_id;
+	}
+	else {
 		context->is_short_entry = SYS_TRUE;
 		context->is_directory =
-			(file_flags & 0x10000000) ? SYS_TRUE : SYS_FALSE;
+			(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE;
 		context->directory_object_id =
 			context->is_directory ? object_id : 0;
 
@@ -347,7 +364,86 @@ static int refs_volume_lookup_node_short_entry(
 		if(context->record_size) {
 			*context->record_size = record_size;
 		}
+
+                err = -1;
 	}
+out:
+	return err;
+}
+
+static int refs_volume_lookup_node_hardlink_entry(
+		void *const _context,
+		const u64 hard_link_id,
+		const u64 parent_id,
+		const u32 file_flags,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	refs_volume_lookup_context *const context =
+		(refs_volume_lookup_context*) _context;
+
+	int err = 0;
+
+	(void) file_flags;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+
+	sys_log_debug("Got hardlink entry with id: 0x%" PRIX64 " / parent: "
+		"0x%" PRIX64, PRAX64(hard_link_id), PRAX64(parent_id));
+
+	if(context->hard_link_id != hard_link_id ||
+		context->hard_link_parent_object_id != parent_id)
+	{
+		goto out;
+	}
+
+	sys_log_debug("Match found! key=%p, key_size=%" PRIuz ", record=%p, "
+		"record_size=%" PRIuz,
+		key, PRAuz(key_size), record, PRAuz(record_size));
+	context->hard_link_found = SYS_TRUE;
+	context->is_short_entry = SYS_FALSE;
+	context->is_directory = SYS_FALSE;
+	context->directory_object_id = 0;
+
+	if(context->key) {
+		err = sys_malloc(key_size, context->key);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->key, key, key_size);
+	}
+
+	if(context->key_size) {
+		*context->key_size = key_size;
+	}
+
+	if(context->record) {
+		err = sys_malloc(record_size, context->record);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->record, record, record_size);
+	}
+
+	if(context->record_size) {
+		*context->record_size = record_size;
+	}
+
+	err = -1;
 out:
 	return err;
 }
@@ -551,7 +647,10 @@ static int refs_volume_lookup(
 			&cur_object_id,
 			/* refs_node_walk_visitor *visitor */
 			&visitor);
-		if(err) {
+		if(err == -1) {
+			err = 0;
+		}
+		else if(err) {
 			goto out;
 		}
 
@@ -561,6 +660,71 @@ static int refs_volume_lookup(
 
 		if(!context.found) {
 			break;
+		}
+
+		if(!cur_path_length && context.is_hard_link) {
+			/* Last element and this is a hard link. Look up the
+			 * hard link target. */
+			visitor.node_long_entry = NULL;
+			visitor.node_short_entry = NULL;
+			visitor.node_hardlink_entry =
+				refs_volume_lookup_node_hardlink_entry;
+
+			sys_log_debug("Resolving hard link entry to parent "
+				"0x%" PRIX64 " / id %" PRIX64 " in leaf.",
+				PRAX64(context.hard_link_parent_object_id),
+				PRAX64(context.hard_link_id));
+
+			err = refs_node_walk(
+				/* refs_device *dev */
+				vol->dev,
+				/* REFS_BOOT_SECTOR *bs */
+				vol->bs,
+				/* REFS_SUPERBLOCK **sb */
+				&vol->sb,
+				/* REFS_LEVEL1_NODE **primary_level1_node */
+				&vol->primary_level1_node,
+				/* REFS_LEVEL1_NODE **secondary_level1_node */
+				&vol->secondary_level1_node,
+				/* refs_block_map **block_map */
+				&vol->block_map,
+				/* const u64 *start_node */
+				NULL,
+				/* const u64 *object_id */
+				&context.hard_link_parent_object_id,
+				/* refs_node_walk_visitor *visitor */
+				&visitor);
+			if(err == -1) {
+				err = 0;
+			}
+			else if(err) {
+				goto out;
+			}
+
+			if(!context.hard_link_found) {
+				sys_log_error("Couldn't find hard link target "
+					"with parent 0x%" PRIX64 " / id "
+					"0x%" PRIX64 ".",
+					PRAX64(context.
+					hard_link_parent_object_id),
+					PRAX64(context.hard_link_id));
+				err = EIO;
+				goto out;
+			}
+
+			sys_log_debug("Hard link to parent 0x%" PRIX64 " / id "
+				"0x%" PRIX64 " resolved to: key=%p, "
+				"key_size=%" PRIuz ", record=%p, "
+				"record_size=%" PRIuz,
+				PRAX64(context.hard_link_parent_object_id),
+				PRAX64(context.hard_link_id),
+				context.key ? *context.key : NULL,
+				PRAuz(context.key_size ? *context.key_size : 0),
+				context.record ? *context.record : NULL,
+				PRAuz(context.record_size ?
+					*context.record_size : 0));
+
+			cur_object_id = context.hard_link_parent_object_id;
 		}
 
 		if(!cur_path_length) {
