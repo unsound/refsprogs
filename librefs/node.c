@@ -7483,6 +7483,10 @@ static int parse_attribute_leaf_value(
 				value, &value[j]); /* 0x38 */
 		}
 
+/* Disable recursively finding more attribute blocks because of false
+ * positives. Maybe we shouldn't do this in the first place, it doesn't make
+ * much sense. */
+#if 0
 		if(logical_blocks[0]) {
 			const size_t bytes_per_read =
 				sys_min(crawl_context->cluster_size,
@@ -7617,6 +7621,7 @@ static int parse_attribute_leaf_value(
 				goto out;
 			}
 		}
+#endif
 	}
 out:
 	if(j < value_size) {
@@ -9559,7 +9564,18 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x38 */
 			}
 
-			if(logical_blocks[0]) {
+			if(!logical_blocks[0]) {
+				sys_log_warning("Logical block 0 is invalid as "
+					"a first block.");
+			}
+			else if(!physical_blocks[0]) {
+				sys_log_warning("Unable to map logical block "
+					"%" PRIu64 " / 0x%" PRIX64 " to "
+					"physical block.",
+					PRAu64(logical_blocks[0]),
+					PRAX64(logical_blocks[0]));
+			}
+			else {
 				const size_t bytes_per_read =
 					sys_min(crawl_context->cluster_size,
 					crawl_context->block_size);
