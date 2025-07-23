@@ -929,6 +929,50 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		allocated_size);
 }
 
+static int fsapi_node_get_attributes_visit_hardlink_entry(
+		void *context,
+		u64 hard_link_id,
+		u64 parent_id,
+		u32 file_flags,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		u64 file_size,
+		u64 allocated_size,
+		const u8 *key,
+		size_t key_size,
+		const u8 *record,
+		size_t record_size)
+{
+	(void) hard_link_id;
+	(void) parent_id;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	return fsapi_fill_attributes(
+		/* fsapi_node_attributes *stbuf */
+		(fsapi_node_attributes*) context,
+		/* sys_bool is_directory */
+		SYS_FALSE,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 create_time */
+		create_time,
+		/* u64 last_access_time */
+		last_access_time,
+		/* u64 last_write_time */
+		last_write_time,
+		/* u64 last_mft_change_time */
+		last_mft_change_time,
+		/* u64 file_size */
+		file_size,
+		/* u64 allocated_size */
+		allocated_size);
+}
+
 static int fsapi_node_get_attributes_common(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -999,6 +1043,9 @@ static int fsapi_node_get_attributes_common(
 	else {
 		visitor.node_long_entry =
 			fsapi_node_get_attributes_visit_long_entry;
+		visitor.node_hardlink_entry =
+			fsapi_node_get_attributes_visit_hardlink_entry;
+
 		err = parse_level3_long_value(
 			/* refs_node_crawl_context *crawl_context */
 			&crawl_context,
