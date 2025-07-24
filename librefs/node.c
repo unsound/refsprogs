@@ -8088,7 +8088,7 @@ int parse_level3_long_value(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* size_t indent */
-				indent,
+				indent + 1,
 				/* sys_bool is_v3 */
 				is_v3,
 				/* const u8 *entry */
