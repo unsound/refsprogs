@@ -439,10 +439,24 @@ static int fsapi_lookup_by_posix_path(
 
 		full_child_path = full_child_path_alloc;
 		full_child_path_length = i;
+
+		lookup_path = path;
+		lookup_path_length = path_length;
+
+		sys_log_debug("Starting from non-root:");
+		sys_log_debug("    start_object_id: %" PRIu64,
+			PRAu64(start_object_id));
+		sys_log_debug("    full_child_path_length: %" PRIuz,
+			PRAuz(full_child_path_length));
+		sys_log_debug("    full_child_path: \"%" PRIbs "\"",
+			PRAbs(full_child_path_length, full_child_path));
 	}
 	else {
 		full_child_path = path;
 		full_child_path_length = path_length;
+
+		lookup_path = path;
+		lookup_path_length = path_length;
 	}
 
 	if(!vol->cache_tree) {
@@ -474,8 +488,6 @@ static int fsapi_lookup_by_posix_path(
 				" (negative)");
 
 			if(cached_node->next) {
-				/* Put the looked up node at the start of the
-				 * list to indicate recent use. */
 				fsapi_remove_cached_node_from_list(
 					/* fsapi_volume *vol */
 					vol,
@@ -488,7 +500,10 @@ static int fsapi_lookup_by_posix_path(
 				--vol->cached_nodes_count;
 			}
 		}
-		else if(search_node.path_length > 1) {
+		else if(!(root_node &&
+			root_node->directory_object_id != 0x600) &&
+			search_node.path_length > 1)
+		{
 			/* Check if there's a cache hit for its parent. */
 			size_t i;
 			fsapi_node *cached_parent_node = NULL;
@@ -546,7 +561,7 @@ static int fsapi_lookup_by_posix_path(
 			}
 			else {
 				sys_log_debug("Cache miss for path "
-					"\"%" PRIbs "\".",
+					"\"%" PRIbs "\" and its parent.",
 					PRAbs(full_child_path_length,
 					full_child_path));
 			}
@@ -585,7 +600,7 @@ static int fsapi_lookup_by_posix_path(
 				"since we reached the maximum number of cached "
 				"nodes (%" PRIuz " >= %" PRIuz ").",
 				new_node,
-				PRAbs(path_length, path),
+				PRAbs(full_child_path_length, full_child_path),
 				PRAuz(vol->cached_nodes_count + 1),
 				PRAuz(cached_nodes_max));
 
@@ -596,10 +611,10 @@ static int fsapi_lookup_by_posix_path(
 				new_node);
 		}
 		else {
-			sys_log_debug("Allocating new node for \"%s\" since "
-				"we are below the maximum number of cached "
-				"nodes (%" PRIuz " < %" PRIuz ").",
-				path,
+			sys_log_debug("Allocating new node for \"%" PRIbs "\" "
+				"since we are below the maximum number of "
+				"cached nodes (%" PRIuz " < %" PRIuz ").",
+				PRAbs(full_child_path_length, full_child_path),
 				PRAuz(vol->cached_nodes_count),
 				PRAuz(cached_nodes_max));
 
@@ -609,16 +624,20 @@ static int fsapi_lookup_by_posix_path(
 			}
 		}
 
+		sys_log_debug("Looking up path \"%" PRIbs "\" starting at "
+			"directory %" PRIu64 "...",
+			PRAbs(lookup_path_length, lookup_path),
+			PRAu64(start_object_id));
+
 		err = refs_volume_lookup_by_posix_path(
 			/* refs_volume *vol */
 			vol->vol,
 			/* const char *path */
-			start_object_id ? lookup_path : path,
+			lookup_path,
 			/* size_t path_length */
-			start_object_id ? lookup_path_length : path_length,
+			lookup_path_length,
 			/* const u64 *start_object_id */
-			start_object_id ? &start_object_id :
-			(root_node ? &root_node->directory_object_id : NULL),
+			start_object_id ? &start_object_id : NULL,
 			/* u64 *out_parent_directory_object_id */
 			&parent_directory_object_id,
 			/* u64 *out_directory_object_id */
@@ -648,7 +667,13 @@ static int fsapi_lookup_by_posix_path(
 			goto out;
 		}
 
-		err = sys_strndup(path, path_length, &dup_path);
+		err = sys_strndup(
+			/* cons char *str */
+			full_child_path,
+			/* size_t len */
+			full_child_path_length,
+			/* char **dupstr */
+			&dup_path);
 		if(err) {
 			sys_log_pdebug(err, "strndup error");
 			goto out;
@@ -660,7 +685,7 @@ static int fsapi_lookup_by_posix_path(
 			/* char *path */
 			dup_path,
 			/* size_t path_length */
-			path_length,
+			full_child_path_length,
 			/* u64 parent_directory_object_id */
 			parent_directory_object_id,
 			/* u64 directory_object_id */
@@ -726,6 +751,10 @@ out:
 		fsapi_node_destroy(
 			/* fsapi_node **node */
 			&new_node);
+	}
+
+	if(full_child_path_alloc) {
+		sys_free(&full_child_path_alloc);
 	}
 
 	return err;
@@ -1344,6 +1373,13 @@ out:
 	return err;
 }
 
+void fsapi_volume_get_root_node(
+		fsapi_volume *vol,
+		fsapi_node **out_root_node)
+{
+	*out_root_node = vol->root_node;
+}
+
 int fsapi_volume_get_attributes(
 		fsapi_volume *vol,
 		fsapi_volume_attributes *out_attrs)
@@ -1437,6 +1473,13 @@ int fsapi_node_lookup(
 	if(err) {
 		goto out;
 	}
+	else if(!child_node || !child_node->parent_directory_object_id) {
+		if(out_child_node) {
+			*out_child_node = NULL;
+		}
+
+		goto out;
+	}
 
 	if(child_node && out_attributes) {
 		err = fsapi_node_get_attributes_common(
@@ -1460,7 +1503,9 @@ out:
 			/* fsapi_volume *vol */
 			vol,
 			/* fsapi_node **node */
-			&child_node);
+			&child_node,
+			/* size_t release_count */
+			1);
 		if(release_err) {
 			sys_log_perror(release_err, "Error while releasing "
 				"node on cleanup");
@@ -1473,7 +1518,8 @@ out:
 
 int fsapi_node_release(
 		fsapi_volume *vol,
-		fsapi_node **node)
+		fsapi_node **node,
+		size_t release_count)
 {
 	int err = 0;
 
@@ -1489,8 +1535,17 @@ int fsapi_node_release(
 		err = EINVAL;
 		goto out;
 	}
+	else if(release_count > (*node)->refcount) {
+		sys_log_critical("Attempted to release more references than "
+			"node %p currently has. Node has %" PRIuz " "
+			"references. Attempted to release %" PRIuz " "
+			"references.",
+			*node, PRAuz((*node)->refcount), PRAuz(release_count));
+		err = EINVAL;
+		goto out;
+	}
 
-	(*node)->refcount--;
+	(*node)->refcount -= release_count;
 	if(!(*node)->refcount) {
 		fsapi_node_cache_put(
 			/* fsapi_volume *vol */

@@ -803,17 +803,12 @@ int refs_volume_lookup_by_posix_path(
 	const char *cur_path = path;
 	size_t cur_path_length = path_length;
 
-	if(!cur_path_length || cur_path[0] != '/') {
-		err = EINVAL;
-		goto out;
-	}
-
 	while(cur_path_length && cur_path[0] == '/') {
 		++cur_path;
 		--cur_path_length;
 	}
 
-	if(!cur_path_length) {
+	if(!start_object_id && !cur_path_length) {
 		/* The request is for the root directory. We can't supply a
 		 * record for it, only the object ID. */
 		if(out_parent_directory_object_id) {
@@ -822,6 +817,26 @@ int refs_volume_lookup_by_posix_path(
 
 		if(out_directory_object_id) {
 			*out_directory_object_id = 0x600;
+		}
+
+		if(out_record) {
+			*out_record = NULL;
+		}
+
+		if(out_record_size) {
+			*out_record_size = 0;
+		}
+
+		goto out;
+	}
+	else if(!cur_path_length) {
+		/* Not found. */
+		if(out_parent_directory_object_id) {
+			*out_parent_directory_object_id = 0;
+		}
+
+		if(out_directory_object_id) {
+			*out_directory_object_id = 0;
 		}
 
 		if(out_record) {
