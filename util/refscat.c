@@ -223,7 +223,9 @@ static int refscat_node_long_entry(
 		void *const _context,
 		const refschar *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -240,7 +242,9 @@ static int refscat_node_long_entry(
 
 	int err = 0;
 
+	(void) child_entry_offset;
 	(void) file_flags;
+	(void) parent_node_object_id;
 	(void) create_time;
 	(void) last_access_time;
 	(void) last_write_time;
@@ -273,7 +277,9 @@ static int refscat_node_short_entry(
 		void *_context,
 		const le16 *file_name,
 		u16 file_name_length,
+		const u16 child_entry_offset,
 		u32 file_flags,
+		const u64 parent_node_object_id,
 		u64 object_id,
 		u64 hard_link_id,
 		u64 create_time,
@@ -290,7 +296,9 @@ static int refscat_node_short_entry(
 	refscat_print_data_ctx *const context =
 		(refscat_print_data_ctx*) _context;
 
+	(void) child_entry_offset;
 	(void) file_flags;
+	(void) parent_node_object_id;
 	(void) object_id;
 	(void) hard_link_id;
 	(void) create_time;
@@ -342,6 +350,7 @@ static int refscat_node_hardlink_entry(
 		void *const _context,
 		const u64 hard_link_id,
 		const u64 parent_id,
+		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 create_time,
 		const u64 last_access_time,
@@ -359,6 +368,7 @@ static int refscat_node_hardlink_entry(
 
 	int err = 0;
 
+	(void) child_entry_offset;
 	(void) file_flags;
 	(void) create_time;
 	(void) last_access_time;
@@ -740,6 +750,8 @@ int main(int argc, char **argv)
 		/* u64 *out_directory_object_id */
 		&directory_object_id,
 		/* sys_bool *out_is_short_entry */
+		NULL,
+		/* u16 *out_entry_offset */
 		NULL,
 		/* u8 *key */
 		NULL,

@@ -54,6 +54,7 @@ struct fsapi_node {
 	u64 parent_directory_object_id;
 	u64 directory_object_id;
 	sys_bool is_short_entry;
+	u16 entry_offset;
 	u8 *key;
 	size_t key_size;
 	u8 *record;
@@ -70,6 +71,7 @@ static void fsapi_node_init(
 		const u64 parent_directory_object_id,
 		const u64 directory_object_id,
 		const sys_bool is_short_entry,
+		const u16 entry_offset,
 		u8 *const key,
 		const size_t key_size,
 		u8 *const record,
@@ -93,6 +95,7 @@ static void fsapi_node_init(
 	node->parent_directory_object_id = parent_directory_object_id;
 	node->directory_object_id = directory_object_id;
 	node->is_short_entry = is_short_entry;
+	node->entry_offset = entry_offset;
 	node->key = key;
 	node->key_size = key_size;
 	node->record = record;
@@ -559,6 +562,7 @@ static int fsapi_lookup_by_posix_path(
 		u64 parent_directory_object_id = 0;
 		u64 directory_object_id = 0;
 		sys_bool is_short_entry = 0;
+		u16 entry_offset = 0;
 		u8 *key = NULL;
 		size_t key_size = 0;
 		u8 *record = NULL;
@@ -621,6 +625,8 @@ static int fsapi_lookup_by_posix_path(
 			&directory_object_id,
 			/* sys_bool *out_is_short_entry */
 			&is_short_entry,
+			/* u16 *out_entry_offset */
+			&entry_offset,
 			/* u8 **out_key */
 			&key,
 			/* size_t *out_key_size */
@@ -661,6 +667,8 @@ static int fsapi_lookup_by_posix_path(
 			directory_object_id,
 			/* sys_bool is_short_entry */
 			is_short_entry,
+			/* u16 entry_offset */
+			entry_offset,
 			/* u8 *key */
 			key,
 			/* size_t key_size */
@@ -726,7 +734,9 @@ out:
 static int fsapi_fill_attributes(
 		fsapi_node_attributes *attrs,
 		sys_bool is_directory,
+		u16 child_entry_offset,
 		u32 file_flags,
+		u64 parent_node_object_id,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -751,7 +761,13 @@ static int fsapi_fill_attributes(
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
-		/* st_ino cannot yet be filled in reliably */
+		/* This count in theory truncate parent_node_object_id if it's
+		 * huge, but it's likely not an issue in practice. 128-bit inode
+		 * numbers would be needed to fix that properly, otherwise
+		 * hashing might be a good intermediate solution. */
+		attrs->inode_number =
+			(parent_node_object_id << 16) | child_entry_offset;
+		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME) {
@@ -841,7 +857,9 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
 		const u64 create_time,
@@ -869,8 +887,12 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		(fsapi_node_attributes*) context,
 		/* sys_bool is_directory */
 		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags & ~((u32) 0x10000000UL),
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -889,7 +911,9 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		void *const context,
 		const le16 *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -913,8 +937,12 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		(fsapi_node_attributes*) context,
 		/* sys_bool is_directory */
 		SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -930,20 +958,21 @@ static int fsapi_node_get_attributes_visit_long_entry(
 }
 
 static int fsapi_node_get_attributes_visit_hardlink_entry(
-		void *context,
-		u64 hard_link_id,
-		u64 parent_id,
-		u32 file_flags,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size)
+		void *const context,
+		const u64 hard_link_id,
+		const u64 parent_id,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
 	(void) hard_link_id;
 	(void) parent_id;
@@ -957,8 +986,12 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		(fsapi_node_attributes*) context,
 		/* sys_bool is_directory */
 		SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -998,10 +1031,14 @@ static int fsapi_node_get_attributes_common(
 		        attributes,
 			/* sys_bool is_directory */
 			SYS_TRUE,
+			/* u16 child_entry_offset */
+			0,
 			/* u32 file_flags */
 			REFS_FILE_ATTRIBUTE_SYSTEM |
 			REFS_FILE_ATTRIBUTE_DIRECTORY |
 			REFS_FILE_ATTRIBUTE_ARCHIVE,
+			/* u64 parent_node_object_id */
+			0x600,
 			/* u64 create_time */
 			filetime_offset,
 			/* u64 last_access_time */
@@ -1027,6 +1064,10 @@ static int fsapi_node_get_attributes_common(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			node->parent_directory_object_id,
+			/* u16 entry_offset */
+			node->entry_offset,
 			/* const u8 *key */
 			node->key,
 			/* u16 key_size */
@@ -1055,6 +1096,10 @@ static int fsapi_node_get_attributes_common(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			node->parent_directory_object_id,
+			/* u16 entry_offset */
+			node->entry_offset,
 			/* const u8 *key */
 			node->key,
 			/* u16 key_size */
@@ -1249,6 +1294,8 @@ int fsapi_volume_mount(
 		0x600,
 		/* sys_bool is_short_entry */
 		SYS_TRUE, /* Technically no entry, maybe? */
+		/* u16 entry_offset */
+		0,
 		/* u8 *key */
 		NULL,
 		/* size_t key_size */
@@ -1471,7 +1518,9 @@ static int fsapi_node_list_filldir(
 		const refschar *file_name,
 		u16 file_name_length,
 		sys_bool is_directory,
+		u16 child_entry_offset,
 		u32 file_flags,
+		u64 parent_node_object_id,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -1489,8 +1538,12 @@ static int fsapi_node_list_filldir(
 			context->attributes,
 			/* sys_bool is_directory */
 			is_directory,
+			/* u16 child_entry_offset */
+			child_entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 parent_node_object_id */
+			parent_node_object_id,
 			/* u64 create_time */
 			create_time,
 			/* u64 last_access_time */
@@ -1543,7 +1596,9 @@ static int fsapi_node_list_visit_short_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
 		const u64 create_time,
@@ -1571,10 +1626,14 @@ static int fsapi_node_list_visit_short_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* sys_bool is_directory */
 		SYS_TRUE,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -1593,7 +1652,9 @@ static int fsapi_node_list_visit_long_entry(
 		void *const context,
 		const le16 *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -1617,10 +1678,14 @@ static int fsapi_node_list_visit_long_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -1914,6 +1979,10 @@ int fsapi_node_read(
 		"",
 		/* size_t indent */
 		1,
+		/* u64 parent_node_object_id */
+		node->parent_directory_object_id,
+		/* u16 entry_offset */
+		node->entry_offset,
 		/* const u8 *key */
 		node->key,
 		/* u16 key_size */
@@ -2063,6 +2132,10 @@ int fsapi_node_list_extended_attributes(
 		"",
 		/* size_t indent */
 		1,
+		/* u64 parent_node_object_id */
+		node->parent_directory_object_id,
+		/* u16 entry_offset */
+		node->entry_offset,
 		/* const u8 *key */
 		node->key,
 		/* u16 key_size */
@@ -2282,6 +2355,10 @@ int fsapi_node_read_extended_attribute(
 		"",
 		/* size_t indent */
 		1,
+		/* u64 parent_node_object_id */
+		node->parent_directory_object_id,
+		/* u16 entry_offset */
+		node->entry_offset,
 		/* const u8 *key */
 		node->key,
 		/* u16 key_size */
@@ -2329,6 +2406,10 @@ int fsapi_node_read_extended_attribute(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			node->parent_directory_object_id,
+			/* u16 entry_offset */
+			node->entry_offset,
 			/* const u8 *key */
 			node->key,
 			/* u16 key_size */

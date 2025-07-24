@@ -49,48 +49,47 @@ typedef unsigned int mode_t;
 #endif
 
 static int refs_fuse_fill_stat(
-		struct FUSE_STAT *stbuf,
-		sys_bool is_directory,
-		u32 bsd_flags,
-		sys_timespec create_time,
-		sys_timespec last_access_time,
-		sys_timespec last_write_time,
-		sys_timespec last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size)
+		struct FUSE_STAT *const stbuf,
+		const fsapi_node_attributes *const attributes)
 {
 	memset(stbuf, 0, sizeof(*stbuf));
 
 	sys_log_trace("%s("
 		"stbuf=%p, "
-		"is_directory=%d, "
-		"bsd_flags=0x%" PRIX32 ", "
-		"create_time={ .tv_sec=%" PRIu64 ", .tv_nsec=%" PRId32 " }, "
-		"last_access_time={ .tv_sec=%" PRIu64 ", "
+		"attributes=%p (->{ .is_directory=%d, "
+		".bsd_flags=0x%" PRIX32 ", "
+		".create_time={ .tv_sec=%" PRIu64 ", .tv_nsec=%" PRId32 " }, "
+		".last_access_time={ .tv_sec=%" PRIu64 ", "
 		".tv_nsec=%" PRId32 " }, "
-		"last_write_time={ .tv_sec=%" PRIu64 ", "
+		".last_write_time={ .tv_sec=%" PRIu64 ", "
 		".tv_nsec=%" PRId32 " }, "
-		"last_mft_change_time={ .tv_sec=%" PRIu64 ", "
+		".last_mft_change_time={ .tv_sec=%" PRIu64 ", "
 		".tv_nsec=%" PRId32 " }, "
-		"file_size=%" PRIu64 ", "
-		"allocated_size=%" PRIu64 ")",
+		".file_size=%" PRIu64 ", "
+		".allocated_size=%" PRIu64 "}) )",
 		__FUNCTION__,
 		stbuf,
-		is_directory,
-		PRAX32(bsd_flags),
-		PRAu64(create_time.tv_sec),
-		PRAd32(create_time.tv_nsec),
-		PRAu64(last_access_time.tv_sec),
-		PRAd32(last_access_time.tv_nsec),
-		PRAu64(last_write_time.tv_sec),
-		PRAd32(last_write_time.tv_nsec),
-		PRAu64(last_mft_change_time.tv_sec),
-		PRAd32(last_mft_change_time.tv_nsec),
-		PRAu64(file_size), PRAu64(allocated_size));
+		attributes,
+		attributes->is_directory,
+		PRAX32(attributes->bsd_flags),
+		PRAu64(attributes->creation_time.tv_sec),
+		PRAd32(attributes->creation_time.tv_nsec),
+		PRAu64(attributes->last_data_access_time.tv_sec),
+		PRAd32(attributes->last_data_access_time.tv_nsec),
+		PRAu64(attributes->last_data_change_time.tv_sec),
+		PRAd32(attributes->last_data_change_time.tv_nsec),
+		PRAu64(attributes->last_status_change_time.tv_sec),
+		PRAd32(attributes->last_status_change_time.tv_nsec),
+		PRAu64(attributes->size),
+		PRAu64(attributes->allocated_size));
 
-	stbuf->st_mode = (is_directory ? S_IFDIR : S_IFREG) | 0777;
-	stbuf->st_nlink = is_directory ? 2 /* TODO */ : 1;
-	/* st_ino cannot yet be filled in reliably */
+	stbuf->st_mode = (attributes->is_directory ? S_IFDIR : S_IFREG) | 0777;
+	stbuf->st_nlink = attributes->is_directory ? 2 /* TODO */ : 1;
+
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
+		stbuf->st_ino = attributes->inode_number;
+	}
+
 #ifdef __APPLE__
 	stbuf->st_uid = 99;
 	stbuf->st_gid = 99;
@@ -99,24 +98,52 @@ static int refs_fuse_fill_stat(
 #define st_mtim st_mtimespec
 #define st_ctim st_ctimespec
 #endif
-	stbuf->st_atim.tv_sec = last_access_time.tv_sec;
-	stbuf->st_atim.tv_nsec = last_access_time.tv_nsec;
-	stbuf->st_mtim.tv_sec = last_write_time.tv_sec;
-	stbuf->st_mtim.tv_nsec = last_write_time.tv_nsec;
-	stbuf->st_ctim.tv_sec = last_mft_change_time.tv_sec;
-	stbuf->st_ctim.tv_nsec = last_mft_change_time.tv_nsec;
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME)
+	{
+		stbuf->st_atim.tv_sec =
+			attributes->last_data_access_time.tv_sec;
+		stbuf->st_atim.tv_nsec =
+			attributes->last_data_access_time.tv_nsec;
+	}
+
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME)
+	{
+		stbuf->st_mtim.tv_sec =
+			attributes->last_data_change_time.tv_sec;
+		stbuf->st_mtim.tv_nsec =
+			attributes->last_data_change_time.tv_nsec;
+	}
+
+	if(attributes->valid &
+		FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME)
+	{
+		stbuf->st_ctim.tv_sec =
+			attributes->last_status_change_time.tv_sec;
+		stbuf->st_ctim.tv_nsec =
+			attributes->last_status_change_time.tv_nsec;
+	}
+
 #ifdef __APPLE__
-	stbuf->st_birthtimespec.tv_sec = create_time.tv_sec;
-	stbuf->st_birthtimespec.tv_nsec = create_time.tv_nsec;
-#else
-	(void) create_time;
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME) {
+		stbuf->st_birthtimespec.tv_sec =
+			attributes->creation_time.tv_sec;
+		stbuf->st_birthtimespec.tv_nsec =
+			attributes->creation_time.tv_nsec;
+	}
 #endif
-	stbuf->st_size = file_size;
-	stbuf->st_blocks = allocated_size / 512;
+
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
+		stbuf->st_size = attributes->size;
+	}
+
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
+		stbuf->st_blocks = attributes->allocated_size / 512;
+	}
+
 #ifdef __APPLE__
-	stbuf->st_flags = bsd_flags;
-#else
-	(void) bsd_flags;
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_BSD_FLAGS) {
+		stbuf->st_flags = bsd_flags;
+	}
 #endif
 
 	return 0;
@@ -132,14 +159,7 @@ static int refs_fuse_filldir(
 		refs_fuse_readdir_context *context,
 		const char *file_name,
 		size_t file_name_length,
-		sys_bool is_directory,
-		u32 bsd_flags,
-		sys_timespec create_time,
-		sys_timespec last_access_time,
-		sys_timespec last_write_time,
-		sys_timespec last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size)
+		fsapi_node_attributes *attributes)
 {
 	int err = 0;
 	struct FUSE_STAT stbuf;
@@ -147,22 +167,8 @@ static int refs_fuse_filldir(
 	err = refs_fuse_fill_stat(
 		/* struct FUSE_STAT *stbuf */
 		&stbuf,
-		/* sys_bool is_directory */
-		is_directory,
-		/* u32 bsd_flags */
-		bsd_flags,
-		/* sys_timespec create_time */
-		create_time,
-		/* sys_timespec last_access_time */
-		last_access_time,
-		/* sys_timespec last_write_time */
-		last_write_time,
-		/* sys_timespec last_mft_change_time */
-		last_mft_change_time,
-		/* u64 file_size */
-		file_size,
-		/* u64 allocated_size */
-		allocated_size);
+		/* const fsapi_node_attributes *attributes */
+		attributes);
 	if(err) {
 		goto out;
 	}
@@ -240,22 +246,8 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 	err = refs_fuse_fill_stat(
 		/* struct stat *stbuf */
 		stbuf,
-		/* sys_bool is_directory */
-		attributes.is_directory,
-		/* u32 bsd_flags */
-		attributes.bsd_flags,
-		/* sys_timespec create_time */
-		attributes.creation_time,
-		/* sys_timespec last_access_time */
-		attributes.last_data_access_time,
-		/* sys_timespec last_write_time */
-		attributes.last_data_change_time,
-		/* sys_timespec last_mft_change_time */
-		attributes.last_status_change_time,
-		/* u64 file_size */
-		attributes.size,
-		/* u64 allocated_size */
-		attributes.allocated_size);
+		/* const fsapi_node_attributes *attributes */
+		&attributes);
 out:
 	if(node) {
 		fsapi_node_release(
@@ -336,14 +328,13 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 	fsapi_iohandler_buffer_context context;
 	fsapi_iohandler iohandler;
 
+	memset(&attributes, 0, sizeof(attributes));
 	memset(&context, 0, sizeof(context));
 	memset(&iohandler, 0, sizeof(iohandler));
 
 	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ", "
 		"offset=%" PRId64 ", fi=%p)",
 		__FUNCTION__, path, buf, PRAuz(size), PRAd64(offset), fi);
-
-	memset(&attributes, 0, sizeof(attributes));
 
 	err = fsapi_node_lookup(
 		/* fsapi_volume *vol */
@@ -481,22 +472,8 @@ static int refs_fuse_op_readdir_handle_dirent(
 		name,
 		/* size_t file_name_length */
 		name_length,
-		/* sys_bool is_directory */
-		attributes->is_directory,
-		/* u32 bsd_flags */
-		attributes->bsd_flags,
-		/* sys_timespec create_time */
-		attributes->creation_time,
-		/* sys_timespec last_access_time */
-		attributes->last_data_access_time,
-		/* sys_timespec last_write_time */
-		attributes->last_data_change_time,
-		/* sys_timespec last_mft_change_time */
-		attributes->last_status_change_time,
-		/* u64 file_size */
-		attributes->size,
-		/* u64 allocated_size */
-		attributes->allocated_size);
+		/* fsapi_node_attributes *attributes */
+		attributes);
 
 	return err;
 }

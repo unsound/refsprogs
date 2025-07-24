@@ -70,6 +70,7 @@ static int parse_level3_leaf_value(
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
+		const u16 entry_offset,
 		const u32 entry_size,
 		void *const context);
 
@@ -1737,6 +1738,7 @@ static int parse_unknown_leaf_value(
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
+		const u16 entry_offset,
 		const u32 entry_size,
 		void *const context)
 {
@@ -1773,7 +1775,7 @@ static int parse_generic_entry(
 		const sys_bool is_index,
 		const u8 *const entry,
 		const u32 entry_size,
-		const u32 entry_offset,
+		const u16 entry_offset,
 		const u32 entry_index,
 		void *const context,
 		int (*const parse_key)(
@@ -1801,6 +1803,7 @@ static int parse_generic_entry(
 			const u8 *value,
 			u16 value_offset,
 			u16 value_size,
+			u16 entry_offset,
 			u32 entry_size,
 			void *context),
 		u64 *const out_next_level_block_number)
@@ -1952,6 +1955,8 @@ static int parse_generic_entry(
 			value_offset,
 			/* u16 value_size */
 			value_size,
+			/* u16 entry_offset */
+			entry_offset,
 			/* u32 entry_size */
 			entry_size,
 			/* void *context */
@@ -1999,6 +2004,7 @@ static int parse_generic_block(
 			const u8 *value,
 			u16 value_offset,
 			u16 value_size,
+			u16 entry_offset,
 			u32 entry_size,
 			void *context),
 		int (*const leaf_entry_handler)(
@@ -2267,7 +2273,7 @@ static int parse_generic_block(
 			entry,
 			/* u32 entry_size */
 			entry_size,
-			/* size_t entry_offset */
+			/* u16 entry_offset */
 			cur_offset,
 			/* u32 entry_index */
 			cur_index,
@@ -2298,6 +2304,7 @@ static int parse_generic_block(
 			 *      const u8 *value,
 			 *      u16 value_offset,
 			 *      u16 value_size,
+			 *      u16 entry_offset,
 			 *      u32 entry_size,
 			 *      void *context) */
 			parse_leaf_value,
@@ -2428,7 +2435,7 @@ static int parse_generic_block(
 				entry,
 				/* u32 entry_size */
 				entry_size,
-				/* size_t entry_offset */
+				/* u16 entry_offset */
 				i,
 				/* u32 entry_index */
 				2 + smallest_matching_entryno,
@@ -2452,6 +2459,7 @@ static int parse_generic_block(
 				 *      const char *prefix,
 				 *      const size_t indent,
 				 *      u64 object_id,
+				 *      u16 entry_offset,
 				 *      u32 block_index_unit,
 				 *      sys_bool is_v3,
 				 *      const u8 *key,
@@ -2991,6 +2999,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
+		const u16 entry_offset,
 		const u32 entry_size,
 		void *const context)
 {
@@ -3042,6 +3051,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
+		const u16 entry_offset,
 		const u32 entry_size,
 		void *const context)
 {
@@ -3599,6 +3609,7 @@ static int parse_level2_leaf_value(
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
+		const u16 entry_offset,
 		const u32 entry_size,
 		void *const context)
 {
@@ -3715,6 +3726,8 @@ static int parse_level2_leaf_value(
 			value_offset,
 			/* u16 value_size */
 			value_size,
+			/* u16 entry_offset */
+			entry_offset,
 			/* u32 entry_size */
 			entry_size,
 			/* void *context */
@@ -3744,6 +3757,8 @@ static int parse_level2_leaf_value(
 			value_offset,
 			/* u16 value_size */
 			value_size,
+			/* u16 entry_offset */
+			entry_offset,
 			/* u32 entry_size */
 			entry_size,
 			/* void *context */
@@ -3899,6 +3914,8 @@ static int parse_level2_leaf_value(
 			value_offset,
 			/* u16 value_size */
 			value_size,
+			/* u16 entry_offset */
+			entry_offset,
 			/* u32 entry_size */
 			entry_size,
 			/* void *context */
@@ -4038,6 +4055,7 @@ static int parse_level2_block(
 		 *      const u8 *value,
 		 *      u16 value_offset,
 		 *      u16 value_size,
+		 *      u16 entry_offset,
 		 *      u32 entry_size,
 		 *      void *context) */
 		parse_level2_leaf_value,
@@ -6027,6 +6045,7 @@ static int parse_attribute_key(
 				 *      const u8 *value,
 				 *      u16 value_offset,
 				 *      u16 value_size,
+				 *      u16 entry_offset,
 				 *      u32 entry_size,
 				 *      void *context) */
 				parse_level3_leaf_value,
@@ -6094,6 +6113,7 @@ static int parse_attribute_leaf_value(
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
+		const u16 entry_offset,
 		const u32 entry_size,
 		void *const context)
 {
@@ -7604,6 +7624,7 @@ static int parse_attribute_leaf_value(
 				 *      const u8 *value,
 				 *      u16 value_offset,
 				 *      u16 value_size,
+				 *      u16 entry_offset,
 				 *      u32 entry_size,
 				 *      void *context) */
 				parse_attribute_leaf_value,
@@ -7705,6 +7726,8 @@ int parse_level3_long_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 parent_node_object_id,
+		const u16 entry_offset,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -7760,8 +7783,12 @@ int parse_level3_long_value(
 			(const refschar*) &key[4],
 			/* u16 file_name_length */
 			(key_size - 4) / sizeof(refschar),
+			/* u16 child_entry_offset */
+			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 parent_node_object_id */
+			parent_node_object_id,
 			/* u64 create_time */
 			creation_time,
 			/* u64 last_access_time */
@@ -7799,6 +7826,8 @@ int parse_level3_long_value(
 			hard_link_id,
 			/* u64 parent_id */
 			parent_id,
+			/* u16 child_entry_offset */
+			entry_offset,
 			/* u32 file_flags */
 			file_flags,
 			/* u64 create_time */
@@ -9692,6 +9721,7 @@ int parse_level3_long_value(
 					 *      const u8 *value,
 					 *      u16 value_offset,
 					 *      u16 value_size,
+					 *      u16 entry_offset,
 					 *      u32 entry_size,
 					 *      void *context) */
 					parse_attribute_leaf_value,
@@ -9764,6 +9794,8 @@ int parse_level3_short_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 parent_node_object_id,
+		const u16 entry_offset,
 		const u8 *const key,
 		const u16 key_size,
 		const u8 *const value,
@@ -9808,8 +9840,12 @@ int parse_level3_short_value(
 			(const refschar*) &key[4],
 			/* u16 file_name_length */
 			(key_size - 4) / sizeof(refschar),
+			/* u16 child_entry_offset */
+			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 parent_node_object_id */
+			parent_node_object_id,
 			/* u64 object_id */
 			object_id,
 			/* u64 hard_link_id */
@@ -9966,6 +10002,7 @@ static int parse_level3_leaf_value(
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
+		const u16 entry_offset,
 		const u32 entry_size,
 		void *const context)
 {
@@ -9976,7 +10013,6 @@ static int parse_level3_leaf_value(
 
 	int err = 0;
 
-	(void) object_id;
 	(void) key_offset;
 	(void) entry_size;
 
@@ -9992,6 +10028,10 @@ static int parse_level3_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 parent_node_object_id */
+			object_id,
+			/* u16 entry_offset */
+			entry_offset,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -10019,6 +10059,10 @@ static int parse_level3_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 parent_node_object_id */
+			object_id,
+			/* u16 entry_offset */
+			entry_offset,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -10135,6 +10179,7 @@ static int parse_level3_block(
 		 *      const u8 *value,
 		 *      u16 value_offset,
 		 *      u16 value_size,
+		 *      u16 entry_offset,
 		 *      u32 entry_size,
 		 *      void *context) */
 		parse_level3_leaf_value,
@@ -10608,6 +10653,7 @@ static int crawl_volume_metadata(
 				 *      const u8 *value,
 				 *      u16 value_offset,
 				 *      u16 value_size,
+				 *      u16 entry_offset,
 				 *      u32 entry_size,
 				 *      void *context) */
 				(object_id == 0xB) ?
