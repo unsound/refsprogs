@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.7.4],[catacombae@gmail.com])
-LIBREFS_VERSION="3"
+AC_INIT([refsprogs],[2025.7.23],[catacombae@gmail.com])
+LIBREFS_VERSION="4"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -167,8 +167,8 @@ if test "x$enable_refs_fuse" = "xyes"; then
 		FUSE_MODULE_LIBS="-lrefuse"
 		;;
 	mingw*)
-		# Dokan is used. Currently the user needs to specify libfuse include and
-		# library paths manually.
+		# Dokan is used. Currently the user needs to specify libfuse
+		# include and library paths manually.
 		;;
 	*)
 		# Other platforms (Linux, FreeBSD, ...) use pkg-config.
@@ -178,6 +178,11 @@ if test "x$enable_refs_fuse" = "xyes"; then
 			[],
 			[]
 		)
+
+		__SAVED_CPPFLAGS="$CPPFLAGS"
+		CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
+		AC_CHECK_HEADERS([fuse_lowlevel.h])
+		CPPFLAGS="$__SAVED_CPPFLAGS"
 		;;
 	esac
 fi

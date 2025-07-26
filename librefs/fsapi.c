@@ -54,6 +54,7 @@ struct fsapi_node {
 	u64 parent_directory_object_id;
 	u64 directory_object_id;
 	sys_bool is_short_entry;
+	u16 entry_offset;
 	u8 *key;
 	size_t key_size;
 	u8 *record;
@@ -70,6 +71,7 @@ static void fsapi_node_init(
 		const u64 parent_directory_object_id,
 		const u64 directory_object_id,
 		const sys_bool is_short_entry,
+		const u16 entry_offset,
 		u8 *const key,
 		const size_t key_size,
 		u8 *const record,
@@ -93,6 +95,7 @@ static void fsapi_node_init(
 	node->parent_directory_object_id = parent_directory_object_id;
 	node->directory_object_id = directory_object_id;
 	node->is_short_entry = is_short_entry;
+	node->entry_offset = entry_offset;
 	node->key = key;
 	node->key_size = key_size;
 	node->record = record;
@@ -436,10 +439,24 @@ static int fsapi_lookup_by_posix_path(
 
 		full_child_path = full_child_path_alloc;
 		full_child_path_length = i;
+
+		lookup_path = path;
+		lookup_path_length = path_length;
+
+		sys_log_debug("Starting from non-root:");
+		sys_log_debug("    start_object_id: %" PRIu64,
+			PRAu64(start_object_id));
+		sys_log_debug("    full_child_path_length: %" PRIuz,
+			PRAuz(full_child_path_length));
+		sys_log_debug("    full_child_path: \"%" PRIbs "\"",
+			PRAbs(full_child_path_length, full_child_path));
 	}
 	else {
 		full_child_path = path;
 		full_child_path_length = path_length;
+
+		lookup_path = path;
+		lookup_path_length = path_length;
 	}
 
 	if(!vol->cache_tree) {
@@ -471,8 +488,6 @@ static int fsapi_lookup_by_posix_path(
 				" (negative)");
 
 			if(cached_node->next) {
-				/* Put the looked up node at the start of the
-				 * list to indicate recent use. */
 				fsapi_remove_cached_node_from_list(
 					/* fsapi_volume *vol */
 					vol,
@@ -485,7 +500,10 @@ static int fsapi_lookup_by_posix_path(
 				--vol->cached_nodes_count;
 			}
 		}
-		else if(search_node.path_length > 1) {
+		else if(!(root_node &&
+			root_node->directory_object_id != 0x600) &&
+			search_node.path_length > 1)
+		{
 			/* Check if there's a cache hit for its parent. */
 			size_t i;
 			fsapi_node *cached_parent_node = NULL;
@@ -543,7 +561,7 @@ static int fsapi_lookup_by_posix_path(
 			}
 			else {
 				sys_log_debug("Cache miss for path "
-					"\"%" PRIbs "\".",
+					"\"%" PRIbs "\" and its parent.",
 					PRAbs(full_child_path_length,
 					full_child_path));
 			}
@@ -559,6 +577,7 @@ static int fsapi_lookup_by_posix_path(
 		u64 parent_directory_object_id = 0;
 		u64 directory_object_id = 0;
 		sys_bool is_short_entry = 0;
+		u16 entry_offset = 0;
 		u8 *key = NULL;
 		size_t key_size = 0;
 		u8 *record = NULL;
@@ -581,7 +600,7 @@ static int fsapi_lookup_by_posix_path(
 				"since we reached the maximum number of cached "
 				"nodes (%" PRIuz " >= %" PRIuz ").",
 				new_node,
-				PRAbs(path_length, path),
+				PRAbs(full_child_path_length, full_child_path),
 				PRAuz(vol->cached_nodes_count + 1),
 				PRAuz(cached_nodes_max));
 
@@ -592,10 +611,10 @@ static int fsapi_lookup_by_posix_path(
 				new_node);
 		}
 		else {
-			sys_log_debug("Allocating new node for \"%s\" since "
-				"we are below the maximum number of cached "
-				"nodes (%" PRIuz " < %" PRIuz ").",
-				path,
+			sys_log_debug("Allocating new node for \"%" PRIbs "\" "
+				"since we are below the maximum number of "
+				"cached nodes (%" PRIuz " < %" PRIuz ").",
+				PRAbs(full_child_path_length, full_child_path),
 				PRAuz(vol->cached_nodes_count),
 				PRAuz(cached_nodes_max));
 
@@ -605,22 +624,28 @@ static int fsapi_lookup_by_posix_path(
 			}
 		}
 
+		sys_log_debug("Looking up path \"%" PRIbs "\" starting at "
+			"directory %" PRIu64 "...",
+			PRAbs(lookup_path_length, lookup_path),
+			PRAu64(start_object_id));
+
 		err = refs_volume_lookup_by_posix_path(
 			/* refs_volume *vol */
 			vol->vol,
 			/* const char *path */
-			start_object_id ? lookup_path : path,
+			lookup_path,
 			/* size_t path_length */
-			start_object_id ? lookup_path_length : path_length,
+			lookup_path_length,
 			/* const u64 *start_object_id */
-			start_object_id ? &start_object_id :
-			(root_node ? &root_node->directory_object_id : NULL),
+			start_object_id ? &start_object_id : NULL,
 			/* u64 *out_parent_directory_object_id */
 			&parent_directory_object_id,
 			/* u64 *out_directory_object_id */
 			&directory_object_id,
 			/* sys_bool *out_is_short_entry */
 			&is_short_entry,
+			/* u16 *out_entry_offset */
+			&entry_offset,
 			/* u8 **out_key */
 			&key,
 			/* size_t *out_key_size */
@@ -642,7 +667,13 @@ static int fsapi_lookup_by_posix_path(
 			goto out;
 		}
 
-		err = sys_strndup(path, path_length, &dup_path);
+		err = sys_strndup(
+			/* cons char *str */
+			full_child_path,
+			/* size_t len */
+			full_child_path_length,
+			/* char **dupstr */
+			&dup_path);
 		if(err) {
 			sys_log_pdebug(err, "strndup error");
 			goto out;
@@ -654,13 +685,15 @@ static int fsapi_lookup_by_posix_path(
 			/* char *path */
 			dup_path,
 			/* size_t path_length */
-			path_length,
+			full_child_path_length,
 			/* u64 parent_directory_object_id */
 			parent_directory_object_id,
 			/* u64 directory_object_id */
 			directory_object_id,
 			/* sys_bool is_short_entry */
 			is_short_entry,
+			/* u16 entry_offset */
+			entry_offset,
 			/* u8 *key */
 			key,
 			/* size_t key_size */
@@ -720,13 +753,19 @@ out:
 			&new_node);
 	}
 
+	if(full_child_path_alloc) {
+		sys_free(&full_child_path_alloc);
+	}
+
 	return err;
 }
 
 static int fsapi_fill_attributes(
 		fsapi_node_attributes *attrs,
 		sys_bool is_directory,
+		u16 child_entry_offset,
 		u32 file_flags,
+		u64 parent_node_object_id,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -751,7 +790,13 @@ static int fsapi_fill_attributes(
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
-		/* st_ino cannot yet be filled in reliably */
+		/* This count in theory truncate parent_node_object_id if it's
+		 * huge, but it's likely not an issue in practice. 128-bit inode
+		 * numbers would be needed to fix that properly, otherwise
+		 * hashing might be a good intermediate solution. */
+		attrs->inode_number =
+			(parent_node_object_id << 16) | child_entry_offset;
+		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME) {
@@ -841,7 +886,9 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
 		const u64 create_time,
@@ -869,8 +916,12 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		(fsapi_node_attributes*) context,
 		/* sys_bool is_directory */
 		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags & ~((u32) 0x10000000UL),
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -889,7 +940,9 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		void *const context,
 		const le16 *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -913,8 +966,12 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		(fsapi_node_attributes*) context,
 		/* sys_bool is_directory */
 		SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -930,20 +987,21 @@ static int fsapi_node_get_attributes_visit_long_entry(
 }
 
 static int fsapi_node_get_attributes_visit_hardlink_entry(
-		void *context,
-		u64 hard_link_id,
-		u64 parent_id,
-		u32 file_flags,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size)
+		void *const context,
+		const u64 hard_link_id,
+		const u64 parent_id,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
 	(void) hard_link_id;
 	(void) parent_id;
@@ -957,8 +1015,12 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		(fsapi_node_attributes*) context,
 		/* sys_bool is_directory */
 		SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -998,10 +1060,14 @@ static int fsapi_node_get_attributes_common(
 		        attributes,
 			/* sys_bool is_directory */
 			SYS_TRUE,
+			/* u16 child_entry_offset */
+			0,
 			/* u32 file_flags */
 			REFS_FILE_ATTRIBUTE_SYSTEM |
 			REFS_FILE_ATTRIBUTE_DIRECTORY |
 			REFS_FILE_ATTRIBUTE_ARCHIVE,
+			/* u64 parent_node_object_id */
+			0x600,
 			/* u64 create_time */
 			filetime_offset,
 			/* u64 last_access_time */
@@ -1027,6 +1093,10 @@ static int fsapi_node_get_attributes_common(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			node->parent_directory_object_id,
+			/* u16 entry_offset */
+			node->entry_offset,
 			/* const u8 *key */
 			node->key,
 			/* u16 key_size */
@@ -1055,6 +1125,10 @@ static int fsapi_node_get_attributes_common(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			node->parent_directory_object_id,
+			/* u16 entry_offset */
+			node->entry_offset,
 			/* const u8 *key */
 			node->key,
 			/* u16 key_size */
@@ -1249,6 +1323,8 @@ int fsapi_volume_mount(
 		0x600,
 		/* sys_bool is_short_entry */
 		SYS_TRUE, /* Technically no entry, maybe? */
+		/* u16 entry_offset */
+		0,
 		/* u8 *key */
 		NULL,
 		/* size_t key_size */
@@ -1297,6 +1373,13 @@ out:
 	return err;
 }
 
+void fsapi_volume_get_root_node(
+		fsapi_volume *vol,
+		fsapi_node **out_root_node)
+{
+	*out_root_node = vol->root_node;
+}
+
 int fsapi_volume_get_attributes(
 		fsapi_volume *vol,
 		fsapi_volume_attributes *out_attrs)
@@ -1326,6 +1409,7 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 	fsapi_node_destroy(
 		/* fsapi_node *cached_node */
 		&node);
+	sys_free(&_node);
 }
 
 int fsapi_volume_unmount(
@@ -1390,6 +1474,13 @@ int fsapi_node_lookup(
 	if(err) {
 		goto out;
 	}
+	else if(!child_node || !child_node->parent_directory_object_id) {
+		if(out_child_node) {
+			*out_child_node = NULL;
+		}
+
+		goto out;
+	}
 
 	if(child_node && out_attributes) {
 		err = fsapi_node_get_attributes_common(
@@ -1413,7 +1504,9 @@ out:
 			/* fsapi_volume *vol */
 			vol,
 			/* fsapi_node **node */
-			&child_node);
+			&child_node,
+			/* size_t release_count */
+			1);
 		if(release_err) {
 			sys_log_perror(release_err, "Error while releasing "
 				"node on cleanup");
@@ -1426,7 +1519,8 @@ out:
 
 int fsapi_node_release(
 		fsapi_volume *vol,
-		fsapi_node **node)
+		fsapi_node **node,
+		size_t release_count)
 {
 	int err = 0;
 
@@ -1442,8 +1536,17 @@ int fsapi_node_release(
 		err = EINVAL;
 		goto out;
 	}
+	else if(release_count > (*node)->refcount) {
+		sys_log_critical("Attempted to release more references than "
+			"node %p currently has. Node has %" PRIuz " "
+			"references. Attempted to release %" PRIuz " "
+			"references.",
+			*node, PRAuz((*node)->refcount), PRAuz(release_count));
+		err = EINVAL;
+		goto out;
+	}
 
-	(*node)->refcount--;
+	(*node)->refcount -= release_count;
 	if(!(*node)->refcount) {
 		fsapi_node_cache_put(
 			/* fsapi_volume *vol */
@@ -1471,7 +1574,9 @@ static int fsapi_node_list_filldir(
 		const refschar *file_name,
 		u16 file_name_length,
 		sys_bool is_directory,
+		u16 child_entry_offset,
 		u32 file_flags,
+		u64 parent_node_object_id,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -1489,8 +1594,12 @@ static int fsapi_node_list_filldir(
 			context->attributes,
 			/* sys_bool is_directory */
 			is_directory,
+			/* u16 child_entry_offset */
+			child_entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 parent_node_object_id */
+			parent_node_object_id,
 			/* u64 create_time */
 			create_time,
 			/* u64 last_access_time */
@@ -1543,7 +1652,9 @@ static int fsapi_node_list_visit_short_entry(
 		void *const context,
 		const refschar *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
 		const u64 create_time,
@@ -1571,10 +1682,14 @@ static int fsapi_node_list_visit_short_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* sys_bool is_directory */
 		SYS_TRUE,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -1593,7 +1708,9 @@ static int fsapi_node_list_visit_long_entry(
 		void *const context,
 		const le16 *const file_name,
 		const u16 file_name_length,
+		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -1617,10 +1734,14 @@ static int fsapi_node_list_visit_long_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -1684,7 +1805,11 @@ int fsapi_node_list(
 		&directory_node->directory_object_id,
 		/* refs_node_walk_visitor *visitor */
 		&visitor);
-	if(err) {
+	if(err == -1) {
+		/* No need to log the 'break' error code but return to caller as
+		 * this may be useful information. */
+	}
+	else if(err) {
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
 	}
@@ -1914,6 +2039,10 @@ int fsapi_node_read(
 		"",
 		/* size_t indent */
 		1,
+		/* u64 parent_node_object_id */
+		node->parent_directory_object_id,
+		/* u16 entry_offset */
+		node->entry_offset,
 		/* const u8 *key */
 		node->key,
 		/* u16 key_size */
@@ -2063,6 +2192,10 @@ int fsapi_node_list_extended_attributes(
 		"",
 		/* size_t indent */
 		1,
+		/* u64 parent_node_object_id */
+		node->parent_directory_object_id,
+		/* u16 entry_offset */
+		node->entry_offset,
 		/* const u8 *key */
 		node->key,
 		/* u16 key_size */
@@ -2282,6 +2415,10 @@ int fsapi_node_read_extended_attribute(
 		"",
 		/* size_t indent */
 		1,
+		/* u64 parent_node_object_id */
+		node->parent_directory_object_id,
+		/* u16 entry_offset */
+		node->entry_offset,
 		/* const u8 *key */
 		node->key,
 		/* u16 key_size */
@@ -2329,6 +2466,10 @@ int fsapi_node_read_extended_attribute(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			node->parent_directory_object_id,
+			/* u16 entry_offset */
+			node->entry_offset,
 			/* const u8 *key */
 			node->key,
 			/* u16 key_size */

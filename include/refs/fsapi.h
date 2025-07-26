@@ -312,6 +312,19 @@ int fsapi_volume_mount(
 		fsapi_volume_attributes *out_attrs);
 
 /**
+ * Get the root node of the volume.
+ *
+ * @param vol
+ *      (in) The @ref fsapi_volume whose root node we want to retrieve.
+ * @param out_root_node
+ *      (out) Pointer to a field that will receive a pointer to the
+ *      @ref fsapi_node of the root directory of the volume.
+ */
+void fsapi_volume_get_root_node(
+		fsapi_volume *vol,
+		fsapi_node **out_root_node);
+
+/**
  * Get attributes of the volume.
  *
  * @param vol
@@ -390,12 +403,15 @@ int fsapi_node_lookup(
  * @param node
  *      (in/out) Pointer to a field referencing the @ref fsapi_node pointer. The
  *      field will be zeroed after releasing the node.
+ * @param release_count
+ *      (in) The number of references to release (usually 1).
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
 int fsapi_node_release(
 		fsapi_volume *vol,
-		fsapi_node **node);
+		fsapi_node **node,
+		size_t release_count);
 
 /**
  * List a directory node and optionally return attributes for each entry.

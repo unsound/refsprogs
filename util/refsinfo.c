@@ -262,6 +262,8 @@ static int print_leaf_by_path(
 		&directory_object_id,
 		/* sys_bool *out_is_short_entry */
 		&is_short_entry,
+		/* u16 *out_entry_offset */
+		NULL,
 		/* u8 *key */
 		&key,
 		/* size_t key_size */
@@ -306,6 +308,10 @@ static int print_leaf_by_path(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			parent_directory_object_id,
+			/* u16 entry_offset */
+			0,
 			/* const u8 *key */
 			key,
 			/* u16 key_size */
@@ -334,6 +340,10 @@ static int print_leaf_by_path(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 parent_node_object_id */
+			parent_directory_object_id,
+			/* u16 entry_offset */
+			0,
 			/* const u8 *key */
 			NULL,
 			/* u16 key_size */
