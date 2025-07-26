@@ -1805,7 +1805,11 @@ int fsapi_node_list(
 		&directory_node->directory_object_id,
 		/* refs_node_walk_visitor *visitor */
 		&visitor);
-	if(err) {
+	if(err == -1) {
+		/* No need to log the 'break' error code but return to caller as
+		 * this may be useful information. */
+	}
+	else if(err) {
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
 	}
