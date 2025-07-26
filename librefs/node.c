@@ -6564,22 +6564,24 @@ static int parse_attribute_leaf_value(
 		if(value_size > j) {
 			const size_t resident_bytes =
 				sys_min(file_size, value_size - j);
+
 			print_data_with_base(prefix, indent + 2, 0,
 				resident_bytes, &value[j], resident_bytes);
-			j += resident_bytes;
-		}
 
-		if(visitor && visitor->node_file_data) {
-			err = visitor->node_file_data(
-				/* void *context */
-				visitor->context,
-				/* const void *data */
-				&value[j],
-				/* size_t size */
-				file_size);
-			if(err) {
-				goto out;
+			if(visitor && visitor->node_file_data) {
+				err = visitor->node_file_data(
+					/* void *context */
+					visitor->context,
+					/* const void *data */
+					&value[j],
+					/* size_t size */
+					resident_bytes);
+				if(err) {
+					goto out;
+				}
 			}
+
+			j += resident_bytes;
 		}
 	}
 	else if(key_offset == 0x0010 && key_size == 0x0010 &&
@@ -8592,23 +8594,25 @@ int parse_level3_long_value(
 			if(attribute_size > j) {
 				const size_t resident_bytes =
 					sys_min(file_size, attribute_size - j);
+
 				print_data_with_base(prefix, indent + 2, 0,
 					resident_bytes, &attribute[j],
 					resident_bytes);
-				j += resident_bytes;
-			}
 
-			if(visitor && visitor->node_file_data) {
-				err = visitor->node_file_data(
-					/* void *context */
-					visitor->context,
-					/* const void *data */
-					&attribute[j],
-					/* size_t size */
-					file_size);
-				if(err) {
-					goto out;
+				if(visitor && visitor->node_file_data) {
+					err = visitor->node_file_data(
+						/* void *context */
+						visitor->context,
+						/* const void *data */
+						&attribute[j],
+						/* size_t size */
+						resident_bytes);
+					if(err) {
+						goto out;
+					}
 				}
+
+				j += resident_bytes;
 			}
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
