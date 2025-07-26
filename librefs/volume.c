@@ -589,7 +589,7 @@ static int refs_volume_lookup(
 
 	memset(&visitor, 0, sizeof(visitor));
 
-	err = sys_malloc(cur_element_capacity, &cur_element);
+	err = sys_malloc(cur_element_capacity * sizeof(refschar), &cur_element);
 	if(err) {
 		goto out;
 	}
