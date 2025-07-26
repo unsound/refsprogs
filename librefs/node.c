@@ -8083,7 +8083,6 @@ int parse_level3_long_value(
 		if(attribute_index - 1 == 1 &&
 			remaining_in_attribute >= j + 0x18)
 		{
-#if 1
 			/* This has the same layout as the allocation entry in a
 			 * node. */
 			err = parse_block_allocation_entry(
@@ -8112,51 +8111,6 @@ int parse_level3_long_value(
 			}
 
 			j += remaining_in_attribute;
-#else
-			j += parse_level3_attribute_header(
-				/* refs_node_walk_visitor *visitor */
-				visitor,
-				/* const char *prefix */
-				prefix,
-				/* size_t indent */
-				indent,
-				/* size_t remaining_in_value */
-				remaining_in_value,
-				/* const u8 *attribute */
-				attribute,
-				/* u16 attribute_size */
-				attribute_size,
-				/* u16 attribute_index */
-				attribute_index);
-			/* Attributes header, seems to be:
-			 * - 40 / 0x28 bytes on version 3
-			 * - 32 / 0x20 bytes on version 1
-			 * It has the number of attributes plus some other
-			 * unknown data. */
-			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
-			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
-			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
-			j += print_unknown32(prefix, indent + 1, attribute,
-				&attribute[j]);
-			number_of_attributes = read_le16(&attribute[j]);
-			j += print_le16_dechex("Number of attributes", prefix,
-				indent + 1, attribute, &attribute[j]);
-			j += print_unknown16(prefix, indent + 1, attribute,
-				&attribute[j]);
-			j += print_unknown64(prefix, indent + 1, attribute,
-				&attribute[j]);
-			if(remaining_in_attribute - j >= 0x8) {
-				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
-			}
-			if(remaining_in_attribute - j >= 0x8) {
-				j += print_unknown64(prefix, indent + 1,
-					attribute, &attribute[j]);
-			}
-#endif
 		}
 		else if(attribute_type == 0x0010 && attribute_type2 == 0x0028 &&
 			attribute_size >= 0x48)
