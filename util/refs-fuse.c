@@ -30,10 +30,10 @@
 typedef unsigned int mode_t;
 #endif
 
-#if defined(_WIN32) || defined(__NetBSD__) || defined(__OpenBSD__)
-#define REFS_FUSE_USE_LOWLEVEL_API 0
-#else
+#ifdef HAVE_FUSE_LOWLEVEL_H
 #define REFS_FUSE_USE_LOWLEVEL_API 1
+#else
+#define REFS_FUSE_USE_LOWLEVEL_API 0
 #endif
 
 /* Headers - libfuse. */
