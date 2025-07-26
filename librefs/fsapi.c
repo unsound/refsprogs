@@ -1409,6 +1409,7 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 	fsapi_node_destroy(
 		/* fsapi_node *cached_node */
 		&node);
+	sys_free(&_node);
 }
 
 int fsapi_volume_unmount(
