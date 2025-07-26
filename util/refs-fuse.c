@@ -572,7 +572,11 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 		 *     size_t name_length,
 		 *     fsapi_node_attributes *attributes) */
 		refs_fuse_op_readdir_handle_dirent);
-	if(err) {
+	if(err == -1) {
+		/* No more space in buffer. */
+		err = 0;
+	}
+	else if(err) {
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
 	}
@@ -1574,7 +1578,11 @@ static void refs_fuse_ll_op_readdir(
 		 *     size_t name_length,
 		 *     fsapi_node_attributes *attributes) */
 		refs_fuse_ll_op_readdir_handle_dirent);
-	if(err) {
+	if(err == -1) {
+		/* No more space in buffer. */
+		err = 0;
+	}
+	else if(err) {
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
 	}
