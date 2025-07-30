@@ -16,6 +16,12 @@ refscat
 A utility that prints the data of a file, extended attribute (EA) or an
 alternate data stream on an ReFS volume.
 
+refsimage
+---------
+A utility that creates images of ReFS filesystems for analyzing filesystem
+metadata and eventually dumping / restoring filesystems (not yet tested for this
+use case).
+
 refsinfo
 --------
 A utility that prints information about a specific file or directory or about

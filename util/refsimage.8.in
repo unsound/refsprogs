@@ -1,0 +1,54 @@
+.\" Copyright (c) 2025 Erik Larsson
+.\"
+.TH REFSIMAGE 8 "July 2025" "refsprogs @VERSION@"
+.SH NAME
+refsimage - Create and restore ReFS volume images.
+.SH SYNOPSIS
+.B refsimage
+[\fIoptions\fR] \fIdevice\fR
+.SH DESCRIPTION
+.B refsimage
+is able to create/restore filesystem images, optionally excluding data and only
+including metadata in an image.
+
+Run refsimage without arguments for a full list of options.
+.SH OPTIONS
+Below is a summary of all the options that
+.B refsimage
+accepts.  Nearly all options have two equivalent names.  The short name is
+preceded by
+.B \-
+and the long name is preceded by
+.BR \-\- .
+.TP
+\fB\-m\fR, \fB\-\-metadata\fR
+Only dump the metadata of the ReFS volume, but no data clusters. This is used
+for submitting bug reports and archiving a filesystem state for later
+inspection.
+.TP
+\fB\-n\fR, \fB\-\-ntfsclone\-image\fR
+Dump an ntfsclone format image. This is a sparse image format that doesn't
+require sparse image support in the file system.
+.TP
+\fB\-o\fR, \fB\-\-output\fR FILE
+Write the resulting image to \fBFILE\fR instead of writing it to stdout.
+.TP
+\fB\-r\fR, \fB\-\-restore-image\fR
+Restore an ntfsclone format image to a sparse image file in the filesystem.
+.SH BUGS
+There are no known problems with
+.BR refsimage .
+If you find a bug, then please report it to the refsprogs bug tracker on github:
+https://github.com/unsound/refsprogs/issues
+.hy
+.SH AUTHORS
+.B refsimage
+was written by Erik Larsson
+.SH AVAILABILITY
+.B refsimage
+is part of the
+.B refsprogs
+package.
+.hy
+.SH SEE ALSO
+.BR refs\-fuse (8)

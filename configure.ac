@@ -209,6 +209,7 @@ AC_CONFIG_FILES([
 	util/redb.8
 	util/refs-fuse.8
 	util/refscat.8
+	util/refsimage.8
 	util/refsinfo.8
 	util/refslabel.8
 	util/refsls.8
