@@ -395,6 +395,8 @@ static int print_node_number_node_header(
 		u64 node_first_cluster,
 		u64 object_id,
 		const u8 *data,
+		size_t data_size,
+		size_t header_offset,
 		size_t header_size)
 {
 	print_node_number_info_context *const context =
@@ -502,6 +504,8 @@ static int print_object_id_node_header(
 		u64 node_first_cluster,
 		u64 object_id,
 		const u8 *data,
+		size_t data_size,
+		size_t header_offset,
 		size_t header_size)
 {
 	print_object_id_info_context *const context =

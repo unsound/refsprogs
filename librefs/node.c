@@ -142,8 +142,20 @@ static u64 logical_to_physical_block_number(
 		refs_node_crawl_context *const crawl_context,
 		const u64 logical_block_number)
 {
-	REFS_BOOT_SECTOR *const bs = crawl_context->bs;
-	refs_block_map *const mapping_table = crawl_context->block_map;
+	return refs_node_logical_to_physical_block_number(
+		/* const REFS_BOOT_SECTOR *bs */
+		crawl_context->bs,
+		/* const refs_block_map *mapping_table */
+		crawl_context->block_map,
+		/* u64 logical_block_number */
+		logical_block_number);
+}
+
+u64 refs_node_logical_to_physical_block_number(
+		const REFS_BOOT_SECTOR *const bs,
+		const refs_block_map *const mapping_table,
+		const u64 logical_block_number)
+{
 	const u32 cluster_size =
 		le32_to_cpu(bs->bytes_per_sector) *
 		le32_to_cpu(bs->sectors_per_cluster);
@@ -666,6 +678,10 @@ static int parse_block_header(
 			object_id,
 			/* const u8 *data */
 			block,
+			/* size_t data_size */
+			block_size,
+			/* size_t header_offset */
+			is_v3 ? 0x20U : 0x00U,
 			/* size_t header_size */
 			i);
 		if(err) {
@@ -8108,6 +8124,15 @@ int parse_level3_long_value(
 				&number_of_attributes);
 			if(err) {
 				goto out;
+			}
+
+			if(number_of_attributes > value_size) {
+				sys_log_warning("Inconsistent number of "
+					"attributes: %" PRIu32 " > %" PRIu16 " "
+					"(size of value)",
+					PRAu32(number_of_attributes),
+					PRAu16(value_size));
+				number_of_attributes = 0;
 			}
 
 			j += remaining_in_attribute;

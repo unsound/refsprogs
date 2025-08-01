@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.7.23],[catacombae@gmail.com])
-LIBREFS_VERSION="4"
+AC_INIT([refsprogs],[2025.7.26],[catacombae@gmail.com])
+LIBREFS_VERSION="5"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -209,6 +209,7 @@ AC_CONFIG_FILES([
 	util/redb.8
 	util/refs-fuse.8
 	util/refscat.8
+	util/refsimage.8
 	util/refsinfo.8
 	util/refslabel.8
 	util/refsls.8

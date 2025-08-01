@@ -55,6 +55,17 @@ refscat_CFLAGS = \
 refscat_SOURCES = \
 	refscat.c
 
+bin_PROGRAMS += refsimage
+man_MANS += refsimage.8
+refsimage_LDADD = \
+	$(refs_common_libs)
+refsimage_LDFLAGS = \
+	$(refs_common_ldflags)
+refsimage_CFLAGS = \
+	$(refs_common_cflags)
+refsimage_SOURCES = \
+	refsimage.c
+
 bin_PROGRAMS += refsinfo
 man_MANS += refsinfo.8
 refsinfo_LDADD = \

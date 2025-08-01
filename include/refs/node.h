@@ -68,6 +68,8 @@ struct refs_node_walk_visitor {
 		u64 node_first_cluster,
 		u64 object_id,
 		const u8 *data,
+		const size_t data_size,
+		const size_t header_offset,
 		size_t header_size);
 	int (*node_header_entry)(
 		void *context,
@@ -249,6 +251,11 @@ int parse_level3_short_value(
 
 void refs_block_map_destroy(
 		refs_block_map **block_map);
+
+u64 refs_node_logical_to_physical_block_number(
+		const REFS_BOOT_SECTOR *const bs,
+		const refs_block_map *const mapping_table,
+		const u64 logical_block_number);
 
 /**
  * Walk the ReFS node tree, optionally starting at a specified node.

@@ -291,6 +291,11 @@ typedef struct {
 	                                              /* size   = 0x50     80 */
 } __attribute__ ((__packed__)) REFS_V3_NODE_HEADER;
 
+typedef union {
+	REFS_V1_NODE_HEADER v1;
+	REFS_V3_NODE_HEADER v3;
+} __attribute__ ((__packed__)) REFS_NODE_HEADER;
+
 typedef struct {
 	REFS_V1_NODE_HEADER header;                   /* offset = 0x0       0 */
 	le32 unknown48;                               /* offset = 0x30     48 */
