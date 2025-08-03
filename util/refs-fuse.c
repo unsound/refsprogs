@@ -163,6 +163,7 @@ typedef struct {
 	off_t index;
 } refs_fuse_readdir_context;
 
+#if !REFS_FUSE_USE_LOWLEVEL_API
 static int refs_fuse_filldir(
 		refs_fuse_readdir_context *context,
 		const char *file_name,
@@ -671,6 +672,7 @@ out:
 
 	return -err;
 }
+#endif /* !REFS_FUSE_USE_LOWLEVEL_API */
 
 typedef struct {
 	const char *name;
@@ -703,6 +705,7 @@ out:
 	return err;
 }
 
+#if !REFS_FUSE_USE_LOWLEVEL_API
 #ifdef __APPLE__
 static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		size_t size, uint32_t position)
@@ -830,6 +833,7 @@ out:
 	return err ? -err :
 		(buf ? size - buffer_context.remaining_size : context.size);
 }
+#endif /* !REFS_FUSE_USE_LOWLEVEL_API */
 
 typedef struct {
 	char *buf;
@@ -871,6 +875,7 @@ out:
 	return err;
 }
 
+#if !REFS_FUSE_USE_LOWLEVEL_API
 static int refs_fuse_op_listxattr(const char *path, char *buf, size_t size)
 {
 	fsapi_volume *const vol =
@@ -998,7 +1003,7 @@ out:
 }
 #endif /* defined(_WIN32) */
 
-struct fuse_operations refs_fuse_operations = {
+static struct fuse_operations refs_fuse_operations = {
 	/* int (*getattr) (const char *, struct FUSE_STAT *) */
 	.getattr = refs_fuse_op_getattr,
 	/* int (*open) (const char *, struct fuse_file_info *) */
@@ -1027,8 +1032,7 @@ struct fuse_operations refs_fuse_operations = {
 	.win_get_attributes = refs_fuse_op_win_get_attributes,
 #endif
 };
-
-#if REFS_FUSE_USE_LOWLEVEL_API
+#else
 static fsapi_node* refs_fuse_ll_fuse_ino_to_node(
 		fuse_ino_t ino,
 		fsapi_volume *vol)
@@ -1896,7 +1900,7 @@ static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	/* void (*listxattr) (fuse_req_t req, fuse_ino_t ino, size_t size); */
 	.listxattr = refs_fuse_ll_op_listxattr,
 };
-#endif /* REFS_FUSE_USE_LOWLEVEL_API */
+#endif /* !REFS_FUSE_USE_LOWLEVEL_API ... */
 
 int main(int argc, char **argv)
 {
