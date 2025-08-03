@@ -32,13 +32,29 @@ redb_SOURCES = \
 if ENABLE_REFS_FUSE
 bin_PROGRAMS += refs-fuse
 man_MANS += refs-fuse.8
-refs_fuse_LDADD = \
-	$(FUSE_MODULE_LIBS) \
+refs_fuse_LDADD =
+if ENABLE_FUSE3
+refs_fuse_LDADD += \
+	$(FUSE3_MODULE_LIBS)
+else
+refs_fuse_LDADD += \
+	$(FUSE_MODULE_LIBS)
+endif # ENABLE_FUSE3
+refs_fuse_LDADD += \
 	$(refs_common_libs)
 refs_fuse_LDFLAGS = \
 	$(refs_common_ldflags)
-refs_fuse_CFLAGS = \
+refs_fuse_CFLAGS =
+if ENABLE_FUSE3
+refs_fuse_CFLAGS += \
+	$(FUSE3_MODULE_CFLAGS) \
+	-DFUSE_USE_VERSION=32
+else
+refs_fuse_CFLAGS += \
 	$(FUSE_MODULE_CFLAGS) \
+	-DFUSE_USE_VERSION=26
+endif # ENABLE_FUSE3
+refs_fuse_CFLAGS += \
 	$(refs_common_cflags)
 refs_fuse_SOURCES = \
 	refs-fuse.c

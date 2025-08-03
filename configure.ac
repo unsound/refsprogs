@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.7.26],[catacombae@gmail.com])
-LIBREFS_VERSION="5"
+AC_INIT([refsprogs],[2025.8.3],[catacombae@gmail.com])
+LIBREFS_VERSION="6"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -179,8 +179,19 @@ if test "x$enable_refs_fuse" = "xyes"; then
 			[]
 		)
 
+		PKG_CHECK_MODULES(
+			[FUSE3_MODULE],
+			[fuse3 >= 3.2.0],
+			[enable_fuse3="yes"],
+			[]
+		)
+
 		__SAVED_CPPFLAGS="$CPPFLAGS"
-		CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
+		if test "x$enable_fuse3" != "xyes"; then
+			CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
+		else
+			CPPFLAGS="$CPPFLAGS $FUSE3_MODULE_CFLAGS -DFUSE_USE_VERSION=32"
+		fi
 		AC_CHECK_HEADERS([fuse_lowlevel.h])
 		CPPFLAGS="$__SAVED_CPPFLAGS"
 		;;
@@ -196,6 +207,7 @@ AC_SUBST([FUSE_MODULE_LIBS])
 AM_CONDITIONAL([INSTALL_LIBRARY], [test "${enable_library}" = "yes"])
 AM_CONDITIONAL([ENABLE_NFCONV], [test "${enable_nfconv}" = "yes"])
 AM_CONDITIONAL([ENABLE_REFS_FUSE], [test "x${enable_refs_fuse}" = "xyes"])
+AM_CONDITIONAL([ENABLE_FUSE3], [test "x$enable_fuse3" = "xyes"])
 
 # generate files
 AC_CONFIG_FILES([

@@ -37,7 +37,6 @@ typedef unsigned int mode_t;
 #endif
 
 /* Headers - libfuse. */
-#define FUSE_USE_VERSION 26
 #if defined(__NetBSD__)
 /* Work around librefuse compile error due to missing kernel types. */
 #define _KERNTYPES 1
@@ -194,7 +193,12 @@ static int refs_fuse_filldir(
 		/* const struct FUSE_STAT *stbuf */
 		&stbuf,
 		/* off_t off */
-		0))
+		0
+#if FUSE_VERSION >= 30
+		/* enum fuse_fill_dir_flags flags */
+		, 0
+#endif /* FUSE_VERSION >= 30 */
+		))
 	{
 		err = -1;
 	}
@@ -203,7 +207,13 @@ out:
 	return err;
 }
 
-static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
+static int refs_fuse_op_getattr(
+		const char *const path,
+		struct FUSE_STAT *const stbuf
+#if FUSE_VERSION >= 30
+		, struct fuse_file_info *fi
+#endif /* FUSE_VERSION >= 30 */
+		)
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_get_context()->private_data;
@@ -214,8 +224,16 @@ static int refs_fuse_op_getattr(const char *path, struct FUSE_STAT *stbuf)
 
 	memset(&attributes, 0, sizeof(attributes));
 
-	sys_log_debug("%s(path=\"%s\", stbuf=%p)",
-		__FUNCTION__, path, stbuf);
+	sys_log_debug("%s(path=\"%s\", stbuf=%p"
+#if FUSE_VERSION >= 30
+		", fi=%p"
+#endif /* FUSE_VERSION >= 30 */
+		")",
+		__FUNCTION__, path, stbuf
+#if FUSE_VERSION >= 30
+		, fi
+#endif /* FUSE_VERSION >= 30 */
+		);
 
 	attributes.requested =
 		FSAPI_NODE_ATTRIBUTE_TYPE_SIZE |
@@ -268,8 +286,16 @@ out:
 			1);
 	}
 
-	sys_log_debug("%s(path=\"%s\", stbuf=%p): %d (%s)",
-		__FUNCTION__, path, stbuf, -err, strerror(err));
+	sys_log_debug("%s(path=\"%s\", stbuf=%p"
+#if FUSE_VERSION >= 30
+		", fi=%p"
+#endif /* FUSE_VERSION >= 30 */
+		"): %d (%s)",
+		__FUNCTION__, path, stbuf,
+#if FUSE_VERSION >= 30
+		fi,
+#endif /* FUSE_VERSION >= 30 */
+		-err, strerror(err));
 
 	return -err;
 }
@@ -494,7 +520,11 @@ static int refs_fuse_op_readdir_handle_dirent(
 }
 
 static int refs_fuse_op_readdir(const char *path, void *dirbuf,
-		fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+		fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi
+#if FUSE_VERSION >= 30
+		, enum fuse_readdir_flags flags
+#endif /* FUSE_VERSION >= 30 */
+		)
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_get_context()->private_data;
@@ -508,8 +538,16 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 	memset(&attributes, 0, sizeof(attributes));
 
 	sys_log_debug("%s(path=\"%s\", dirbuf=%p, filler=%p, "
-		"offset=%" PRId64 ", fi=%p)",
-		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi);
+		"offset=%" PRId64 ", fi=%p"
+#if FUSE_VERSION >= 30
+		", flags=0x%X"
+#endif /* FUSE_VERSION >= 30 */
+		")",
+		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi
+#if FUSE_VERSION >= 30
+		, flags
+#endif /* FUSE_VERSION >= 30 */
+		);
 
 	err = fsapi_node_lookup(
 		/* fsapi_volume *vol */
@@ -532,11 +570,39 @@ static int refs_fuse_op_readdir(const char *path, void *dirbuf,
 		goto out;
 	}
 
-	if(offset < 1 && filler(dirbuf, ".", NULL, 1)) {
+	if(offset < 1 && filler(
+		/* void *buf */
+		dirbuf,
+		/* const char *name */
+		".",
+		/* const struct FUSE_STAT *stbuf */
+		NULL,
+		/* off_t off */
+		1
+#if FUSE_VERSION >= 30
+		/* enum fuse_fill_dir_flags flags */
+		, 0
+#endif /* FUSE_VERSION >= 30 */
+		))
+	{
 		goto out;
 	}
 
-	if(offset < 2 && filler(dirbuf, "..", NULL, 2)) {
+	if(offset < 2 && filler(
+		/* void *buf */
+		dirbuf,
+		/* const char *name */
+		"..",
+		/* const struct FUSE_STAT *stbuf */
+		NULL,
+		/* off_t off */
+		2
+#if FUSE_VERSION >= 30
+		/* enum fuse_fill_dir_flags flags */
+		, 0
+#endif /* FUSE_VERSION >= 30 */
+		))
+	{
 		goto out;
 	}
 
@@ -592,9 +658,16 @@ out:
 	}
 
 	sys_log_debug("%s(path=\"%s\", dirbuf=%p, filler=%p, "
-		"offset=%" PRId64 ", fi=%p): %d (%s)",
-		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi, -err,
-		strerror(err));
+		"offset=%" PRId64 ", fi=%p"
+#if FUSE_VERSION >= 30
+		", flags=0x%X"
+#endif /* FUSE_VERSION >= 30 */
+		"): %d (%s)",
+		__FUNCTION__, path, dirbuf, filler, PRAd64(offset), fi,
+#if FUSE_VERSION >= 30
+		flags,
+#endif /* FUSE_VERSION >= 30 */
+		-err, strerror(err));
 
 	return -err;
 }
@@ -1836,7 +1909,11 @@ int main(int argc, char **argv)
 	int i;
 	sys_bool foreground = SYS_FALSE;
 	struct fuse_args args;
+#if FUSE_VERSION >= 30
+	int mount_res = 0;
+#else
 	struct fuse_chan *chan = NULL;
+#endif /* FUSE_VERSION >= 30 ... */
 	struct fuse_session *ses = NULL;
 	sys_bool signal_handlers_set = SYS_FALSE;
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
@@ -1913,6 +1990,33 @@ int main(int argc, char **argv)
 		sys_log_debug("    [%d]: %s", i, args.argv[i]);
 	}
 
+#if FUSE_VERSION >= 30
+	ses = fuse_session_new(
+		/* struct fuse_args *args */
+		&args,
+		/* const struct fuse_lowlevel_ops *op */
+		&refs_fuse_ll_operations,
+		/* size_t op_size */
+		sizeof(refs_fuse_ll_operations),
+		/* void *userdata */
+		vol);
+	if(!ses) {
+		err = (err = errno) ? err : EINVAL;
+		goto out;
+	}
+#endif /* FUSE_VERSION >= 30 */
+
+#if FUSE_VERSION >= 30
+	mount_res = fuse_session_mount(
+		/* struct fuse_session *se */
+		ses,
+		/* const char *mountpoint */
+		mount_point);
+	if(mount_res) {
+		err = (err = errno) ? err : EINVAL;
+		goto out;
+	}
+#else
 	chan = fuse_mount(
 		/* const char *mountpoint */
 		mount_point,
@@ -1922,7 +2026,9 @@ int main(int argc, char **argv)
 		err = EINVAL;
 		goto out;
 	}
+#endif /* FUSE_VERSION >= 30 ... */
 
+#if FUSE_VERSION < 30
 	ses = fuse_lowlevel_new(
 		/* struct fuse_args *args */
 		&args,
@@ -1932,6 +2038,7 @@ int main(int argc, char **argv)
 		sizeof(refs_fuse_ll_operations),
 		/* void *userdata */
 		vol);
+#endif /* FUSE_VERSION < 30 */
 	if(!ses) {
 		err = EINVAL;
 		goto out;
@@ -1947,11 +2054,13 @@ int main(int argc, char **argv)
 
 	signal_handlers_set = SYS_TRUE;
 
+#if FUSE_VERSION < 30
 	fuse_session_add_chan(
 		/* struct fuse_session *se */
 		ses,
 		/* struct fuse_chan *ch */
 		chan);
+#endif /* FUSE_VERSION < 30 */
 
 	if(!foreground) {
 		fuse_daemonize(0);
@@ -1961,9 +2070,11 @@ int main(int argc, char **argv)
 		/* struct fuse_session *se */
 		ses);
 
+#if FUSE_VERSION < 30
 	fuse_session_remove_chan(
 		/* struct fuse_chan *ch */
 		chan);
+#endif /* FUSE_VERSION < 30 */
 #else
 	/* Shuffle arguments around for 'fuse_main'. The mountpoint should be
 	 * the first non-option argument and the device should not be passed on,
@@ -1983,12 +2094,21 @@ out:
 			ses);
 	}
 
+#if FUSE_VERSION < 30
 	if(ses) {
 		fuse_session_destroy(
 			/* struct fuse_session *se */
 			ses);
 	}
+#endif /* FUSE_VERSION < 30 */
 
+#if FUSE_VERSION >= 30
+	if(!mount_res) {
+		fuse_session_unmount(
+			/* struct fuse_session *se */
+			ses);
+	}
+#else
 	if(chan) {
 		fuse_unmount(
 			/* const char *mountpoint */
@@ -1996,6 +2116,15 @@ out:
 			/* struct fuse_chan *ch */
 			chan);
 	}
+#endif /* FUSE_VERSION >= 30 ... */
+
+#if FUSE_VERSION >= 30
+	if(ses) {
+		fuse_session_destroy(
+			/* struct fuse_session *se */
+			ses);
+	}
+#endif /* FUSE_VERSION >= 30 */
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	if(vol) {
