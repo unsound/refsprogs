@@ -9593,7 +9593,7 @@ int parse_level3_long_value(
 
 				u8 *block = NULL;
 				size_t bytes_read = 0;
-				u8 i = 0;
+				u8 k = 0;
 
 				err = sys_malloc(crawl_context->block_size,
 					&block);
@@ -9612,8 +9612,8 @@ int parse_level3_long_value(
 						"%" PRIu64 " into "
 						"%" PRIuz "-byte buffer %p at "
 						"buffer offset %" PRIuz,
-						PRAu64(logical_blocks[i]),
-						PRAu64(physical_blocks[i]),
+						PRAu64(logical_blocks[k]),
+						PRAu64(physical_blocks[k]),
 						PRAuz(crawl_context->
 						block_size),
 						block,
@@ -9622,7 +9622,7 @@ int parse_level3_long_value(
 						/* sys_device *dev */
 						crawl_context->dev,
 						/* u64 pos */
-						physical_blocks[i] *
+						physical_blocks[k] *
 						block_index_unit,
 						/* size_t count */
 						bytes_per_read,
@@ -9633,7 +9633,7 @@ int parse_level3_long_value(
 					}
 
 					bytes_read += bytes_per_read;
-					++i;
+					++k;
 				}
 				if(err) {
 					sys_log_pwarning(err, "Error while "
@@ -9642,8 +9642,8 @@ int parse_level3_long_value(
 						"(offset %" PRIu64 ")",
 						PRAuz(crawl_context->
 						block_size),
-						PRAu64(physical_blocks[i]),
-						PRAu64(physical_blocks[i] *
+						PRAu64(physical_blocks[k]),
+						PRAu64(physical_blocks[k] *
 						block_index_unit));
 					sys_free(&block);
 					continue;
