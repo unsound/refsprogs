@@ -73,29 +73,6 @@ static struct search_device_options {
 } options;
 
 
-static int generic_print_message(
-		void *context,
-		const char *format,
-		...)
-		__attribute__((format(printf, 2, 3)));
-
-
-static int generic_print_message(
-		void *context,
-		const char *format,
-		...)
-{
-	va_list ap;
-
-	(void) context;
-
-	va_start(ap, format);
-	vemitln(format, ap);
-	va_end(ap);
-
-	return 0;
-}
-
 static void print_help(FILE *out, const char *invoke_cmd)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
