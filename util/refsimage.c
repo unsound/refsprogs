@@ -78,31 +78,6 @@ static void print_about(FILE *out)
 	fprintf(out, "Copyright (c) 2022-2025 Erik Larsson\n");
 }
 
-static int read_boot_sector(
-		sys_device *const dev,
-		REFS_BOOT_SECTOR *const out_bs)
-{
-	int err = 0;
-	u64 sector_offset = 0;
-	REFS_BOOT_SECTOR bs;
-
-	memset(&bs, 0, sizeof(bs));
-
-	err = sys_device_pread(dev, sector_offset, sizeof(bs), &bs);
-	if(err) {
-		fprintf(stderr, "Error while reading %sboot sector from "
-			"device: %s\n",
-			"", strerror(err));
-		goto out;
-	}
-
-	if(out_bs) {
-		*out_bs = bs;
-	}
-out:
-	return err;
-}
-
 static int refsimage_node_header(
 		void *const _context,
 		const u64 node_number,
