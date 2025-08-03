@@ -310,7 +310,7 @@ static int fsapi_node_cache_evict(
 		*out_evicted_node = lru_node;
 		lru_node = NULL; /* Caller takes ownership. */
 	}
-out:
+
 	if(lru_node) {
 		fsapi_node_destroy(
 			/* fsapi_node *cached_node */
@@ -1142,7 +1142,7 @@ static int fsapi_node_get_attributes_common(
 			/* void *context */
 			NULL);
 	}
-out:
+
 	sys_log_debug("%s(node=%p, attributes=%p): %d (%s)",
 		__FUNCTION__, node, attributes, err, strerror(err));
 
