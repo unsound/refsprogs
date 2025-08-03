@@ -5250,10 +5250,9 @@ static int parse_attribute_key(
 		}
 
 		if(j < key_size) {
-			const u32 print_end = sys_min(key_size, key_size);
-			print_data_with_base(prefix, indent, j, print_end,
-				&key[j], print_end - j);
-			j = print_end;
+			print_data_with_base(prefix, indent, j, key_size,
+				&key[j], key_size - j);
+			j = key_size;
 		}
 
 #if 0
