@@ -10872,10 +10872,7 @@ static int crawl_volume_metadata(
 			}
 		}
 	}
-
 	if(level3_queue.block_queue_length) {
-		size_t i;
-
 		for(i = 0; i < level3_queue.block_queue_length; ++i) {
 			const u64 logical_block_number =
 				level3_queue.block_numbers[i];
