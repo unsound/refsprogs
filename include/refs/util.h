@@ -412,7 +412,7 @@ static void _print_data_with_base(
 		const u8 *const data,
 		const size_t size)
 {
-	static const char spaces[16] = "                ";
+	static const char spaces[17] = "                ";
 	const u8 max_hex_digits =
 		(u8) ((sys_fls64(!maxvalue ? base + size : maxvalue) + 3) / 4);
 
