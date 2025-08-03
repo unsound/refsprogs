@@ -8778,8 +8778,8 @@ int parse_level3_long_value(
 		else if(attribute_type == 0x0010 && stream_type == 0x000500B0) {
 			const u16 name_start = attribute_type;
 			const u16 name_end = attribute_type2;
-			u16 value_offset = 0;
-			u32 value_size = 0;
+			u16 attr_value_offset = 0;
+			u32 attr_value_size = 0;
 			u32 real_name_offset = 0;
 			size_t cstr_length = 0;
 			u32 data_size = 0;
@@ -8807,13 +8807,13 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x08 */
 			}
 			if(remaining_in_attribute - j >= 2) {
-				value_offset = read_le16(&attribute[j]);
+				attr_value_offset = read_le16(&attribute[j]);
 				j += print_le16_dechex("Value offset", prefix,
 					indent + 1, attribute,
 					&attribute[j]); /* 0x0A */
 			}
 			if(remaining_in_attribute - j >= 4) {
-				value_size = read_le32(&attribute[j]);
+				attr_value_size = read_le32(&attribute[j]);
 				j += print_le32_dechex("Value size (1)", prefix,
 					indent + 1, attribute,
 					&attribute[j]); /* 0x0C */
@@ -8881,9 +8881,9 @@ int parse_level3_long_value(
 				}
 			}
 
-			if(j < value_offset) {
+			if(j < attr_value_offset) {
 				const u32 print_end =
-					sys_min(value_offset,
+					sys_min(attr_value_offset,
 					remaining_in_attribute);
 				print_data_with_base(prefix, indent + 1, j,
 					print_end, &attribute[j],
@@ -8894,23 +8894,23 @@ int parse_level3_long_value(
 			emit(prefix, indent + 1, "Value @ %" PRIuz " / "
 				"0x%" PRIXz " (size: %" PRIuz " / "
 				"0x%" PRIXz "):",
-				PRAuz(j), PRAXz(j), PRAuz(value_size),
-				PRAXz(value_size));
+				PRAuz(j), PRAXz(j), PRAuz(attr_value_size),
+				PRAXz(attr_value_size));
 
 			{
-				const u8 *const value = &attribute[j];
+				const u8 *const attr_value = &attribute[j];
 				const u32 true_value_size =
 					sys_min(remaining_in_attribute - j,
-					value_size);
+					attr_value_size);
 				u16 k = 0;
 
 				if(true_value_size - k >= 4) {
 					u32 flags;
 
-					flags = read_le32(&value[k]);
+					flags = read_le32(&attr_value[k]);
 					k += print_le32_dechex("Flags", prefix,
-						indent + 2, value,
-						&value[k]);
+						indent + 2, attr_value,
+						&attr_value[k]);
 
 					if(flags & 0x10000000UL) {
 						flags &= ~0x10000000UL;
@@ -8928,69 +8928,69 @@ int parse_level3_long_value(
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_le32_dechex("Allocated size "
 						"(1)", prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
-					data_size = read_le32(&value[k]);
+					data_size = read_le32(&attr_value[k]);
 					k += print_le32_dechex("Attribute size "
 						"(1)", prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_le32_dechex("Attribute size "
 						"(2)", prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_le32_dechex("Allocated size "
 						"(2)", prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k >= 4) {
 					k += print_unknown32(prefix, indent + 2,
-						value, &value[k]);
+						attr_value, &attr_value[k]);
 				}
 				if(true_value_size - k > 0 && !non_resident) {
 					const u32 data_limit =
 						sys_min(data_size,
-						value_size - k);
+						attr_value_size - k);
 					refs_node_stream_data data;
 
 					memset(&data, 0, sizeof(data));
@@ -9003,7 +9003,7 @@ int parse_level3_long_value(
 						PRAuz(data_size));
 
 					data.resident = SYS_TRUE;
-					data.data.resident = &value[k];
+					data.data.resident = &attr_value[k];
 
 					if(visitor && visitor->node_stream) {
 						err = visitor->node_stream(
@@ -9025,8 +9025,8 @@ int parse_level3_long_value(
 					}
 
 					print_data_with_base(prefix, indent + 3,
-						k, k + data_limit, &value[k],
-						data_limit);
+						k, k + data_limit,
+						&attr_value[k], data_limit);
 					k += data_limit;
 				}
 				else if(non_resident) {
@@ -9040,11 +9040,12 @@ int parse_level3_long_value(
 						PRAuz(data_size));
 					if(true_value_size - k >= 4) {
 						stream_id =
-							read_le64(&value[k]);
+							read_le64(
+							&attr_value[k]);
 						k += print_le64_dechex("Stream "
 							"ID", prefix,
-							indent + 3, value,
-							&value[k]);
+							indent + 3, attr_value,
+							&attr_value[k]);
 					}
 
 					if(visitor && visitor->node_stream &&
@@ -9077,14 +9078,15 @@ int parse_level3_long_value(
 					}
 					if(true_value_size - k >= 4) {
 						k += print_unknown32(prefix,
-							indent + 3, value,
-							&value[k]);
+							indent + 3, attr_value,
+							&attr_value[k]);
 					}
 				}
 
 				if(k < true_value_size) {
 					print_data_with_base(prefix, indent + 2,
-						k, true_value_size, &value[k],
+						k, true_value_size,
+						&attr_value[k],
 						true_value_size - k);
 					k = true_value_size;
 				}
