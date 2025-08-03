@@ -10523,7 +10523,7 @@ static int crawl_volume_metadata(
 			u64 physical_block_number;
 			const REFS_V3_BLOCK_HEADER *header = NULL;
 			size_t j = 0;
-			u64 object_id = 0;
+			u64 tree_object_id = 0;
 
 			physical_block_number =
 				logical_to_physical_block_number(
@@ -10575,8 +10575,8 @@ static int crawl_volume_metadata(
 				continue;
 			}
 
-			object_id = le64_to_cpu(header->object_id);
-			if(object_id != 0xB && object_id != 0xC) {
+			tree_object_id = le64_to_cpu(header->object_id);
+			if(tree_object_id != 0xB && tree_object_id != 0xC) {
 				/* Not the tree that we are looking for... */
 				continue;
 			}
@@ -10610,7 +10610,7 @@ static int crawl_volume_metadata(
 				/* sys_bool add_subnodes_in_offsets_order */
 				SYS_TRUE,
 				/* void *context */
-				(object_id == 0xB) ? mappings : NULL,
+				(tree_object_id == 0xB) ? mappings : NULL,
 				/* int (*parse_key)(
 				 *      refs_node_crawl_context *crawl_context,
 				 *      refs_node_walk_visitor *visitor,
@@ -10638,7 +10638,7 @@ static int crawl_volume_metadata(
 				 *      u16 entry_offset,
 				 *      u32 entry_size,
 				 *      void *context) */
-				(object_id == 0xB) ?
+				(tree_object_id == 0xB) ?
 				parse_level2_0xB_leaf_value_add_mapping :
 				parse_level2_block_0xB_0xC_leaf_value,
 				/* int (*leaf_entry_handler)(
@@ -10678,7 +10678,7 @@ static int crawl_volume_metadata(
 	if(start_node) {
 		const u64 logical_block_number = *start_node;
 		u64 physical_block_number;
-		u64 object_id = 0;
+		u64 start_object_id = 0;
 		sys_bool is_valid = SYS_FALSE;
 
 		/* Discard primary level 2 blocks as we want a crawl targeted at
@@ -10747,12 +10747,12 @@ static int crawl_volume_metadata(
 			/* u32 *out_header_size */
 			NULL,
 			/* u64 *out_object_id */
-			&object_id);
+			&start_object_id);
 		if(err) {
 			goto out;
 		}
 
-		if(object_id < 0x500) {
+		if(start_object_id < 0x500) {
 			err = block_queue_add(
 				/* block_queue *block_queue */
 				&level2_queue,
