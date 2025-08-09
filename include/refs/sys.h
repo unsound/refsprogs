@@ -261,6 +261,7 @@ static inline void sys_log_pnoop(int err, const char *fmt, ...)
 
 static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 {
+	(void) err;
 	(void) fmt;
 }
 
