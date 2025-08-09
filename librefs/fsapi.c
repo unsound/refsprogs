@@ -370,6 +370,8 @@ static int fsapi_lookup_by_posix_path_compare(
 
 	int res;
 
+	(void) tree;
+
 	sys_log_trace("Comparing strings \"%.*s\" and \"%.*s\"",
 		(int) a_node->path_length, a_node->path,
 		(int) b_node->path_length, b_node->path);
@@ -1401,6 +1403,8 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 {
 	fsapi_node *node = (fsapi_node*) _node->value;
 
+	(void) self;
+
 	sys_log_warning("Destroying node %p (\"%" PRIbs "\") with %" PRIu64 " "
 		"remaining references...",
 		node, PRAbs(node->path_length, node->path),
@@ -1848,6 +1852,8 @@ int fsapi_node_get_raw_data(
 {
 	int err = 0;
 	fsapi_refs_raw_node_data *raw_data = NULL;
+
+	(void) vol;
 
 	err = sys_malloc(sizeof(fsapi_refs_raw_node_data) + node->record_size,
 		&raw_data);
