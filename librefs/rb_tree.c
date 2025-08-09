@@ -93,6 +93,7 @@ rb_node_rotate2 (struct rb_node *self, int dir) {
 
 int
 rb_tree_node_cmp_ptr_cb (struct rb_tree *self, struct rb_node *a, struct rb_node *b) {
+    (void) self;
     return (a->value > b->value) - (a->value < b->value);
 }
 
