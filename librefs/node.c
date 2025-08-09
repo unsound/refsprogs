@@ -6549,23 +6549,23 @@ static int parse_attribute_leaf_value(
 				value, &value[j]); /* 0x30 */
 		}
 		if(value_size - j >= 8) {
-			j += print_le64_dechex("Allocated size 1",
+			j += print_le64_dechex("Allocated size (1)",
 				prefix, indent,
 				value, &value[j]); /* 0x38 */
 		}
 		if(value_size - j >= 8) {
 			file_size = read_le64(&value[j]);
-			j += print_le64_dechex("Logical size 1",
+			j += print_le64_dechex("Logical size (1)",
 				prefix, indent,
 				value, &value[j]); /* 0x40 */
 		}
 		if(value_size - j >= 8) {
-			j += print_le64_dechex("Logical size 2",
+			j += print_le64_dechex("Logical size (2)",
 				prefix, indent,
 				value, &value[j]); /* 0x48 */
 		}
 		if(value_size - j >= 8) {
-			j += print_le64_dechex("Allocated size 2",
+			j += print_le64_dechex("Allocated size (2)",
 				prefix, indent,
 				value, &value[j]); /* 0x50 */
 		}
@@ -7211,17 +7211,17 @@ static int parse_attribute_leaf_value(
 				value, &value[j]); /* 0x90 */
 		}
 		if(value_size - j >= 8) {
-			j += print_le64_dechex("Allocated size (2)",
+			j += print_le64_dechex("Logical size (1)",
 				prefix, indent,
 				value, &value[j]); /* 0x98 */
 		}
 		if(value_size - j >= 8) {
-			j += print_le64_dechex("Allocated size (3)",
+			j += print_le64_dechex("Logical size (2)",
 				prefix, indent,
 				value, &value[j]); /* 0xA0 */
 		}
 		if(value_size - j >= 8) {
-			j += print_le64_dechex("Allocated size (4)",
+			j += print_le64_dechex("Allocated size (2)",
 				prefix, indent,
 				value, &value[j]); /* 0xA8 */
 		}
@@ -7961,7 +7961,7 @@ int parse_level3_long_value(
 		if(is_v3) {
 			print_unknown32(prefix, indent + 1, value, &value[80]);
 			print_unknown32(prefix, indent + 1, value, &value[84]);
-			print_le64_dec("File size", prefix, indent + 1, value,
+			print_le64_dechex("File size", prefix, indent + 1, value,
 				&value[88]);
 			print_le64_dechex("Allocated size", prefix, indent + 1,
 				value, &value[96]);
@@ -7977,8 +7977,8 @@ int parse_level3_long_value(
 				PRAX64(read_le64(&value[80])));
 			print_unknown64(prefix, indent + 1, value, &value[88]);
 			print_unknown64(prefix, indent + 1, value, &value[96]);
-			print_le64_dec("File size", prefix, indent + 1, value,
-				&value[104]);
+			print_le64_dechex("File size", prefix, indent + 1,
+				value, &value[104]);
 			emit(prefix, indent + 1, "Allocated size: %" PRIu64,
 				PRAu64(read_le64(&value[112])));
 		}
@@ -8223,17 +8223,17 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x68 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Allocated size (2)",
+				j += print_le64_dechex("Logical size (1)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x70 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Allocated size (3)",
+				j += print_le64_dechex("Logical size (2)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x78 */
 			}
 			if(attribute_size - j >= 8) {
-				j += print_le64_dechex("Allocated size (4)",
+				j += print_le64_dechex("Allocated size (2)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x80 */
 			}
@@ -9270,17 +9270,17 @@ int parse_level3_long_value(
 					attribute, &attribute[j]); /* 0x90 */
 			}
 			if(remaining_in_attribute - j >= 8) {
-				j += print_le64_dechex("Allocated size (2)",
+				j += print_le64_dechex("Logical size (1)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x98 */
 			}
 			if(remaining_in_attribute - j >= 8) {
-				j += print_le64_dechex("Allocated size (3)",
+				j += print_le64_dechex("Logical size (2)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0xA0 */
 			}
 			if(remaining_in_attribute - j >= 8) {
-				j += print_le64_dechex("Allocated size (4)",
+				j += print_le64_dechex("Allocated size (2)",
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0xA8 */
 			}
