@@ -517,7 +517,7 @@ static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 	int err = 0;
 	ssize_t res;
 
-	if(offset < 0 || offset > INT64_MAX || nbytes > SSIZE_MAX) {
+	if(offset > INT64_MAX || nbytes > SSIZE_MAX) {
 		return EINVAL;
 	}
 
