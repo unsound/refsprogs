@@ -73,7 +73,7 @@ static struct search_device_options {
 } options;
 
 
-static void print_help(FILE *out, const char *invoke_cmd)
+static void print_help(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
 	fprintf(out, "usage: " BINARY_NAME " <device|file> <block size> "
@@ -88,8 +88,6 @@ static void print_about(FILE *out)
 
 int main(int argc, char **argv)
 {
-	const char *const cmd = argv[0];
-
 	int err = 0;
 
 	const char *conflicting_options_string[2] = { NULL, NULL };
@@ -134,7 +132,7 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 4) {
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
@@ -143,7 +141,7 @@ int main(int argc, char **argv)
 			"specified.\n",
 			conflicting_options_string[0],
 			conflicting_options_string[1]);
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
@@ -164,7 +162,7 @@ int main(int argc, char **argv)
 	options.block_data = argv[3];
 
 	if(options.help) {
-		print_help(stdout, cmd);
+		print_help(stdout);
 		goto out;
 	}
 	else if(options.about) {
