@@ -65,7 +65,7 @@ static struct refsimage_options {
 } options;
 
 
-static void print_help(FILE *out, const char *invoke_cmd)
+static void print_help(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
 	fprintf(out, "usage: " BINARY_NAME " [-r] [-n] [-m] [-o <image file>] "
@@ -942,8 +942,6 @@ out:
 
 int main(int argc, char **argv)
 {
-	const char *const cmd = argv[0];
-
 	int err = 0;
 	sys_device *dev = NULL;
 	refs_volume *vol = NULL;
@@ -1020,11 +1018,11 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 2) {
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 	else if(options.help) {
-		print_help(stdout, cmd);
+		print_help(stdout);
 		goto out;
 	}
 	else if(options.about) {
