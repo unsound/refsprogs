@@ -93,7 +93,7 @@ static int refsls_node_short_entry(
 		const size_t record_size);
 
 
-static void print_help(FILE *out, const char *invoke_cmd)
+static void print_help(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
 	fprintf(out, "usage: " BINARY_NAME " [-a] [-e] [-l] [-R] [-p <path>] "
@@ -555,8 +555,6 @@ static int refsls_node_stream(
 
 int main(int argc, char **argv)
 {
-	const char *const cmd = argv[0];
-
 	int err = 0;
 	int ret = (EXIT_FAILURE);
 
@@ -638,14 +636,14 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 2) {
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
 	options.device_name = argv[1];
 
 	if(options.help) {
-		print_help(stdout, cmd);
+		print_help(stdout);
 		ret = (EXIT_SUCCESS);
 		goto out;
 	}
