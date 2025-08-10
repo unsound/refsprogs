@@ -1914,7 +1914,7 @@ int main(int argc, char **argv)
 	sys_bool foreground = SYS_FALSE;
 	struct fuse_args args;
 #if FUSE_VERSION >= 30
-	int mount_res = 0;
+	int mount_res = 1;
 #else
 	struct fuse_chan *chan = NULL;
 #endif /* FUSE_VERSION >= 30 ... */
