@@ -94,6 +94,8 @@ static int refsimage_node_header(
 		(context->vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	const REFS_NODE_HEADER *const header = (const REFS_NODE_HEADER*) data;
 
+	(void) header_offset;
+
 	sys_log_debug("Node header. Node number: %" PRIu64 ", node first "
 		"cluster: %" PRIu64 ", object ID: %" PRIu64,
 		PRAu64(node_number), PRAu64(node_first_cluster),
@@ -181,6 +183,10 @@ static int refsimage_node_header_entry(
 		const u8 *data,
 		size_t entry_size)
 {
+	(void) context;
+	(void) data;
+	(void) entry_size;
+
 	return 0;
 }
 
@@ -189,6 +195,10 @@ static int refsimage_node_allocation_entry(
 		const u8 *data,
 		size_t entry_size)
 {
+	(void) context;
+	(void) data;
+	(void) entry_size;
+
 	return 0;
 }
 
@@ -197,6 +207,10 @@ static int refsimage_node_regular_entry(
 		const u8 *data,
 		size_t entry_size)
 {
+	(void) context;
+	(void) data;
+	(void) entry_size;
+
 	return 0;
 }
 
@@ -205,6 +219,10 @@ static int refsimage_node_volume_label_entry(
 		const le16 *volume_label,
 		u16 volume_label_length)
 {
+	(void) context;
+	(void) volume_label;
+	(void) volume_label_length;
+
 	return 0;
 }
 
@@ -226,6 +244,23 @@ static int refsimage_node_long_entry(
 		const u8 *record,
 		size_t record_size)
 {
+	(void) context;
+	(void) file_name;
+	(void) file_name_length;
+	(void) child_entry_offset;
+	(void) file_flags;
+	(void) parent_node_object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
 	return 0;
 }
 
@@ -249,6 +284,25 @@ static int refsimage_node_short_entry(
 		const u8 *record,
 		size_t record_size)
 {
+	(void) context;
+	(void) file_name;
+	(void) file_name_length;
+	(void) child_entry_offset;
+	(void) file_flags;
+	(void) parent_node_object_id;
+	(void) object_id;
+	(void) hard_link_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
 	return 0;
 }
 
@@ -269,6 +323,22 @@ static int refsimage_node_hardlink_entry(
 		const u8 *record,
 		size_t record_size)
 {
+	(void) context;
+	(void) hard_link_id;
+	(void) parent_id;
+	(void) child_entry_offset;
+	(void) file_flags;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
 	return 0;
 }
 
@@ -326,6 +396,12 @@ static int refsimage_node_file_data(
 		const void *data,
 		size_t size)
 {
+	(void) context;
+	(void) data;
+
+	sys_log_debug("Resident file data (size: %" PRIu64 ").",
+		PRAu64(size));
+
 	return 0;
 }
 
@@ -336,6 +412,12 @@ static int refsimage_node_ea(
 		const void *data,
 		size_t data_size)
 {
+	(void) context;
+	(void) data;
+
+	sys_log_debug("EA: \"%" PRIbs "\" (size: %" PRIu64 ")",
+		PRAbs(name_length, name), PRAu64(data_size));
+
 	return 0;
 }
 
@@ -346,6 +428,8 @@ static int refsimage_node_stream(
 		u64 data_size,
 		const refs_node_stream_data *data_reference)
 {
+	(void) context;
+
 	sys_log_debug("%s stream: \"%" PRIbs "\" (size: %" PRIu64 ")",
 		data_reference->resident ? "Resident" : "Non-resident",
 		PRAbs(name_length, name), PRAu64(data_size));
@@ -441,6 +525,8 @@ static int refsimage_fd_stream_process_extent(
 	int err = 0;
 	ssize_t bytes_written;
 
+	(void) block_number;
+
 	bytes_written = write((int) ((uintptr_t) stream->context), data,
 		bytes_to_write);
 	if(bytes_written < 0 || (size_t) bytes_written != bytes_to_write) {
@@ -465,6 +551,8 @@ static int refsimage_fd_stream_process_hole(
 	off_t new_size = 0;
 	char *buffer = NULL;
 	u64 remaining_bytes = hole_size;
+
+	(void) block_number;
 
 	new_size = lseek(fd, hole_size, SEEK_CUR);
 	if(new_size > 0) {
@@ -591,6 +679,8 @@ static int refsimage_ntfsclone_stream_process_extent(
 	size_t remaining_bytes =
 		(size_t) (block_count * stream->block_size);
 
+	(void) block_number;
+
 	if(!context->header_written) {
 		err = refsimage_ntfsclone_stream_write_header(
 			/* refsimage_ntfsclone_stream_context *context */
@@ -644,6 +734,8 @@ static int refsimage_ntfsclone_stream_process_hole(
 	int err = 0;
 	size_t bytes_written = 0;
 	le64 count;
+
+	(void) block_number;
 
 	if(!context->header_written) {
 		err = refsimage_ntfsclone_stream_write_header(
