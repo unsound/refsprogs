@@ -206,7 +206,7 @@ int main(int argc, char **argv)
 				"bytes from pattern file",
 				PRAu64(options.block_size));
 		}
-		else if(read_res < options.block_size) {
+		else if(((u64) read_res) < options.block_size) {
 			sys_log_error("Partial read while reading pattern "
 				"data: %" PRId64 " < %" PRIu64,
 				PRAd64(read_res), PRAu64(options.block_size));
