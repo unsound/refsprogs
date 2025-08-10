@@ -201,6 +201,8 @@ fi
 AC_SYS_LARGEFILE
 
 # Settings
+pkgconfigdir="\$(libdir)/pkgconfig"
+AC_SUBST([pkgconfigdir])
 AC_SUBST([LIBREFS_VERSION])
 AC_SUBST([FUSE_MODULE_CFLAGS])
 AC_SUBST([FUSE_MODULE_LIBS])

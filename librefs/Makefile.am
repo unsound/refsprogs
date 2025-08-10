@@ -2,6 +2,7 @@ MAINTAINERCLEANFILES = $(srcdir)/Makefile.in
 
 if INSTALL_LIBRARY
 lib_LTLIBRARIES    =
+pkgconfig_DATA     = librefs.pc
 else
 noinst_LTLIBRARIES =
 endif
