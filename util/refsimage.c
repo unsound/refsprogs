@@ -732,7 +732,7 @@ static int refsimage_ntfsclone_stream_process_hole(
 		(refsimage_ntfsclone_stream_context*) stream->context;
 
 	int err = 0;
-	size_t bytes_written = 0;
+	ssize_t bytes_written = 0;
 	le64 count;
 
 	(void) block_number;
