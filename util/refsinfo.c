@@ -405,6 +405,8 @@ static int print_node_number_node_header(
 	(void) node_first_cluster;
 	(void) object_id;
 	(void) data;
+	(void) data_size;
+	(void) header_offset;
 	(void) header_size;
 
 	if(node_number == context->requested_node_number) {
@@ -514,6 +516,8 @@ static int print_object_id_node_header(
 	(void) node_number;
 	(void) node_first_cluster;
 	(void) data;
+	(void) data_size;
+	(void) header_offset;
 	(void) header_size;
 
 	context->cur_object_id = object_id;
