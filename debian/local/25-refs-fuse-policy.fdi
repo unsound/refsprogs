@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<deviceinfo version="0.2">
+	<device>
+		<match key="volume.fstype" string="refs">
+		<append key="volume.fstype.alternative" type="copy_property">volume.fstype</append>
+		<merge key="volume.mount.refs.valid_options" type="copy_property">volume.mount.valid_options</merge>
+		<merge key="volume.unmount.refs.valid_options" type="copy_property">volume.unmount.valid_options</merge>
+		<merge key="volume.fstype" type="string">refs-fuse</merge>
+		<merge key="volume.mount.valid_options" type="strlist">ro</merge>
+		<append key="volume.mount.valid_options" type="strlist">atime</append>
+		<append key="volume.mount.valid_options" type="strlist">noatime</append>
+		<append key="volume.mount.valid_options" type="strlist">relatime</append>
+		<append key="volume.mount.valid_options" type="strlist">default_permissions</append>
+		<append key="volume.mount.valid_options" type="strlist">debug</append>
+		<append key="volume.mount.valid_options" type="strlist">noexec</append>
+		<append key="volume.mount.valid_options" type="strlist">quiet</append>
+		<append key="volume.mount.valid_options" type="strlist">remount</append>
+		<append key="volume.mount.valid_options" type="strlist">exec</append>
+		<merge key="volume.unmount.valid_options" type="strlist">lazy</merge>
+		<merge key="volume.policy.mount_filesystem" type="string">refs-fuse</merge>
+		</match>
+	</device>
+</deviceinfo>

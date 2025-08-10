@@ -1,0 +1,66 @@
+Source: refsprogs
+Section: otherosfs
+Priority: optional
+Maintainer: Erik Larsson <catacombae@gmail.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ chrpath,
+ pkg-config,
+ libfuse3-dev
+Standards-Version: 4.6.0
+Homepage: https://github.com/unsound/refsprogs
+
+Package: refsprogs
+Section: otherosfs
+Architecture: linux-any kfreebsd-any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ librefs6 (= ${binary:Version}),
+ fuse3 [linux-any],
+ fuse4bsd [kfreebsd-any]
+#Provides: ${refsprogs:Provides}
+Description: Read-only ReFS FUSE driver and progs,
+ refs-fuse uses FUSE (Filesystem in Userspace) to provide support for the ReFS
+ filesystem used by recent versions of Microsoft Windows.
+ .
+ The other refsprogs include 'refls', 'refcat', useful for listing and
+ retrieving data from ReFS volumes, 'refsimage' for capturing an image of the
+ ReFS filesystem and 'redb' / 'refsinfo' which allows access to the metadata
+ of the filesystem for debugging and development.
+
+Package: librefs-dev
+Section: libdevel
+Architecture: linux-any kfreebsd-any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ librefs6 (= ${binary:Version}),
+Description: read-only ReFS library (development)
+ librefs provides a read-only interface for interacting with the ReFS filesystem
+ filesystem used by recent versions of Microsoft Windows.
+ .
+ This package contains the development files.
+
+Package: librefs6
+Section: libs
+Architecture: linux-any kfreebsd-any
+Multi-Arch: same
+Depends: ${misc:Depends},
+ ${shlibs:Depends}
+Description: read-only ReFS library
+ librefs provides a read-only interface for interacting with the ReFS filesystem
+ filesystem used by recent versions of Microsoft Windows.
+ .
+ This package contains the actual library.
+
+Package: refsprogs-udeb
+Package-Type: udeb
+Section: debian-installer
+Architecture: linux-any kfreebsd-any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ fuse3-udeb,
+#Provides: ${refsprogs-udeb:Provides}
+Description:  Read-only ReFS FUSE driver and progs,

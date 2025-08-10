@@ -1,0 +1,85 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+SHELL := sh -e
+
+DEB_HOST_ARCH_OS ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+SONAME = $(shell objdump -p debian/tmp/lib/*/librefs.so.*.* | awk -Fso. '/SONAME/ { print $$2 }')
+
+ifeq ($(DEB_HOST_ARCH_OS), linux)
+CONFIGURE_FLAGS = --enable-posix-acls
+endif
+
+upstream:
+	lynx -dump http://jp-andre.pagesperso-orange.fr/changelog.html > debian/local/changelog
+
+%:
+	dh ${@}
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		--exec-prefix=/ \
+		--enable-mount-helper \
+		--disable-ldconfig \
+		$(CONFIGURE_FLAGS)
+
+override_dh_auto_install:
+	dh_auto_install
+
+	# moving shlib to /
+	mkdir -p debian/tmp/lib/$(DEB_HOST_MULTIARCH)
+	mv debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/*.so.* debian/tmp/lib/$(DEB_HOST_MULTIARCH)
+
+	# adding initramfs-tools integration
+	install -D -m 0755 debian/local/refs-fuse.hook debian/refs-fuse/usr/share/initramfs-tools/hooks/refs_fuse
+	install -D -m 0755 debian/local/refs-fuse.local-premount debian/refs-fuse/usr/share/initramfs-tools/scripts/local-premount/refs_fuse
+	install -D -m 0755 debian/local/refs-fuse.local-bottom debian/refs-fuse/usr/share/initramfs-tools/scripts/local-bottom/ntfs_3g
+
+	# adding hal policy
+	# not used by Debian anymore
+	#install -D -m 0644 debian/local/25-refs-fuse-policy.fdi debian/refs-fuse/usr/share/hal/fdi/policy/10osvendor/25-refs-fuse-policy.fdi
+
+	# removing unused files
+	rm -f debian/tmp/usr/lib/*/*.la
+
+	# removing rpath
+	for _PROGRAM in \
+		bin/redb \
+		bin/refs-fuse \
+		bin/refscat \
+		bin/refsimage \
+		bin/refsinfo \
+		bin/refslabel \
+		bin/refsls; \
+	do \
+		echo $${_PROGRAM}; \
+		chrpath --delete debian/tmp/$${_PROGRAM}; \
+	done
+
+#override_dh_gencontrol:
+#	dh_gencontrol -- -Vrefsprogs:Provides="librefs$(SONAME)" -Vrefsprogs-udeb:Provides="librefs-udeb$(SONAME)"
+
+override_dh_installchangelogs:
+	dh_installchangelogs debian/local/changelog
+
+override_dh_link:
+	rm -rf debian/librefs-dev/usr/share/doc
+
+	# correcting symlink target
+	dh_link -plibrefs-dev lib/$(DEB_HOST_MULTIARCH)/$$(basename $$(readlink debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/librefs.so)) usr/lib/$(DEB_HOST_MULTIARCH)/librefs.so
+
+	dh_link --remaining-packages
+
+override_dh_makeshlibs:
+	dh_makeshlibs --add-udeb=refsprogs-udeb -Vlibrefs$(SONAME)
+
+.PHONY: override_dh_auto_configure override_dh_auto_install \
+	override_dh_installchangelogs \
+	override_dh_link override_dh_makeshlibs

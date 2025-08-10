@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -e
+
+case "${1}" in
+	prereqs)
+		exit 0
+		;;
+esac
+
+if [ "${ROOTFSTYPE}" = refs ] || [ "${ROOTFSTYPE}" = refs-fuse ] || \
+   [ "${LOOPFSTYPE}" = refs ] || [ "${LOOPFSTYPE}" = refs-fuse ]
+then
+	mkdir -p /run/sendsigs.omit.d
+	pidof mount.refs >> /run/sendsigs.omit.d/refs-fuse
+	pidof mount.refs-fuse >> /run/sendsigs.omit.d/refs-fuse
+fi
+
+exit 0

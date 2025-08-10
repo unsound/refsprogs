@@ -1,0 +1,14 @@
+refs-fuse for Debian
+--------------------
+
+Assuming your ReFS partition is /dev/sdb1 and its mountpoint should be /media/refs:
+
+1. Mount an ReFS partition:
+
+     mount -t refs /dev/sdb1 /media/refs
+
+2. To mount the patition at startup, edit /etc/fstab and add:
+
+     /dev/sdb1  /media/refs  refs  defaults  0 0
+
+ -- Erik Larsson <catacombae@gmail.com>  Sun, 10 Aug 2025 09:59:29 +0200

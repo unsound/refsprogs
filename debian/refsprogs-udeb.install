@@ -1,0 +1,2 @@
+bin/refs-fuse
+lib/*/*.so.*

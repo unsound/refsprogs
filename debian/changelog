@@ -1,0 +1,5 @@
+refsprogs (2025.8.3-1) bookworm; urgency=medium
+
+  * First Debian package.
+
+ -- Erik Larsson <catacombae@gmail.com>  Sun, 10 Aug 2025 09:12:31 +0200
