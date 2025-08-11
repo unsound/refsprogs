@@ -1,4 +1,10 @@
-refsprogs (2025.8.3-1) bookworm; urgency=medium
+refsprogs (2025.8.11-1) main; urgency=medium
+
+  * New upstream release.
+
+ -- Erik Larsson <catacombae@gmail.com>  Mon, 11 Aug 2025 19:02:25 +0200
+
+refsprogs (2025.8.3-1) main; urgency=medium
 
   * First Debian package.
 
