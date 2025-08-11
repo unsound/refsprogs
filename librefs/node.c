@@ -2234,7 +2234,7 @@ static int parse_generic_block(
 			PRAu16(read_le16(&block[j])));
 		sys_log_debug("Offset (real): %" PRIu16, PRAu16(cur_offset));
 
-		if(cur_offset + 4 > value_offsets_start_real) {
+		if(((u32) cur_offset) + 4 > value_offsets_start_real) {
 			sys_log_warning("Invalid value offset at index "
 				"%" PRIu32 " in value offsets array: "
 				"%" PRIu16 " / 0x%" PRIX16 " (value offsets "
@@ -6578,7 +6578,7 @@ static int parse_attribute_leaf_value(
 			"0x%" PRIX16, PRAu16(j), PRAX16(j));
 		if(value_size > j) {
 			const size_t resident_bytes =
-				sys_min(file_size, value_size - j);
+				sys_min(file_size, (u16) (value_size - j));
 
 			print_data_with_base(prefix, indent + 2, 0,
 				resident_bytes, &value[j], resident_bytes);
@@ -6947,9 +6947,9 @@ static int parse_attribute_leaf_value(
 		if(value_size - j >= 4) {
 			j += print_unknown32(prefix, indent, value, &value[j]);
 		}
-		if(value_size - j > 0 && !non_resident) {
+		if(value_size > j && !non_resident) {
 			const u32 data_limit =
-				sys_min(data_size, value_size - j);
+				sys_min(data_size, (u16) (value_size - j));
 			refs_node_stream_data data;
 
 			memset(&data, 0, sizeof(data));
@@ -8044,7 +8044,7 @@ int parse_level3_long_value(
 	attributes_offset = i;
 
 	while(i + 2 <= value_size && (attribute_index < 2 ||
-		(attribute_index - 2) < number_of_attributes))
+		(u16) (attribute_index - 2) < number_of_attributes))
 	{
 		const size_t offset_in_value = i;
 		const size_t remaining_in_value = value_size - offset_in_value;
@@ -8571,7 +8571,8 @@ int parse_level3_long_value(
 				"/ 0x%" PRIX16, PRAu16(j), PRAX16(j));
 			if(attribute_size > j) {
 				const size_t resident_bytes =
-					sys_min(file_size, attribute_size - j);
+					sys_min(file_size,
+					(u16) (attribute_size - j));
 
 				print_data_with_base(prefix, indent + 2, 0,
 					resident_bytes, &attribute[j],
@@ -8897,11 +8898,11 @@ int parse_level3_long_value(
 				PRAuz(j), PRAXz(j), PRAuz(attr_value_size),
 				PRAXz(attr_value_size));
 
-			{
+			if(remaining_in_attribute > j) {
 				const u8 *const attr_value = &attribute[j];
 				const u32 true_value_size =
-					sys_min(remaining_in_attribute - j,
-					attr_value_size);
+					sys_min(attr_value_size,
+					(u16) (remaining_in_attribute - j));
 				u16 k = 0;
 
 				if(true_value_size - k >= 4) {
