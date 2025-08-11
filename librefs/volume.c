@@ -242,6 +242,7 @@ static int refs_volume_lookup_node_long_entry(
 	int err = 0;
 
 	(void) file_flags;
+	(void) parent_node_object_id;
 	(void) create_time;
 	(void) last_access_time;
 	(void) last_write_time;
