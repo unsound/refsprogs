@@ -3,7 +3,7 @@ Section: otherosfs
 Priority: optional
 Maintainer: Erik Larsson <catacombae@gmail.com>
 Build-Depends:
- debhelper-compat (= 13),
+ debhelper-compat (= 11),
  chrpath,
  pkg-config,
  libfuse3-dev
