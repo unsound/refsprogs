@@ -54,7 +54,7 @@ static struct refscat_options {
 	sys_bool help;
 } options;
 
-static void print_help(FILE *out, const char *invoke_cmd)
+static void print_help(FILE *out)
 {
 	fprintf(out, BINARY_NAME " %s\n", VERSION);
 	fprintf(out, "usage: " BINARY_NAME " -p <file path> [-e <ea name>] "
@@ -614,8 +614,6 @@ out:
 
 int main(int argc, char **argv)
 {
-	const char *const cmd = argv[0];
-
 	int err = 0;
 	int ret = (EXIT_FAILURE);
 
@@ -684,19 +682,19 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 2) {
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 	else if(options.ea_defined && options.stream_defined) {
 		fprintf(stderr, "Error: Cannot specify both EA and stream.\n");
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
 	options.device_name = argv[1];
 
 	if(options.help) {
-		print_help(stdout, argv[0]);
+		print_help(stdout);
 		ret = (EXIT_SUCCESS);
 		goto out;
 	}

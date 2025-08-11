@@ -322,7 +322,7 @@ typedef struct {
 	le32 unknown136;                              /* offset = 0x88    136 */
 	le32 unknown140;                              /* offset = 0x8C    140 */
 	le32 level2_blocks_count;                     /* offset = 0x90    144 */
-	le32 level2_blocks[];                         /* offset = 0x90    144 */
+	/* le32 level2_blocks[]; */                   /* offset = 0x94    148 */
 } __attribute__ ((__packed__)) REFS_V3_LEVEL1_NODE;
 
 typedef union {

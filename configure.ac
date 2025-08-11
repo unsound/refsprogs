@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.8.3],[catacombae@gmail.com])
-LIBREFS_VERSION="6"
+AC_INIT([refsprogs],[2025.8.11],[catacombae@gmail.com])
+LIBREFS_VERSION="7"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -201,6 +201,8 @@ fi
 AC_SYS_LARGEFILE
 
 # Settings
+pkgconfigdir="\$(libdir)/pkgconfig"
+AC_SUBST([pkgconfigdir])
 AC_SUBST([LIBREFS_VERSION])
 AC_SUBST([FUSE_MODULE_CFLAGS])
 AC_SUBST([FUSE_MODULE_LIBS])

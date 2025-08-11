@@ -310,7 +310,7 @@ static int fsapi_node_cache_evict(
 		*out_evicted_node = lru_node;
 		lru_node = NULL; /* Caller takes ownership. */
 	}
-out:
+
 	if(lru_node) {
 		fsapi_node_destroy(
 			/* fsapi_node *cached_node */
@@ -369,6 +369,8 @@ static int fsapi_lookup_by_posix_path_compare(
 	const fsapi_node *const b_node = (fsapi_node*) b->value;
 
 	int res;
+
+	(void) tree;
 
 	sys_log_trace("Comparing strings \"%.*s\" and \"%.*s\"",
 		(int) a_node->path_length, a_node->path,
@@ -1142,7 +1144,7 @@ static int fsapi_node_get_attributes_common(
 			/* void *context */
 			NULL);
 	}
-out:
+
 	sys_log_debug("%s(node=%p, attributes=%p): %d (%s)",
 		__FUNCTION__, node, attributes, err, strerror(err));
 
@@ -1400,6 +1402,8 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 		struct rb_node *_node)
 {
 	fsapi_node *node = (fsapi_node*) _node->value;
+
+	(void) self;
 
 	sys_log_warning("Destroying node %p (\"%" PRIbs "\") with %" PRIu64 " "
 		"remaining references...",
@@ -1848,6 +1852,8 @@ int fsapi_node_get_raw_data(
 {
 	int err = 0;
 	fsapi_refs_raw_node_data *raw_data = NULL;
+
+	(void) vol;
 
 	err = sys_malloc(sizeof(fsapi_refs_raw_node_data) + node->record_size,
 		&raw_data);
