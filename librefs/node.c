@@ -1770,6 +1770,7 @@ static int parse_unknown_leaf_value(
 	(void) key;
 	(void) key_offset;
 	(void) key_size;
+	(void) entry_offset;
 	(void) context;
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
@@ -1834,6 +1835,8 @@ static int parse_generic_entry(
 	const u8 *key = NULL;
 	u16 value_offset = 0;
 	u16 value_size = 0;
+
+	(void) block_index_unit;
 
 	if(entry_size < 0x10) {
 		sys_log_warning("Unexpected size for node entry: %" PRIu32 " "
@@ -2785,9 +2788,9 @@ static int parse_level2_0x3_leaf_value(
 		visitor ? &visitor->print_visitor : NULL;
 
 	u16 i = 0;
-	u64 block_number = 0;
 
 	(void) object_id;
+	(void) is_v3;
 	(void) key_offset;
 	(void) context;
 
@@ -2835,9 +2838,9 @@ static int parse_level2_0x4_leaf_value(
 		visitor ? &visitor->print_visitor : NULL;
 
 	u16 i = 0;
-	u64 block_number = 0;
 
 	(void) object_id;
+	(void) is_v3;
 	(void) key_offset;
 	(void) context;
 
@@ -3019,18 +3022,21 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		const u32 entry_size,
 		void *const context)
 {
+#if 0
 	const u32 block_index_unit = crawl_context->block_index_unit;
 	const sys_bool is_v3 =
 		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+#endif
 	block_range *const range = (block_range*) context;
 
 	int err = 0;
 
+	(void) crawl_context;
 	(void) object_id;
-	(void) block_index_unit;
-	(void) is_v3;
 	(void) key;
+	(void) key_offset;
 	(void) key_size;
+	(void) entry_offset;
 
 	parse_level2_block_0xB_0xC_table_leaf_value(
 		/* refs_node_walk_visitor *visitor */
@@ -3083,6 +3089,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 	(void) is_v3;
 	(void) key;
 	(void) key_size;
+	(void) entry_offset;
 
 	memset(&leaf_range, 0, sizeof(leaf_range));
 
@@ -3297,8 +3304,8 @@ static int parse_level2_0x21_leaf_value(
 		visitor ? &visitor->print_visitor : NULL;
 
 	u16 i = 0;
-	u64 block_number = 0;
 
+	(void) is_v3;
 	(void) object_id;
 	(void) key_offset;
 	(void) context;
@@ -3629,7 +3636,6 @@ static int parse_level2_leaf_value(
 		const u32 entry_size,
 		void *const context)
 {
-	const u32 block_index_unit = crawl_context->block_index_unit;
 	const sys_bool is_v3 =
 		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 
@@ -3956,8 +3962,6 @@ static int parse_level2_block(
 		u64 **const level3_queue,
 		size_t *const level3_queue_length)
 {
-	static const char *const prefix = "\t";
-
 	int err = 0;
 	block_queue level2_block_queue;
 	block_queue level3_block_queue;
@@ -4270,12 +4274,6 @@ static size_t parse_level3_extent_attribute(
 		u64 *const out_first_block,
 		u64 *const out_block_count)
 {
-	const size_t block_count_offset = is_v3 ? 0xE4 : 0xE0;
-	const size_t first_block_offset = is_v3 ? 0xD0 : 0xE8;
-
-	u64 first_block = 0;
-	u64 block_count = 0;
-
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
@@ -4381,6 +4379,7 @@ static int parse_level3_object_id_key(
 
 	int err = 0;
 
+	(void) key_size;
 	(void) context;
 
 	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
@@ -4642,8 +4641,10 @@ static int parse_attribute_key(
 	else
 #endif
 	if(key_offset == 0x0010 && key_size == 0x0028 && entry_size >= 0x48) {
+#if 0
 		u32 number_of_extents = 0;
 		u32 k;
+#endif
 
 		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x10 */
 		j += print_unknown16(prefix, indent, key, &key[j]); /* 0x18 */
@@ -4887,8 +4888,10 @@ static int parse_attribute_key(
 	}
 	else if(key_offset == 0x0010 && key_size == 0x000E) {
 		/* This attribute type seems to hold extent info. */
+#if 0
 		u64 first_block = 0;
 		u64 block_count = 0;
+#endif
 
 		j += parse_level3_extent_key(
 			/* refs_node_walk_visitor *visitor */
@@ -5151,8 +5154,10 @@ static int parse_attribute_key(
 		u32 value_size = 0;
 #endif
 		size_t cstr_length = 0;
+#if 0
 		u32 data_size = 0;
 		sys_bool non_resident = SYS_FALSE;
+#endif
 
 		/* This attribute type contains data about alternate data
 		 * streams. */
@@ -6145,6 +6150,9 @@ static int parse_attribute_leaf_value(
 	size_t cstr_length = 0;
 
 	(void) object_id;
+	(void) value_offset;
+	(void) entry_offset;
+	(void) context;
 
 	emit(prefix, indent - 1, "Value (attribute):");
 
@@ -9816,6 +9824,7 @@ int parse_level3_short_value(
 	int err = 0;
 
 	(void) crawl_context;
+	(void) context;
 
 	if(visitor && visitor->node_short_entry) {
 		err = visitor->node_short_entry(
@@ -10000,6 +10009,7 @@ static int parse_level3_leaf_value(
 
 	(void) key_offset;
 	(void) entry_size;
+	(void) context;
 
 	if((key_type == 0x0030 && dirent_type == 0x0001) || /* Regular file. */
 		key_type == 0x0040) /* Hardlinked file. */
@@ -10104,8 +10114,6 @@ static int parse_level3_block(
 		u64 **const level3_queue,
 		size_t *const level3_queue_length)
 {
-	const u32 block_index_unit = crawl_context->block_index_unit;
-
 	int err = 0;
 	block_queue block_queue;
 
