@@ -261,6 +261,7 @@ static inline void sys_log_pnoop(int err, const char *fmt, ...)
 
 static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 {
+	(void) err;
 	(void) fmt;
 }
 
@@ -516,7 +517,7 @@ static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 	int err = 0;
 	ssize_t res;
 
-	if(offset < 0 || offset > INT64_MAX || nbytes > SSIZE_MAX) {
+	if(offset > INT64_MAX || nbytes > SSIZE_MAX) {
 		return EINVAL;
 	}
 
@@ -706,122 +707,139 @@ static inline int sys_device_get_size(sys_device *const dev,
 	}
 
 #ifdef __linux__
-	uint64_t device_size = 0;
+	{
+		uint64_t device_size = 0;
 
-	if(ioctl((int) ((intptr_t) dev), BLKGETSIZE64, &device_size)) {
-		err = (err = errno) ? err : EIO;
-	}
-	else {
-		err = 0;
-		*out_size = device_size;
-	}
-#endif
-
-#ifdef __APPLE__
-	uint32_t block_size = 0;
-
-	if(ioctl((int) ((intptr_t) dev), DKIOCGETBLOCKSIZE, &block_size)) {
-		err = (err = errno) ? err : EIO;
-	}
-	else {
-		uint64_t block_count = 0;
-
-		if(ioctl((int) ((intptr_t) dev), DKIOCGETBLOCKCOUNT,
-			&block_count))
-		{
+		if(ioctl((int) ((intptr_t) dev), BLKGETSIZE64, &device_size)) {
 			err = (err = errno) ? err : EIO;
 		}
 		else {
 			err = 0;
-			*out_size = block_size * block_count;
+			*out_size = device_size;
+		}
+	}
+#endif
+
+#ifdef __APPLE__
+	{
+		uint32_t block_size = 0;
+
+		if(ioctl((int) ((intptr_t) dev), DKIOCGETBLOCKSIZE,
+			&block_size))
+		{
+			err = (err = errno) ? err : EIO;
+		}
+		else {
+			uint64_t block_count = 0;
+
+			if(ioctl((int) ((intptr_t) dev), DKIOCGETBLOCKCOUNT,
+				&block_count))
+			{
+				err = (err = errno) ? err : EIO;
+			}
+			else {
+				err = 0;
+				*out_size = block_size * block_count;
+			}
 		}
 	}
 #endif
 
 #if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
-	size_t media_size = 0;
+	{
+		size_t media_size = 0;
 
-	if(ioctl((int) ((intptr_t) dev), DIOCGMEDIASIZE, &media_size)) {
-		err = (err = errno) ? err : EIO;
-	}
-	else {
-		*out_size = media_size;
-		err = 0;
+		if(ioctl((int) ((intptr_t) dev), DIOCGMEDIASIZE, &media_size)) {
+			err = (err = errno) ? err : EIO;
+		}
+		else {
+			*out_size = media_size;
+			err = 0;
+		}
 	}
 #endif
 
 #ifdef __OpenBSD__
-	struct stat stbuf;
-	struct disklabel dl;
+	{
+		struct stat stbuf;
+		struct disklabel dl;
 
-	memset(&dl, 0, sizeof(dl));
+		memset(&dl, 0, sizeof(dl));
 
-	if(fstat((int) ((intptr_t) dev), &stbuf)) {
-		err = (err = errno) ? err : EIO;
-	}
-	else if(!S_ISBLK(stbuf.st_mode) && !S_ISCHR(stbuf.st_mode)) {
-		err = EINVAL;
-	}
-	else if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
-		err = (err = errno) ? err : EIO;
-	}
-	else {
-		const struct partition *const part =
-			&dl.d_partitions[DISKPART(stbuf.st_rdev)];
+		if(fstat((int) ((intptr_t) dev), &stbuf)) {
+			err = (err = errno) ? err : EIO;
+		}
+		else if(!S_ISBLK(stbuf.st_mode) && !S_ISCHR(stbuf.st_mode)) {
+			err = EINVAL;
+		}
+		else if(ioctl((int) ((intptr_t) dev), DIOCGDINFO, &dl)) {
+			err = (err = errno) ? err : EIO;
+		}
+		else {
+			const struct partition *const part =
+				&dl.d_partitions[DISKPART(stbuf.st_rdev)];
 
-		*out_size = (u64) (DL_GETPSIZE(part)) * (u32) dl.d_secsize;
-		err = 0;
+			*out_size =
+				(u64) (DL_GETPSIZE(part)) * (u32) dl.d_secsize;
+			err = 0;
+		}
 	}
 #endif
 
 #if defined(sun) || defined(__sun)
-	struct dk_minfo_ext minfo_ext;
-
-	if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFOEXT, &minfo_ext) == -1)
 	{
-		struct dk_minfo minfo;
+		struct dk_minfo_ext minfo_ext;
 
-		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO, &minfo) == -1)
+		if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFOEXT,
+			&minfo_ext) == -1)
 		{
-			err = (err = errno) ? err : EIO;
+			struct dk_minfo minfo;
+
+			if(ioctl((int) ((intptr_t) dev), DKIOCGMEDIAINFO,
+				&minfo) == -1)
+			{
+				err = (err = errno) ? err : EIO;
+			}
+			else {
+				*out_size =
+					((u64) minfo.dki_capacity) *
+					(u32) minfo.dki_lbsize;
+				err = 0;
+			}
 		}
 		else {
 			*out_size =
-				((u64) minfo.dki_capacity) *
-				(u32) minfo.dki_lbsize;
+				((u64) minfo_ext.dki_capacity) *
+				(u32) minfo_ext.dki_lbsize;
 			err = 0;
 		}
-	}
-	else {
-		*out_size =
-			((u64) minfo_ext.dki_capacity) *
-			(u32) minfo_ext.dki_lbsize;
-		err = 0;
 	}
 #endif
 
 #ifdef _WIN32
-	GET_LENGTH_INFORMATION info = { 0 };
-	DWORD bytes_returned = 0;
-
-	if(!DeviceIoControl(
-		(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
-		IOCTL_DISK_GET_LENGTH_INFO,
-		NULL,
-		0,
-		&info,
-		sizeof(info),
-		&bytes_returned,
-		NULL))
 	{
-		err = EIO;
-	}
-	else if(bytes_returned != sizeof(info)) {
-		err = EIO;
-	}
-	else {
-		err = 0;
-		*out_size = (u64) info.Length.QuadPart;
+		GET_LENGTH_INFORMATION info = { 0 };
+		DWORD bytes_returned = 0;
+
+		if(!DeviceIoControl(
+			(HANDLE) _get_osfhandle((int) ((intptr_t) dev)),
+			IOCTL_DISK_GET_LENGTH_INFO,
+			NULL,
+			0,
+			&info,
+			sizeof(info),
+			&bytes_returned,
+			NULL))
+		{
+			err = EIO;
+		}
+		else if(bytes_returned != sizeof(info)) {
+			err = EIO;
+		}
+		else {
+			err = 0;
+			*out_size = (u64) info.Length.QuadPart;
+		}
 	}
 #endif
 

@@ -120,7 +120,7 @@ static int generic_print_message(
 	return 0;
 }
 
-static void print_help(FILE *out, const char *invoke_cmd)
+static void print_help(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
 	fprintf(out, "usage: " BINARY_NAME " [-a] [-b] [-n <node number>] "
@@ -405,6 +405,8 @@ static int print_node_number_node_header(
 	(void) node_first_cluster;
 	(void) object_id;
 	(void) data;
+	(void) data_size;
+	(void) header_offset;
 	(void) header_size;
 
 	if(node_number == context->requested_node_number) {
@@ -514,6 +516,8 @@ static int print_object_id_node_header(
 	(void) node_number;
 	(void) node_first_cluster;
 	(void) data;
+	(void) data_size;
+	(void) header_offset;
 	(void) header_size;
 
 	context->cur_object_id = object_id;
@@ -718,8 +722,6 @@ out:
 
 int main(int argc, char **argv)
 {
-	const char *const cmd = argv[0];
-
 	int err = 0;
 
 	const char *conflicting_options_string[2] = { NULL, NULL };
@@ -819,7 +821,7 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 2) {
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
@@ -853,14 +855,14 @@ int main(int argc, char **argv)
 			"specified.\n",
 			conflicting_options_string[0],
 			conflicting_options_string[1]);
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
 	options.device_name = argv[1];
 
 	if(options.help) {
-		print_help(stdout, cmd);
+		print_help(stdout);
 		goto out;
 	}
 	else if(options.about) {

@@ -73,30 +73,7 @@ static struct search_device_options {
 } options;
 
 
-static int generic_print_message(
-		void *context,
-		const char *format,
-		...)
-		__attribute__((format(printf, 2, 3)));
-
-
-static int generic_print_message(
-		void *context,
-		const char *format,
-		...)
-{
-	va_list ap;
-
-	(void) context;
-
-	va_start(ap, format);
-	vemitln(format, ap);
-	va_end(ap);
-
-	return 0;
-}
-
-static void print_help(FILE *out, const char *invoke_cmd)
+static void print_help(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
 	fprintf(out, "usage: " BINARY_NAME " <device|file> <block size> "
@@ -111,8 +88,6 @@ static void print_about(FILE *out)
 
 int main(int argc, char **argv)
 {
-	const char *const cmd = argv[0];
-
 	int err = 0;
 
 	const char *conflicting_options_string[2] = { NULL, NULL };
@@ -157,7 +132,7 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 4) {
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
@@ -166,7 +141,7 @@ int main(int argc, char **argv)
 			"specified.\n",
 			conflicting_options_string[0],
 			conflicting_options_string[1]);
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
@@ -187,7 +162,7 @@ int main(int argc, char **argv)
 	options.block_data = argv[3];
 
 	if(options.help) {
-		print_help(stdout, cmd);
+		print_help(stdout);
 		goto out;
 	}
 	else if(options.about) {
@@ -231,7 +206,7 @@ int main(int argc, char **argv)
 				"bytes from pattern file",
 				PRAu64(options.block_size));
 		}
-		else if(read_res < options.block_size) {
+		else if(((u64) read_res) < options.block_size) {
 			sys_log_error("Partial read while reading pattern "
 				"data: %" PRId64 " < %" PRIu64,
 				PRAd64(read_res), PRAu64(options.block_size));

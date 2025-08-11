@@ -35,7 +35,7 @@
 // rb_node
 
 struct rb_node *
-rb_node_alloc () {
+rb_node_alloc (void) {
     return malloc(sizeof(struct rb_node));
 }
 
@@ -93,6 +93,7 @@ rb_node_rotate2 (struct rb_node *self, int dir) {
 
 int
 rb_tree_node_cmp_ptr_cb (struct rb_tree *self, struct rb_node *a, struct rb_node *b) {
+    (void) self;
     return (a->value > b->value) - (a->value < b->value);
 }
 
@@ -108,7 +109,7 @@ rb_tree_node_dealloc_cb (struct rb_tree *self, struct rb_node *node) {
 // rb_tree
 
 struct rb_tree *
-rb_tree_alloc () {
+rb_tree_alloc (void) {
     return malloc(sizeof(struct rb_tree));
 }
 
@@ -415,7 +416,7 @@ rb_tree_size (struct rb_tree *self) {
 // rb_iter
 
 struct rb_iter *
-rb_iter_alloc () {
+rb_iter_alloc (void) {
     return malloc(sizeof(struct rb_iter));
 }
 
@@ -430,7 +431,7 @@ rb_iter_init (struct rb_iter *self) {
 }
 
 struct rb_iter *
-rb_iter_create () {
+rb_iter_create (void) {
     return rb_iter_init(rb_iter_alloc());
 }
 

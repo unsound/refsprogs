@@ -30,9 +30,11 @@
 #else
 #include <iconv.h>
 
+#if 0
 static iconv_t iconv_decode_handle = (iconv_t) -1;
 static iconv_t iconv_encode_handle = (iconv_t) -1;
 #endif
+#endif /* defined(_WIN32) ... */
 
 #ifndef HAVE_STRNDUP
 int sys_strndup(const char *str, size_t len, char **dupstr)

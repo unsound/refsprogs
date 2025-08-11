@@ -102,7 +102,7 @@ static int generic_print_message(
 	return 0;
 }
 
-static void print_help(FILE *out, const char *invoke_cmd)
+static void print_help(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
 	fprintf(out, "usage: " BINARY_NAME " [-s] <device|file>\n");
@@ -205,8 +205,6 @@ static int print_message(
 
 int main(int argc, char **argv)
 {
-	const char *const cmd = argv[0];
-
 	int err = 0;
 	sys_device *dev = NULL;
 	sys_bool dev_open = SYS_FALSE;
@@ -249,14 +247,14 @@ int main(int argc, char **argv)
 	}
 
 	if(argc != 2) {
-		print_help(stderr, cmd);
+		print_help(stderr);
 		goto out;
 	}
 
 	options.device_name = argv[1];
 
 	if(options.help) {
-		print_help(stdout, cmd);
+		print_help(stdout);
 		goto out;
 	}
 	else if(options.about) {
