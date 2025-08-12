@@ -361,6 +361,7 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_get_context()->private_data;
+	const size_t bytes_to_read = (size > INT_MAX) ? INT_MAX : size;
 
 	int err = 0;
 	fsapi_node *node = NULL;
@@ -401,9 +402,8 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		goto out;
 	}
 
-
 	context.buf.rw = buf;
-	context.remaining_size = size;
+	context.remaining_size = bytes_to_read;
 	context.is_read = SYS_TRUE;
 	iohandler.context = &context;
 	iohandler.handle_io = fsapi_iohandler_buffer_handle_io;
@@ -417,7 +417,7 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		/* u64 offset */
 		offset,
 		/* size_t size */
-		size,
+		bytes_to_read,
 		/* fsapi_iohandler *iohandler */
 		&iohandler);
 out:
@@ -434,10 +434,10 @@ out:
 	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ", "
 		"offset=%" PRId64 ", fi=%p): %" PRIdz " (%s)",
 		__FUNCTION__, path, buf, PRAuz(size), PRAd64(offset), fi,
-		PRAdz(err ? -err : (size - context.remaining_size)),
-		strerror(err));
+		PRAdz(err ? -err :
+		(int) (bytes_to_read - context.remaining_size)), strerror(err));
 
-	return err ? -err : (size - context.remaining_size);
+	return err ? -err : (int) (size - context.remaining_size);
 }
 
 static int refs_fuse_op_statfs(const char *path, struct statvfs *stvbuf)
@@ -719,6 +719,7 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 #ifndef __APPLE__
 	const uint32_t position = 0;
 #endif
+	const size_t bytes_to_read = (size > INT_MAX) ? INT_MAX : size;
 
 	int err = 0;
 	fsapi_node *node = NULL;
@@ -786,7 +787,7 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		memset(&iohandler, 0, sizeof(iohandler));
 
 		buffer_context.buf.rw = buf;
-		buffer_context.remaining_size = size;
+		buffer_context.remaining_size = bytes_to_read;
 		buffer_context.is_read = SYS_TRUE;
 
 		iohandler.context = &buffer_context;
@@ -805,7 +806,7 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 			/* u64 offset */
 			position,
 			/* size_t size */
-			size,
+			bytes_to_read,
 			/* fsapi_iohandler *iohandler */
 			&iohandler);
 	}
@@ -831,7 +832,8 @@ out:
 	}
 
 	return err ? -err :
-		(buf ? size - buffer_context.remaining_size : context.size);
+		(buf ? (int) (bytes_to_read - buffer_context.remaining_size) :
+		((context.size > INT_MAX) ? INT_MAX : (int) context.size));
 }
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API */
 
@@ -880,6 +882,7 @@ static int refs_fuse_op_listxattr(const char *path, char *buf, size_t size)
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_get_context()->private_data;
+	const size_t bytes_to_read = (size > INT_MAX) ? INT_MAX : size;
 
 	int err = 0;
 	fsapi_node *node = NULL;
@@ -913,7 +916,7 @@ static int refs_fuse_op_listxattr(const char *path, char *buf, size_t size)
 
 	if(buf) {
 		context.buf = buf;
-		context.size = size;
+		context.size = bytes_to_read;
 	}
 
 	err = fsapi_node_list_extended_attributes(
@@ -940,7 +943,8 @@ out:
 			1);
 	}
 
-	return err ? -err : (buf ? size - context.size : context.size);
+	return err ? -err : (buf ? (int) (bytes_to_read - context.size) :
+		((context.size > INT_MAX) ? INT_MAX : (int) context.size));
 }
 
 #if defined(_WIN32)
