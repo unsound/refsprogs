@@ -108,6 +108,7 @@ static void print_about(FILE *out)
 
 typedef struct {
 	refs_volume *vol;
+	sys_bool first_line;
 	sys_bool long_format;
 	sys_bool show_eas;
 	sys_bool show_streams;
@@ -172,6 +173,10 @@ static int refsls_print_dirent(
 
 
 	{
+		if(!ctx->first_line) {
+			fprintf(stdout, "\n");
+		}
+
 		if(options.long_format) {
 			static const s64 filetime_offset =
 				((s64) (369 * 365 + 89)) * 24 * 3600 * 10000000;
@@ -238,7 +243,7 @@ static int refsls_print_dirent(
 		}
 	}
 
-	fprintf(stdout, "\n");
+	ctx->first_line = SYS_FALSE;
 
 	if(is_directory && options.recursive) {
 		refsls_list_dir_fill_ctx subdir_ctx;
@@ -492,6 +497,8 @@ static int refsls_node_ea(
 	(void) data;
 
 	if(ctx->show_eas) {
+		fprintf(stdout, "\n");
+
 		if(ctx->long_format) {
 			fprintf(stdout, "%" PRIPAD(13) PRIu64
 				"                        ",
@@ -499,13 +506,13 @@ static int refsls_node_ea(
 		}
 
 		if(ctx->cur_name) {
-			fprintf(stdout, "%" PRIbs ":$EA:%" PRIbs "\n",
+			fprintf(stdout, "%" PRIbs ":$EA:%" PRIbs,
 				PRAbs(ctx->cur_name_length, ctx->cur_name),
 				PRAbs(name_length, name));
 		}
 		else {
 			fprintf(stdout, "<Hard link entry with id "
-				"0x%" PRIX64 ">:$EA:%" PRIbs "\n",
+				"0x%" PRIX64 ">:$EA:%" PRIbs,
 				PRAX64(ctx->cur_hard_link_id),
 				PRAbs(name_length, name));
 		}
@@ -527,6 +534,8 @@ static int refsls_node_stream(
 	(void) data_reference;
 
 	if(ctx->show_streams) {
+		fprintf(stdout, "\n");
+
 		if(ctx->long_format) {
 			fprintf(stdout, "%" PRIPAD(13) PRIu64
 				"                        ",
@@ -534,7 +543,7 @@ static int refsls_node_stream(
 		}
 
 		if(ctx->cur_name) {
-			fprintf(stdout, "%" PRIbs ":%" PRIbs ":$DATA%s\n",
+			fprintf(stdout, "%" PRIbs ":%" PRIbs ":$DATA%s",
 				PRAbs(ctx->cur_name_length, ctx->cur_name),
 				PRAbs(name_length, name),
 				data_reference->resident ? " (resident)" :
@@ -542,13 +551,27 @@ static int refsls_node_stream(
 		}
 		else {
 			fprintf(stdout, "<Hard link entry with id "
-				"0x%" PRIX64 ">:%" PRIbs ":$DATA%s\n",
+				"0x%" PRIX64 ">:%" PRIbs ":$DATA%s",
 				PRAX64(ctx->cur_hard_link_id),
 				PRAbs(name_length, name),
 				data_reference->resident ? " (resident)" :
 				" (non-resident)");
 		}
 	}
+
+	return 0;
+}
+
+static int refsls_node_symlink(
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
+{
+	(void) context;
+	(void) type;
+
+	fprintf(stdout, " -> %" PRIbs, PRAbs(target_length, target));
 
 	return 0;
 }
@@ -715,6 +738,7 @@ int main(int argc, char **argv)
 	}
 
 	context.vol = vol;
+	context.first_line = SYS_TRUE;
 	context.long_format = options.long_format;
 	context.show_eas = options.show_eas;
 	context.show_streams = options.show_streams;
@@ -724,6 +748,7 @@ int main(int argc, char **argv)
 	visitor.node_hardlink_entry = refsls_node_hardlink_entry;
 	visitor.node_ea = refsls_node_ea;
 	visitor.node_stream = refsls_node_stream;
+	visitor.node_symlink = refsls_node_symlink;
 
 	err = refs_node_walk(
 		/* sys_device *dev */
@@ -747,6 +772,10 @@ int main(int argc, char **argv)
 	if(err) {
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
+	}
+
+	if(!context.first_line) {
+		fprintf(stdout, "\n");
 	}
 
 	ret = (EXIT_SUCCESS);

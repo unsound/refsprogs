@@ -7742,6 +7742,295 @@ out:
 }
 
 /**
+ * Parse a reparse point attribute in a long entry.
+ */
+static int parse_reparse_point_attribute(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const size_t remaining_in_value,
+		const u16 remaining_in_attribute,
+		const u8 *const attribute,
+		const u16 attribute_size,
+		const u16 attribute_index,
+		u16 *const jp)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	int err = 0;
+	u32 reparse_tag = 0;
+	u16 reparse_data_size = 0;
+	u16 j = *jp;
+
+	j += parse_level3_attribute_header(
+		/* refs_node_walk_visitor *visitor */
+		visitor,
+		/* const char *prefix */
+		prefix,
+		/* size_t indent */
+		indent,
+		/* size_t remaining_in_value */
+		remaining_in_value,
+		/* const u8 *attribute */
+		attribute,
+		/* u16 attribute_size */
+		attribute_size,
+		/* u16 attribute_index */
+		attribute_index);
+	if(remaining_in_attribute - j >= 2) {
+		j += print_unknown16(prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x08 */
+	}
+	if(remaining_in_attribute - j >= 2) {
+		j += print_le16_dechex("Value offset", prefix, indent + 1,
+			attribute, &attribute[j]); /* 0x0A */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		j += print_le32_dechex("Value size (1)", prefix, indent + 1,
+			attribute, &attribute[j]); /* 0x0C */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		j += print_le32_dechex("Value size (2)", prefix, indent + 1,
+			attribute, &attribute[j]); /* 0x10 */
+	}
+	if(remaining_in_attribute - j >= 2) {
+		j += print_unknown16(prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x14 */
+	}
+	if(remaining_in_attribute - j >= 2) {
+		j += print_unknown16(prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x16 */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		j += print_unknown32(prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x18 */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		j += print_le32_dechex("Attribute type (reparse point data)",
+			prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x1C */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		j += print_unknown32(prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x20 */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		j += print_unknown32(prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x24 */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		j += print_unknown32(prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x28 */
+	}
+	if(remaining_in_attribute - j >= 4) {
+		const char *reparse_tag_string = NULL;
+
+		reparse_tag = read_le32(&attribute[j]);
+
+		j += print_le32_hex("Reparse tag", prefix, indent + 1,
+			attribute, &attribute[j]); /* 0x2C */
+		switch(reparse_tag) {
+		case 0xA0000003UL:
+			reparse_tag_string = "IO_REPARSE_TAG_MOUNT_POINT";
+			break;
+		case 0xA000000CUL:
+			reparse_tag_string = "IO_REPARSE_TAG_SYMLINK";
+			break;
+		case 0xA000001DUL:
+			reparse_tag_string = "IO_REPARSE_TAG_LX_SYMLINK";
+			break;
+		case 0x80000023UL:
+			reparse_tag_string = "IO_REPARSE_TAG_AF_UNIX";
+			break;
+		case 0x80000024UL:
+			reparse_tag_string = "IO_REPARSE_TAG_LX_FIFO";
+			break;
+		case 0x80000025UL:
+			reparse_tag_string = "IO_REPARSE_TAG_LX_CHR";
+			break;
+		case 0x80000026UL:
+			reparse_tag_string = "IO_REPARSE_TAG_LX_BLK";
+			break;
+		default:
+			reparse_tag_string = "<unknown reparse tag>";
+			break;
+		}
+
+		emit(prefix, indent + 2, "%s", reparse_tag_string);
+	}
+	if(remaining_in_attribute - j >= 2) {
+		reparse_data_size = read_le16(&attribute[j]);
+		j += print_le16_dechex("Reparse data size", prefix, indent + 1,
+			attribute, &attribute[j]); /* 0x30 */
+	}
+	if(remaining_in_attribute - j >= 2) {
+		j += print_le16_dechex("Reserved", prefix, indent + 1,
+			attribute, &attribute[j]); /* 0x32 */
+	}
+
+	if(reparse_data_size > remaining_in_attribute - j) {
+		sys_log_warning("Reparse data size extends beyond the bounds "
+			"of the attribute. Reparse data size: %" PRIu16 " "
+			"Remaining in attribute: %" PRIu16,
+			PRAu16(reparse_data_size),
+			PRAu16(remaining_in_attribute - j));
+	}
+	else if((reparse_tag == 0xA0000003UL || reparse_tag == 0xA000000CUL) &&
+		(remaining_in_attribute - j) >=
+		((reparse_tag == 0xA0000003UL) ? 8 : 12))
+	{
+		/* Mount point / symlink. */
+		u16 substitute_name_offset = 0;
+		u16 substitute_name_size = 0;
+		u16 print_name_offset = 0;
+		u16 print_name_size = 0;
+		u32 flags = 0;
+		u16 k = 0;
+		u16 k_start = 0;
+
+		substitute_name_offset = read_le16(&attribute[j + k]);
+		k += print_le16_dechex("Substitute name offset", prefix,
+			indent + 1, attribute, &attribute[j + k]); /* 0x34 */
+		substitute_name_size = read_le16(&attribute[j + k]);
+		k += print_le16_dechex("Substitute name size", prefix,
+			indent + 1, attribute, &attribute[j + k]); /* 0x36 */
+		print_name_offset = read_le16(&attribute[j + k]);
+		k += print_le16_dechex("Print name offset", prefix, indent + 1,
+			attribute, &attribute[j + k]); /* 0x38 */
+		print_name_size = read_le16(&attribute[j + k]);
+		k += print_le16_dechex("Print name size", prefix, indent + 1,
+			attribute, &attribute[j + k]); /* 0x3A */
+		if(reparse_tag == 0xA000000CUL) {
+			/* Symlinks have an additional flags field. */
+			flags = read_le32(&attribute[j + k]);
+			k += print_le32_hex("Flags", prefix, indent + 1,
+				attribute, &attribute[j + k]); /* 0x3C */
+			if(flags & 0x00000001UL) {
+				emit(prefix, indent + 2, "%s",
+					"SYMLINK_FLAG_RELATIVE");
+			}
+		}
+
+		k_start = k;
+		while(k < reparse_data_size) {
+			const u16 offset = k - k_start;
+			const char *name_label;
+			u16 name_size;
+			char *cname = NULL;
+			size_t cname_length = 0;
+
+			if(offset == substitute_name_offset) {
+				name_label = "Substitute name";
+				name_size = substitute_name_size;
+			}
+			else if(offset == print_name_offset) {
+				name_label = "Print name";
+				name_size = print_name_size;
+			}
+
+			if(name_label) {
+				err = sys_unistr_decode(
+					/* const refschar *ins */
+					(const refschar*) &attribute[j + k],
+					/* size_t ins_len */
+					name_size / sizeof(refschar),
+					/* char **outs */
+					&cname,
+					/* size_t *outs_len */
+					&cname_length);
+				if(err) {
+					sys_log_pwarning(err, "Error while "
+						"decoding '%s'", name_label);
+					err = 0;
+					name_label = NULL;
+				}
+			}
+
+			if(!name_label) {
+				const u16 min_offset =
+					sys_min(substitute_name_offset,
+					print_name_offset);
+				const u16 max_offset =
+					sys_max(substitute_name_offset,
+					print_name_offset);
+				const u16 next_offset =
+					(offset < min_offset) ? min_offset :
+					((offset < max_offset) ? max_offset :
+					(reparse_data_size - k_start));
+
+				print_data_with_base(prefix, indent + 1, j + k,
+					remaining_in_attribute,
+					&attribute[j + k], next_offset - k);
+				k = next_offset;
+				continue;
+			}
+
+			if(visitor && visitor->node_symlink &&
+				offset == print_name_offset)
+			{
+				err = visitor->node_symlink(
+					/* void *context */
+					visitor->context,
+					/* refs_symlink_type type */
+					(reparse_tag != 0xA000000CUL) ?
+					REFS_SYMLINK_TYPE_JUNCTION :
+					((flags & 0x00000001UL) ?
+					REFS_SYMLINK_TYPE_SYMLINK_RELATIVE :
+					REFS_SYMLINK_TYPE_SYMLINK_ABSOLUTE),
+					/* const char *target */
+					cname,
+					/* size_t target_length */
+					cname_length);
+				if(err) {
+					goto out;
+				}
+			}
+
+			emit(prefix, indent + 1, "%s @ %" PRIu16 " / "
+				"0x%" PRIX16 ": %" PRIbs,
+				name_label, PRAu16(j + k), PRAX16(j + k),
+				PRAbs(cname_length, cname));
+			sys_free(&cname);
+			k += name_size;
+		}
+
+		j += k;
+	}
+	else if(reparse_tag == 0xA000001D && (remaining_in_attribute - j) >= 4)
+	{
+		/* WSL symlink. */
+		const u16 wsl_string_size = reparse_data_size - 4;
+
+		j += print_le32_dechex("Type", prefix, indent + 1, attribute,
+			&attribute[j]); /* 0x34 */
+
+		if(visitor && visitor->node_symlink) {
+			err = visitor->node_symlink(
+				/* void *context */
+				visitor->context,
+				/* refs_symlink_type type */
+				REFS_SYMLINK_TYPE_WSL,
+				/* const char *target */
+				(const char*) &attribute[j],
+				/* size_t target_length */
+				wsl_string_size);
+			if(err) {
+				goto out;
+			}
+		}
+
+		emit(prefix, indent + 1, "Symlink data: %" PRIbs,
+			PRAbs(wsl_string_size, &attribute[j]));
+		j += wsl_string_size;
+	}
+
+	*jp = j;
+out:
+	return err;
+}
+
+/**
  * Parse a long level 3 tree entry value.
  *
  * Long values (type 1) are in all known instances files or links/reparse
@@ -9455,6 +9744,32 @@ int parse_level3_long_value(
 				j += print_le32_dechex("Number of clusters in "
 					"extent (?)", prefix, indent + 2,
 					attribute, &attribute[j]); /* 0x124 */
+			}
+		}
+		else if(attribute_type == 0x0010 && attribute_type2 == 0x0010 &&
+			stream_type == 0x00C0)
+		{
+			err = parse_reparse_point_attribute(
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* size_t remaining_in_value */
+				remaining_in_value,
+				/* u16 remaining_in_attribute */
+				remaining_in_attribute,
+				/* const u8 *attribute */
+				attribute,
+				/* u16 attribute_size */
+				attribute_size,
+				/* u16 attribute_index */
+				attribute_index,
+				/* u16 *jp */
+				&j);
+			if(err) {
+				goto out;
 			}
 		}
 		else if(attribute_type == 0x10 && attribute_type2 == 0x00) {
