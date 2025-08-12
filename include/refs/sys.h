@@ -401,9 +401,19 @@ static inline void sys_strndup(const char *str, size_t len, char **dupstr)
 int sys_strndup(const char *str, size_t len, char **dupstr);
 #endif /* defined(HAVE_STRNDUP) ... */
 
+#ifndef _WIN32
 #define PRIdz "zd"
 #define PRIuz "zu"
 #define PRIXz "zX"
+#elif defined(_WIN64)
+#define PRIdz PRId64
+#define PRIuz PRIu64
+#define PRIXz PRIX64
+#else
+#define PRIdz PRId32
+#define PRIuz PRIu32
+#define PRIXz PRIX32
+#endif
 #define PRIbs ".*s"
 
 #define PRAoz(arg) ((size_t) (arg))
