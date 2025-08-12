@@ -1529,6 +1529,7 @@ static int parse_block_header_entry(
 
 static int parse_block_allocation_entry(
 		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
 		const size_t indent,
 		const sys_bool is_v3,
 		const u8 *const entry,
@@ -1539,8 +1540,6 @@ static int parse_block_allocation_entry(
 		u32 *const out_value_offsets_end,
 		u32 *const out_value_count)
 {
-	static const char *const prefix = "\t";
-
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
@@ -2145,6 +2144,8 @@ static int parse_generic_block(
 	err = parse_block_allocation_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
+		/* const char *prefix */
+		prefix,
 		/* size_t indent */
 		indent + 1,
 		/* sys_bool is_v3 */
@@ -8111,6 +8112,8 @@ int parse_level3_long_value(
 			err = parse_block_allocation_entry(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
+				/* const char *prefix */
+				prefix,
 				/* size_t indent */
 				indent + 1,
 				/* sys_bool is_v3 */
