@@ -1906,7 +1906,9 @@ int main(int argc, char **argv)
 {
 	int err = 0;
 	const char *device_name = NULL;
+#if REFS_FUSE_USE_LOWLEVEL_API
 	const char *mount_point = NULL;
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
 	sys_device *dev = NULL;
 	fsapi_volume *vol = NULL;
 #if REFS_FUSE_USE_LOWLEVEL_API
@@ -1930,7 +1932,9 @@ int main(int argc, char **argv)
 	}
 
 	device_name = argv[1];
+#if REFS_FUSE_USE_LOWLEVEL_API
 	mount_point = argv[2];
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	err = sys_device_open(&dev, device_name);
 	if(err) {
