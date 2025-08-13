@@ -163,6 +163,43 @@ static int refs_fuse_fill_stat(
 	return 0;
 }
 
+static void refs_fuse_transform_symlink(
+		char *const symlink_data,
+		const size_t symlink_data_length)
+{
+	size_t i = 0;
+
+	/* Iterate over symlink_target and transform '\' to '/' and change
+	 * initial prefix for absolute links. */
+	if(symlink_data_length >= 3 &&
+		symlink_data[1] == ':' &&
+		symlink_data[2] >= '\\')
+	{
+		if(symlink_data[0] >= 'A' &&
+			symlink_data[0] <= 'Z')
+		{
+			symlink_data[1] =
+				'a' + (symlink_data[0] - 'A');
+		}
+		else {
+			symlink_data[1] =
+				symlink_data[0];
+		}
+
+		symlink_data[0] = '/';
+		i = 2;
+	}
+
+	for(; i < symlink_data_length; ++i) {
+		if(symlink_data[i] == '\\') {
+			symlink_data[i] = '/';
+		}
+		else if(symlink_data[i] == '/') {
+			symlink_data[i] = '\\';
+		}
+	}
+}
+
 typedef struct {
 	void *dirbuf;
 	fuse_fill_dir_t filler;
@@ -352,6 +389,12 @@ static int refs_fuse_op_readlink(const char *path, char *buf, size_t size)
 		attributes.symlink_target[attributes.symlink_target_length] =
 			'\0';
 	}
+
+	refs_fuse_transform_symlink(
+		/* char *symlink_data */
+		attributes.symlink_target,
+		/* size_t symlink_data_length */
+		attributes.symlink_target_length);
 out:
 	if(node) {
 		fsapi_node_release(
@@ -1348,6 +1391,12 @@ static void refs_fuse_ll_op_readlink(
 		err = EINVAL;
 		goto out;
 	}
+
+	refs_fuse_transform_symlink(
+		/* char *symlink_data */
+		attributes.symlink_target,
+		/* size_t symlink_data_length */
+		attributes.symlink_target_length);
 out:
 	sys_log_debug("%s(req=%p, ino=0x%lX): %d (%s)",
 		__FUNCTION__, req, ino, err, strerror(err));
