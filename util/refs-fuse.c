@@ -91,7 +91,13 @@ static int refs_fuse_fill_stat(
 		PRAu64(attributes->size),
 		PRAu64(attributes->allocated_size));
 
-	stbuf->st_mode = (attributes->is_directory ? S_IFDIR : S_IFREG) | 0777;
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
+		stbuf->st_mode = attributes->mode;
+	}
+	else {
+		stbuf->st_mode =
+			(attributes->is_directory ? S_IFDIR : S_IFREG) | 0777;
+	}
 	stbuf->st_nlink = attributes->is_directory ? 2 /* TODO */ : 1;
 
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
@@ -297,6 +303,68 @@ out:
 		fi,
 #endif /* FUSE_VERSION >= 30 */
 		-err, strerror(err));
+
+	return -err;
+}
+
+static int refs_fuse_op_readlink(const char *path, char *buf, size_t size)
+{
+	fsapi_volume *const vol =
+		(fsapi_volume*) fuse_get_context()->private_data;
+
+	int err = 0;
+	fsapi_node *node = NULL;
+	fsapi_node_attributes attributes;
+
+	memset(&attributes, 0, sizeof(attributes));
+
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ")",
+		__FUNCTION__, path, buf, PRAuz(size));
+
+	attributes.requested = FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+	attributes.symlink_target = buf;
+	attributes.symlink_target_length = size;
+
+	err = fsapi_node_lookup(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *parent_node */
+		NULL,
+		/* const char *path */
+		path,
+		/* size_t path_length */
+		strlen(path),
+		/* fsapi_node **out_child_node */
+		&node,
+		/* fsapi_node_attributes *out_attributes */
+		&attributes);
+	if(err) {
+		goto out;
+	}
+	else if(!node) {
+		err = ENOENT;
+		goto out;
+	}
+
+	if(attributes.symlink_target_length == size) {
+		/* Ensure that the returned buffer is NULL-terminated. */
+		--attributes.symlink_target_length;
+		attributes.symlink_target[attributes.symlink_target_length] =
+			'\0';
+	}
+out:
+	if(node) {
+		fsapi_node_release(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node **node */
+			&node,
+			/* size_t release_count */
+			1);
+	}
+
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz "): %d (%s)",
+		__FUNCTION__, path, buf, PRAuz(size), -err, strerror(err));
 
 	return -err;
 }
@@ -1010,6 +1078,8 @@ out:
 static struct fuse_operations refs_fuse_operations = {
 	/* int (*getattr) (const char *, struct FUSE_STAT *) */
 	.getattr = refs_fuse_op_getattr,
+	/* int (*readlink) (const char *, char *, size_t) */
+	.readlink = refs_fuse_op_readlink,
 	/* int (*open) (const char *, struct fuse_file_info *) */
 	.open = refs_fuse_op_open,
 	/* int (*read) (const char *, char *, size_t, off_t,
@@ -1236,6 +1306,62 @@ out:
 	}
 	else {
 		fuse_reply_attr(req, &stbuf, 3600);
+	}
+}
+
+static void refs_fuse_ll_op_readlink(
+		fuse_req_t req,
+		fuse_ino_t ino)
+{
+	fsapi_volume *const vol =
+		(fsapi_volume*) fuse_req_userdata(req);
+	fsapi_node *const node =
+		refs_fuse_ll_fuse_ino_to_node(
+			/* fuse_ino_t ino */
+			ino,
+			/* fsapi_volume *vol */
+			vol);
+
+	int err = 0;
+	fsapi_node_attributes attributes;
+
+	memset(&attributes, 0, sizeof(attributes));
+
+	sys_log_debug("%s(req=%p, ino=0x%lX)",
+		__FUNCTION__, req, ino);
+
+	attributes.requested =
+		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+
+	err = fsapi_node_get_attributes(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* fsapi_node_attributes *out_attributes */
+		&attributes);
+	if(err) {
+		goto out;
+	}
+	else if(!(attributes.valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
+	{
+		err = EINVAL;
+		goto out;
+	}
+out:
+	sys_log_debug("%s(req=%p, ino=0x%lX): %d (%s)",
+		__FUNCTION__, req, ino, err, strerror(err));
+
+	if(err) {
+		fuse_reply_err(req, err);
+	}
+	else {
+		fuse_reply_buf(req, attributes.symlink_target,
+			attributes.symlink_target_length + 1);
+	}
+
+	if(attributes.symlink_target) {
+		sys_free(&attributes.symlink_target);
 	}
 }
 
@@ -1879,6 +2005,8 @@ static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	/* void (*getattr) (fuse_req_t req, fuse_ino_t ino,
 	 *         struct fuse_file_info *fi); */
 	.getattr = refs_fuse_ll_op_getattr,
+	/* void (*readlink) (fuse_req_t req, fuse_ino_t ino); */
+	.readlink = refs_fuse_ll_op_readlink,
 	/* void (*open) (fuse_req_t req, fuse_ino_t ino,
 	 *         struct fuse_file_info *fi); */
 	.open = refs_fuse_ll_op_open,

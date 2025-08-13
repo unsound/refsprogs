@@ -31,6 +31,10 @@
 #include "rb_tree.h"
 #include "volume.h"
 
+#ifndef S_IFLNK
+#define S_IFLNK 0120000
+#endif
+
 typedef struct fsapi_volume fsapi_volume;
 typedef struct fsapi_node fsapi_node;
 
@@ -782,7 +786,17 @@ static int fsapi_fill_attributes(
 	attrs->is_directory = is_directory;
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
-		attrs->mode = (is_directory ? S_IFDIR : S_IFREG) | 0777;
+		attrs->mode = 0;
+		if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+			attrs->mode |= S_IFLNK;
+		}
+		else if(is_directory) {
+			attrs->mode |= S_IFDIR;
+		}
+		else {
+			attrs->mode |= S_IFREG;
+		}
+		attrs->mode |= 0777U;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_MODE;
 	}
 
@@ -1037,6 +1051,57 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		allocated_size);
 }
 
+static int fsapi_node_get_attributes_visit_symlink(
+		void *context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length)
+{
+	fsapi_node_attributes *const attrs =
+		(fsapi_node_attributes*) context;
+	int err = 0;
+
+	(void) type;
+
+	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
+		attrs->size = target_length;
+		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
+	}
+
+	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
+		attrs->mode = S_IFLNK | (attrs->mode & ~S_IFMT);
+	}
+
+	if((attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) &&
+		!(attrs->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
+	{
+		size_t symlink_target_size;
+
+		if(!attrs->symlink_target) {
+			symlink_target_size = target_length + 1;
+			err = sys_malloc(symlink_target_size,
+				&attrs->symlink_target);
+			if(err) {
+				goto out;
+			}
+		}
+		else {
+			symlink_target_size = attrs->symlink_target_length;
+		}
+
+		memcpy(attrs->symlink_target, target,
+			sys_min(symlink_target_size, target_length));
+		if(symlink_target_size > target_length) {
+			attrs->symlink_target[target_length] = '\0';
+		}
+		attrs->symlink_target_length = target_length;
+
+		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+	}
+out:
+	return err;
+}
+
 static int fsapi_node_get_attributes_common(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -1117,6 +1182,8 @@ static int fsapi_node_get_attributes_common(
 			fsapi_node_get_attributes_visit_long_entry;
 		visitor.node_hardlink_entry =
 			fsapi_node_get_attributes_visit_hardlink_entry;
+		visitor.node_symlink =
+			fsapi_node_get_attributes_visit_symlink;
 
 		err = parse_level3_long_value(
 			/* refs_node_crawl_context *crawl_context */
@@ -1565,6 +1632,8 @@ out:
 
 typedef struct {
 	fsapi_node_attributes *attributes;
+	char *cname;
+	size_t cname_length;
 	void *handle_dirent_context;
 	int (*handle_dirent)(
 		void *context,
@@ -1591,6 +1660,23 @@ static int fsapi_node_list_filldir(
 	int err = 0;
 	char *cname = NULL;
 	size_t cname_length = 0;
+
+	if(context->cname) {
+		/* We have a reparse point without finding its attribute. Just
+		 * return it as-is. */
+		err = context->handle_dirent(
+			/* void *context */
+			context->handle_dirent_context,
+			/* const char *name */
+			context->cname,
+			/* size_t name_length */
+			context->cname_length,
+			/* fsapi_node_attributes *attributes */
+			context->attributes);
+
+		sys_free(&context->cname);
+		context->cname_length = 0;
+	}
 
 	if(context->attributes) {
 		err = fsapi_fill_attributes(
@@ -1635,15 +1721,25 @@ static int fsapi_node_list_filldir(
 		goto out;
 	}
 
-	err = context->handle_dirent(
-		/* void *context */
-		context->handle_dirent_context,
-		/* const char *name */
-		cname,
-		/* size_t name_length */
-		cname_length,
-		/* fsapi_node_attributes *attributes */
-		context->attributes);
+	if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+		/* Save the cname in the context and wait for the reparse point
+		 * attribute to appear. */
+		context->cname = cname;
+		context->cname_length = cname_length;
+		cname = NULL;
+		cname_length = 0;
+	}
+	else {
+		err = context->handle_dirent(
+			/* void *context */
+			context->handle_dirent_context,
+			/* const char *name */
+			cname,
+			/* size_t name_length */
+			cname_length,
+			/* fsapi_node_attributes *attributes */
+			context->attributes);
+	}
 out:
 	if(cname) {
 		sys_free(&cname);
@@ -1760,6 +1856,76 @@ static int fsapi_node_list_visit_long_entry(
 		allocated_size);
 }
 
+static int fsapi_node_list_visit_symlink(
+		void *_context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length)
+{
+	fsapi_readdir_context *const context =
+		(fsapi_readdir_context*) _context;
+
+	int err = 0;
+
+	(void) type;
+
+	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
+		context->attributes->size = target_length;
+		context->attributes->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
+	}
+
+	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
+		context->attributes->mode =
+			S_IFLNK | (context->attributes->mode & ~S_IFMT);
+	}
+
+	if(context->attributes->requested &
+		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET)
+	{
+		size_t symlink_target_size;
+
+		if(!context->attributes->symlink_target) {
+			symlink_target_size = target_length + 1;
+			err = sys_malloc(symlink_target_size,
+				&context->attributes->symlink_target);
+			if(err) {
+				goto out;
+			}
+		}
+		else {
+			symlink_target_size =
+				context->attributes->symlink_target_length;
+		}
+
+		memcpy(context->attributes->symlink_target, target,
+			sys_min(symlink_target_size, target_length));
+		if(symlink_target_size > target_length) {
+			context->attributes->symlink_target[target_length] =
+				'\0';
+		}
+
+		context->attributes->valid |=
+			FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+	}
+
+	err = context->handle_dirent(
+		/* void *context */
+		context->handle_dirent_context,
+		/* const char *name */
+		context->cname,
+		/* size_t name_length */
+		context->cname_length,
+		/* fsapi_node_attributes *attributes */
+		context->attributes);
+out:
+	if(context->cname) {
+		sys_free(&context->cname);
+		context->cname_length = 0;
+	}
+
+	return err;
+}
+
 int fsapi_node_list(
 		fsapi_volume *vol,
 		fsapi_node *directory_node,
@@ -1789,6 +1955,7 @@ int fsapi_node_list(
 	visitor.context = &readdir_context;
 	visitor.node_long_entry = fsapi_node_list_visit_long_entry;
 	visitor.node_short_entry = fsapi_node_list_visit_short_entry;
+	visitor.node_symlink = fsapi_node_list_visit_symlink;
 
 	err = refs_node_walk(
 		/* sys_device *dev */
@@ -1817,7 +1984,28 @@ int fsapi_node_list(
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
 	}
+
+	if(readdir_context.cname) {
+		/* We have a reparse point without finding its attribute. Just
+		 * return it as-is. */
+		err = readdir_context.handle_dirent(
+			/* void *context */
+			readdir_context.handle_dirent_context,
+			/* const char *name */
+			readdir_context.cname,
+			/* size_t name_length */
+			readdir_context.cname_length,
+			/* fsapi_node_attributes *attributes */
+			readdir_context.attributes);
+
+		sys_free(&readdir_context.cname);
+		readdir_context.cname_length = 0;
+	}
 out:
+	if(readdir_context.cname) {
+		sys_free(&readdir_context.cname);
+	}
+
 	return err;
 }
 
