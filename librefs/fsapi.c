@@ -31,10 +31,6 @@
 #include "rb_tree.h"
 #include "volume.h"
 
-#ifndef S_IFLNK
-#define S_IFLNK 0120000
-#endif
-
 typedef struct fsapi_volume fsapi_volume;
 typedef struct fsapi_node fsapi_node;
 
@@ -800,10 +796,13 @@ static int fsapi_fill_attributes(
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		attrs->mode = 0;
+#ifdef S_IFLNK
 		if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
 			attrs->mode |= S_IFLNK;
 		}
-		else if(is_directory) {
+		else
+#endif
+		if(is_directory) {
 			attrs->mode |= S_IFDIR;
 		}
 		else {
@@ -1129,9 +1128,11 @@ static int fsapi_node_get_attributes_visit_symlink(
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
+#ifdef S_IFLNK
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		attrs->mode = S_IFLNK | (attrs->mode & ~S_IFMT);
 	}
+#endif
 
 	if((attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) &&
 		!(attrs->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
@@ -1982,10 +1983,12 @@ static int fsapi_node_list_visit_symlink(
 		context->attributes->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
+#ifdef S_IFLNK
 	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		context->attributes->mode =
 			S_IFLNK | (context->attributes->mode & ~S_IFMT);
 	}
+#endif
 
 	if(context->attributes->requested &
 		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET)
