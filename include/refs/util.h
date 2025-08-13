@@ -552,8 +552,12 @@ static void _print_data_with_base(
 }
 
 #define print_data_with_base(prefix, indent, base, maxvalue, data, size) \
-	_print_data_with_base(print_visitor, (prefix), (indent), (base), \
-		(maxvalue), (data), (size))
+	do { \
+		if(print_visitor && print_visitor->print_message) { \
+			_print_data_with_base(print_visitor, (prefix), \
+				(indent), (base), (maxvalue), (data), (size)); \
+		} \
+	} while(0)
 
 static inline void _print_data(
 		refs_node_print_visitor *const print_visitor,
@@ -566,7 +570,12 @@ static inline void _print_data(
 }
 
 #define print_data(prefix, indent, data, size) \
-	_print_data(print_visitor, (prefix), (indent), (data), (size))
+	do { \
+		if(print_visitor && print_visitor->print_message) { \
+			_print_data(print_visitor, (prefix), (indent), (data), \
+				(size)); \
+		} \
+	} while(0)
 
 static inline void _print_filetime(
 		refs_node_print_visitor *const print_visitor,
@@ -587,7 +596,7 @@ static inline void _print_filetime(
 			identifier,
 			PRAd64(filetime));
 	}
-	else if(print_visitor && print_visitor->verbose) {
+	else if(print_visitor->verbose) {
 		emit(prefix, indent, "%s: %" PRIbs ".%" PRI0PAD(7) PRId64
 			"%" PRIbs " (%" PRId64 ")",
 			identifier,
@@ -607,6 +616,10 @@ static inline void _print_filetime(
 }
 
 #define print_filetime(...) \
-	_print_filetime(print_visitor, __VA_ARGS__)
+	do { \
+		if(print_visitor && print_visitor->print_message) { \
+			_print_filetime(print_visitor, __VA_ARGS__); \
+		} \
+	} while(0)
 
 #endif /* !defined(_REFS_UTIL_H) */
