@@ -4430,6 +4430,38 @@ static int parse_level3_hardlink_key(
 	return err;
 }
 
+static int parse_level3_reparse_point_key(
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const key,
+		const u16 key_offset,
+		const u16 key_size,
+		void *const context)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	int err = 0;
+	size_t i = 0;
+
+	(void) context;
+
+	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
+		"reparse point", PRAu16(key_offset), PRAX16(key_offset));
+
+	i += print_le16_dechex("Key type", prefix, indent, key, &key[i]);
+	i += print_unknown16(prefix, indent, key, &key[i]);
+
+	if(i < key_size) {
+		print_data_with_base(prefix, indent, i, key_size, &key[i],
+			key_size - i);
+		i = key_size;
+	}
+
+	return err;
+}
+
 static int parse_level3_unknown_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -4513,6 +4545,23 @@ static int parse_level3_key(
 	}
 	else if(key_size >= 24 && read_le16(&key[0]) == 0x40) {
 		err = parse_level3_hardlink_key(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* const u8 *key */
+			key,
+			/* u16 key_offset */
+			key_offset,
+			/* u16 key_size */
+			key_size,
+			/* void *context */
+			context);
+	}
+	else if(key_size >= 4 && read_le16(&key[0]) == 0x10) {
+		err = parse_level3_reparse_point_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -7959,10 +8008,16 @@ static int parse_reparse_point_attribute(
 					((offset < max_offset) ? max_offset :
 					(reparse_data_size - k_start));
 
+				if(k - k_start >= max_offset) {
+					break;
+				}
+
 				print_data_with_base(prefix, indent + 1, j + k,
 					remaining_in_attribute,
-					&attribute[j + k], next_offset - k);
-				k = next_offset;
+					&attribute[j + k],
+					k_start + next_offset - k);
+
+				k = k_start + next_offset;
 				continue;
 			}
 
@@ -10330,7 +10385,8 @@ static int parse_level3_leaf_value(
 	(void) context;
 
 	if((key_type == 0x0030 && dirent_type == 0x0001) || /* Regular file. */
-		key_type == 0x0040) /* Hardlinked file. */
+		key_type == 0x0040 || /* Hardlinked file. */
+		(key_type == 0x0010U && dirent_type == 0x0000U)) /* Reparse. */
 	{
 		err = parse_level3_long_value(
 			/* refs_node_crawl_context *context */

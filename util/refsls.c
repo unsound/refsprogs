@@ -92,6 +92,12 @@ static int refsls_node_short_entry(
 		const u8 *const record,
 		const size_t record_size);
 
+static int refsls_node_symlink(
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length);
+
 
 static void print_help(FILE *out)
 {
@@ -245,7 +251,9 @@ static int refsls_print_dirent(
 
 	ctx->first_line = SYS_FALSE;
 
-	if(is_directory && options.recursive) {
+	if(is_directory && (options.recursive ||
+		(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT)))
+	{
 		refsls_list_dir_fill_ctx subdir_ctx;
 		size_t subdir_prefix_string_length;
 		size_t prev_prefix_length = 0;
@@ -287,6 +295,7 @@ static int refsls_print_dirent(
 		subdir_visitor.context = &subdir_ctx;
 		subdir_visitor.node_long_entry = refsls_node_long_entry;
 		subdir_visitor.node_short_entry = refsls_node_short_entry;
+		subdir_visitor.node_symlink = refsls_node_symlink;
 
 		err = refs_node_walk(
 			/* sys_device *dev */
