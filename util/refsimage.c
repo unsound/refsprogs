@@ -881,11 +881,23 @@ static int refsimage_restore_ntfsclone_image(
 
 	memset(&context, 0, sizeof(context));
 
-	in_fd = open(input_file, O_RDONLY);
-	if(in_fd == -1) {
-		err = (err = errno) ? err : ENOENT;
-		goto out;
+	if(input_file[0] == '-' && input_file[1] == '\0') {
+		in_fd = STDIN_FILENO;
 	}
+	else {
+		in_fd = open(input_file, O_RDONLY);
+		if(in_fd == -1) {
+			fprintf(stderr, "Error while opening input file "
+				"\"%s\": %s\n",
+				input_file, strerror(errno));
+			err = (err = errno) ? err : ENOENT;
+			goto out;
+		}
+	}
+
+#ifdef O_BINARY
+	setmode(in_fd, O_BINARY);
+#endif
 
 	bytes_transferred =
 		read(in_fd, &context.header, sizeof(context.header));
