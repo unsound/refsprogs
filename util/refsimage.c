@@ -837,6 +837,31 @@ static refsimage_output_stream refsimage_ntfsclone_stream_init(
 	return stream;
 }
 
+static ssize_t refsimage_read_all(
+		const int fd,
+		void *const data,
+		const size_t size)
+{
+	size_t remaining_size = size;
+	char *datap = data;
+	ssize_t res = 0;
+
+	while(remaining_size) {
+		res = read(fd, datap, remaining_size);
+		if(res < 0) {
+			break;
+		}
+		else if(!res) {
+			break;
+		}
+
+		remaining_size -= (size_t) res;
+		datap = &datap[(size_t) res];
+	}
+
+	return (res < 0) ? -1 : (ssize_t) (size - remaining_size);
+}
+
 static int refsimage_restore_ntfsclone_image(
 		const char *input_file,
 		int out_fd)
@@ -926,7 +951,13 @@ static int refsimage_restore_ntfsclone_image(
 	while(1) {
 		u8 cmd = 0;
 
-		bytes_transferred = read(in_fd, &cmd, sizeof(cmd));
+		bytes_transferred = refsimage_read_all(
+			/* int fd */
+			in_fd,
+			/* char *data */
+			&cmd,
+			/* size_t size */
+			sizeof(cmd));
 		if(bytes_transferred == 0) {
 			break;
 		}
@@ -944,7 +975,13 @@ static int refsimage_restore_ntfsclone_image(
 			le64 count = cpu_to_le64(0);
 			off_t new_size = 0;
 
-			bytes_transferred = read(in_fd, &count, sizeof(count));
+			bytes_transferred = refsimage_read_all(
+				/* int fd */
+				in_fd,
+				/* char *data */
+				&count,
+				/* size_t size */
+				sizeof(count));
 			if(bytes_transferred < 0 ||
 				(size_t) bytes_transferred != sizeof(count))
 			{
@@ -986,7 +1023,13 @@ static int refsimage_restore_ntfsclone_image(
 			sys_log_debug("[%" PRIu64 "] CMD_NEXT",
 				PRAu64(cmd_index));
 
-			bytes_transferred = read(in_fd, buffer, block_size);
+			bytes_transferred = refsimage_read_all(
+				/* int fd */
+				in_fd,
+				/* char *data */
+				buffer,
+				/* size_t size */
+				block_size);
 			if(bytes_transferred < 0 ||
 				(size_t) bytes_transferred != block_size)
 			{
