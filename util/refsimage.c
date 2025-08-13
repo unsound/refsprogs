@@ -877,6 +877,7 @@ static int refsimage_restore_ntfsclone_image(
 	le32 data_offset_le;
 	u32 block_size = 0;
 	void *buffer = NULL;
+	u64 cur_cluster = 0;
 	u64 cmd_index = 0;
 
 	memset(&context, 0, sizeof(context));
@@ -1029,6 +1030,8 @@ static int refsimage_restore_ntfsclone_image(
 					strerror(errno));
 				goto out;
 			}
+
+			cur_cluster += le64_to_cpu(count);
 		}
 		else if(cmd == 0x1) {
 			/* CMD_NEXT */
@@ -1042,14 +1045,35 @@ static int refsimage_restore_ntfsclone_image(
 				buffer,
 				/* size_t size */
 				block_size);
-			if(bytes_transferred < 0 ||
-				(size_t) bytes_transferred != block_size)
-			{
+			if(!bytes_transferred) {
+				fprintf(stderr, "Unexpected end of file when "
+					"reading data of cluster %" PRIu64 " "
+					"from command %" PRIu64 "\n",
+					PRAu64(cur_cluster), PRAu64(cmd_index));
+				err = EIO;
+				goto out;
+			}
+			else if(bytes_transferred < 0) {
 				err = (err = errno) ? err : EIO;
 				fprintf(stderr, "Error while reading "
-					"%" PRIu64 " bytes of cluster data "
-					"from ntfsclone image: %s\n",
-					PRAu64(block_size), strerror(errno));
+					"%" PRIu64 " bytes of cluster "
+					"%" PRIu64 "'s data from ntfsclone "
+					"image command %" PRIu64 ": %s\n",
+					PRAu64(block_size), PRAu64(cur_cluster),
+					PRAu64(cmd_index), strerror(errno));
+				goto out;
+			}
+			else if((size_t) bytes_transferred != block_size) {
+				fprintf(stderr, "Partial read while reading "
+					"%" PRIu64 " bytes of cluster "
+					"%" PRIu64 "'s data from ntfsclone "
+					"image command %" PRIu64 ": "
+					"%" PRIdz " / %" PRIu32 " bytes read\n",
+					PRAu64(block_size), PRAu64(cur_cluster),
+					PRAu64(cmd_index),
+					PRAdz(bytes_transferred),
+					PRAu32(block_size));
+				err = EIO;
 				goto out;
 			}
 
@@ -1059,11 +1083,15 @@ static int refsimage_restore_ntfsclone_image(
 			{
 				err = (err = errno) ? err : EIO;
 				fprintf(stderr, "Error while writing "
-					"%" PRIu64 " bytes of cluster data to "
-					"output file: %s\n",
-					PRAu64(block_size), strerror(errno));
+					"%" PRIu64 " bytes of cluster "
+					"%" PRIu64 "'s data to output file: "
+					"%s\n",
+					PRAu64(block_size), PRAu64(cur_cluster),
+					strerror(errno));
 				goto out;
 			}
+
+			cur_cluster++;
 		}
 		else {
 			fprintf(stderr, "Invalid command read from ntfsclone "
