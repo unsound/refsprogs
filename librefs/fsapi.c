@@ -68,6 +68,19 @@ struct fsapi_node {
 	fsapi_node *next;
 };
 
+static int fsapi_node_get_attributes_visit_symlink(
+		void *context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length);
+
+static int fsapi_node_list_visit_symlink(
+		void *_context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length);
+
+
 static void fsapi_node_init(
 		fsapi_node *const node,
 		char *const path,
@@ -898,8 +911,13 @@ static int fsapi_fill_attributes(
 	return 0;
 }
 
+typedef struct {
+	refs_volume *vol;
+	fsapi_node_attributes *attrs;
+} fsapi_node_get_attributes_context;
+
 static int fsapi_node_get_attributes_visit_short_entry(
-		void *const context,
+		void *const _context,
 		const refschar *const file_name,
 		const u16 file_name_length,
 		const u16 child_entry_offset,
@@ -918,6 +936,11 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		const u8 *const record,
 		const size_t record_size)
 {
+	fsapi_node_get_attributes_context *const context =
+		(fsapi_node_get_attributes_context*) _context;
+
+	int err = 0;
+
 	(void) file_name;
 	(void) file_name_length;
 	(void) object_id;
@@ -927,9 +950,9 @@ static int fsapi_node_get_attributes_visit_short_entry(
 	(void) record;
 	(void) record_size;
 
-	return fsapi_fill_attributes(
-		/* fsapi_node_attributes *stbuf */
-		(fsapi_node_attributes*) context,
+	err = fsapi_fill_attributes(
+		/* fsapi_node_attributes *attrs */
+		context->attrs,
 		/* sys_bool is_directory */
 		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
@@ -950,6 +973,43 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		file_size,
 		/* u64 allocated_size */
 		allocated_size);
+	if(err) {
+		goto out;
+	}
+
+	if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+		/* Parse the reparse point node to get the symlink target. */
+		refs_node_walk_visitor visitor;
+
+		memset(&visitor, 0, sizeof(visitor));
+
+		visitor.context = context;
+		visitor.version_major = context->vol->bs->version_major;
+		visitor.version_minor = context->vol->bs->version_minor;
+		visitor.node_symlink = fsapi_node_get_attributes_visit_symlink;
+
+		err = refs_node_walk(
+			/* sys_device *dev */
+			context->vol->dev,
+			/* REFS_BOOT_SECTOR *bs */
+			context->vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&context->vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&context->vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&context->vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&context->vol->block_map,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+	}
+out:
+	return err;
 }
 
 static int fsapi_node_get_attributes_visit_long_entry(
@@ -978,8 +1038,8 @@ static int fsapi_node_get_attributes_visit_long_entry(
 	(void) record_size;
 
 	return fsapi_fill_attributes(
-		/* fsapi_node_attributes *stbuf */
-		(fsapi_node_attributes*) context,
+		/* fsapi_node_attributes *attrs */
+		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u16 child_entry_offset */
@@ -1027,8 +1087,8 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 	(void) record_size;
 
 	return fsapi_fill_attributes(
-		/* fsapi_node_attributes *stbuf */
-		(fsapi_node_attributes*) context,
+		/* fsapi_node_attributes *attrs */
+		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u16 child_entry_offset */
@@ -1058,7 +1118,8 @@ static int fsapi_node_get_attributes_visit_symlink(
 		size_t target_length)
 {
 	fsapi_node_attributes *const attrs =
-		(fsapi_node_attributes*) context;
+		((fsapi_node_get_attributes_context*) context)->attrs;
+
 	int err = 0;
 
 	(void) type;
@@ -1112,14 +1173,19 @@ static int fsapi_node_get_attributes_common(
 
 	int err = 0;
 	refs_node_crawl_context crawl_context;
+	fsapi_node_get_attributes_context context;
 	refs_node_walk_visitor visitor;
 
 	memset(&visitor, 0, sizeof(visitor));
+	memset(&context, 0, sizeof(context));
 
 	crawl_context = refs_volume_init_node_crawl_context(
 		/* refs_volume *vol */
 		vol->vol);
-	visitor.context = attributes;
+	context.vol = vol->vol;
+	context.attrs = attributes;
+	visitor.context = &context;
+
 	if(node->directory_object_id == 0x600) {
 		/* Root directory. */
 		err = fsapi_fill_attributes(
@@ -1631,6 +1697,7 @@ out:
 }
 
 typedef struct {
+	refs_volume *vol;
 	fsapi_node_attributes *attributes;
 	char *cname;
 	size_t cname_length;
@@ -1749,7 +1816,7 @@ out:
 }
 
 static int fsapi_node_list_visit_short_entry(
-		void *const context,
+		void *const _context,
 		const refschar *const file_name,
 		const u16 file_name_length,
 		const u16 child_entry_offset,
@@ -1768,16 +1835,20 @@ static int fsapi_node_list_visit_short_entry(
 		const u8 *const record,
 		const size_t record_size)
 {
-	(void) object_id;
+	fsapi_readdir_context *const context =
+		(fsapi_readdir_context*) _context;
+
+	int err = 0;
+
 	(void) hard_link_id;
 	(void) key;
 	(void) key_size;
 	(void) record;
 	(void) record_size;
 
-	return fsapi_node_list_filldir(
+	err = fsapi_node_list_filldir(
 		/* fsapi_readdir_context *context */
-		(fsapi_readdir_context*) context,
+		context,
 		/* const refschar *file_name */
 		file_name,
 		/* u16 file_name_length */
@@ -1802,6 +1873,43 @@ static int fsapi_node_list_visit_short_entry(
 		file_size,
 		/* u64 allocated_size */
 		allocated_size);
+	if(err) {
+		goto out;
+	}
+
+	if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+		/* Parse the reparse point node to get the symlink target. */
+		refs_node_walk_visitor visitor;
+
+		memset(&visitor, 0, sizeof(visitor));
+
+		visitor.context = context;
+		visitor.version_major = context->vol->bs->version_major;
+		visitor.version_minor = context->vol->bs->version_minor;
+		visitor.node_symlink = fsapi_node_list_visit_symlink;
+
+		err = refs_node_walk(
+			/* sys_device *dev */
+			context->vol->dev,
+			/* REFS_BOOT_SECTOR *bs */
+			context->vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&context->vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&context->vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&context->vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&context->vol->block_map,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+	}
+out:
+	return err;
 }
 
 static int fsapi_node_list_visit_long_entry(
@@ -1949,6 +2057,7 @@ int fsapi_node_list(
 		goto out;
 	}
 
+	readdir_context.vol = vol->vol;
 	readdir_context.attributes = attributes;
 	readdir_context.handle_dirent_context = context;
 	readdir_context.handle_dirent = handle_dirent;
