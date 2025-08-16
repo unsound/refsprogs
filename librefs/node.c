@@ -1860,17 +1860,16 @@ static int parse_generic_entry(
 		"regular entry",
 		PRAu32(entry_offset),
 		PRAX32(entry_offset));
-	emit(prefix, indent + 1, "Size: %" PRIu64 " / 0x%" PRIX64,
-		PRAu64(entry_size),
-		PRAX64(entry_size));
 
+	print_le16_dechex("Size", prefix, indent + 1, entry, &entry[0x0]);
 	print_le16_dechex("Key offset", prefix, indent + 1, entry, &entry[0x4]);
 	key_offset = read_le16(&entry[0x4]);
 	print_le16_dechex("Key size", prefix, indent + 1, entry, &entry[0x6]);
 	key_size = read_le16(&entry[0x6]);
 	print_le16_dechex("Flags?", prefix, indent + 1, entry, &entry[0x8]);
 	value_offset = read_le16(&entry[0xA]);
-	print_le16_dechex("Value offset", prefix, indent + 1, entry, &entry[0xA]);
+	print_le16_dechex("Value offset", prefix, indent + 1, entry,
+		&entry[0xA]);
 	value_size = read_le16(&entry[0xC]);
 	print_le16_dechex("Value size", prefix, indent + 1, entry, &entry[0xC]);
 	print_unknown16(prefix, indent + 1, entry, &entry[0xE]);
