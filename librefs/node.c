@@ -12409,6 +12409,12 @@ int parse_level3_long_value(
 			PRAX16(read_le16(&value[i + 2])));
 		i += 4;
 	}
+
+	if(i < value_size) {
+		print_data_with_base(prefix, indent, i, value_size, &value[i],
+			value_size - i);
+		i = value_size;
+	}
 out:
 	if(cstr) {
 		sys_free(&cstr);
