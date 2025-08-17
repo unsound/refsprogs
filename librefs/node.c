@@ -12399,7 +12399,7 @@ int parse_level3_long_value(
 		emit(prefix, indent, "Index of attribute %" PRIu16 " @ "
 			"%" PRIuz " / 0x%" PRIXz ": %" PRIu16 " (absolute: "
 			"%" PRIu32 ", flags: 0x%" PRIX16 ")",
-			PRAu16(j + 2), PRAuz(i), PRAXz(i),
+			PRAu16(j + 1), PRAuz(i), PRAXz(i),
 			PRAu16(read_le16(&value[i])),
 			PRAu32(attributes_offset + read_le16(&value[i])),
 			PRAX16(read_le16(&value[i + 2])));
