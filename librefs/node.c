@@ -4767,6 +4767,122 @@ out:
 	return err;
 }
 
+static int parse_attribute_named_stream_extent_key(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const data,
+		const u16 key_size,
+		u16 *const jp,
+		u64 *const out_stream_id)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+	const u16 j_start = *jp;
+
+	int err = 0;
+	u16 j = j_start;
+	u64 stream_id = 0;
+
+	(void) crawl_context;
+
+	/* 0x10 */
+	if(key_size - j >= 4) {
+		j += print_le32_dechex("Value size (2)", prefix, indent, data,
+			&data[j]);
+	}
+	/* 0x14 */
+	if(key_size - j >= 2) {
+		j += print_unknown16(prefix, indent, data, &data[j]);
+	}
+	/* 0x16 */
+	if(key_size - j >= 2) {
+		j += print_unknown16(prefix, indent, data, &data[j]);
+	}
+	/* 0x18 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x1C */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x20 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x24 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x28 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x2C */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x30 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x34 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x38 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x3C */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x40 */
+	if(key_size - j >= 4) {
+		stream_id = read_le64(&data[j]);
+		j += print_le32_dechex("Stream ID", prefix, indent, data,
+			&data[j]);
+	}
+	/* 0x44 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x48 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x4C */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x50 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x54 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x58 */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x5C */
+	if(key_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+
+	*jp = j;
+	if(out_stream_id) {
+		*out_stream_id = stream_id;
+	}
+
+	return err;
+}
+
 static int parse_attribute_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -5735,9 +5851,13 @@ static int parse_attribute_key(
 #endif
 	}
 	else if(key_offset == 0x0010 && key_size == 0x50) {
+#if 0
 		u64 stream_id = 0;
 		u32 num_extents = 0;
 		u32 k;
+#endif
+
+		sys_log_debug("Parsing named stream extent key.");
 
 #if 0
 		j += parse_level3_attribute_header(
@@ -5770,6 +5890,30 @@ static int parse_attribute_key(
 				&key[j]); /* 0x0C */
 		}
 #endif
+#if 1
+		if(key_size - j >= 4) {
+			err = parse_attribute_named_stream_extent_key(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* const u8 *attribute */
+				key,
+				/* u16 value_size */
+				key_size,
+				/* u16 *jp */
+				&j,
+				/* u64 *out_stream_id */
+				NULL);
+			if(err) {
+				goto out;
+			}
+		}
+#else
 		if(key_size - j >= 4) {
 			j += print_le32_dechex("Value size (2)", prefix,
 				indent, key,
@@ -6086,6 +6230,7 @@ static int parse_attribute_key(
 				"extent (?)", prefix, indent + 1,
 				key, &key[j]); /* 0x124 */
 		}
+#endif
 	}
 	else if(key_offset == 0x10 && key_size == 0x00) {
 		/* This appears to contain an independently allocated
@@ -7004,6 +7149,262 @@ static int parse_attribute_named_stream_value(
 	}
 
 	*jp += k;
+out:
+	return err;
+}
+
+static int parse_attribute_named_stream_extent_value(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 stream_id,
+		const u8 *const data,
+		const u16 value_size,
+		u16 *const jp)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const u16 j_start = *jp;
+
+	int err = 0;
+	u16 j = j_start;
+	u16 k = 0;
+	u32 num_extents = 0;
+
+	/* 0x60 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x64 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x68 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x6C */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x70 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x74 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x78 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x7C */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x80 */
+	if(value_size - j >= 4) {
+		j += print_le32_dechex("Number of extents", prefix, indent,
+			data, &data[j]);
+	}
+	/* 0x84 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x88 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x8C */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x90 */
+	if(value_size - j >= 8) {
+		j += print_le64_dechex("Allocated size (1)", prefix, indent,
+			data, &data[j]);
+	}
+	/* 0x98 */
+	if(value_size - j >= 8) {
+		j += print_le64_dechex("Logical size (1)", prefix, indent,
+			data, &data[j]);
+	}
+	/* 0xA0 */
+	if(value_size - j >= 8) {
+		j += print_le64_dechex("Logical size (2)", prefix, indent,
+			data, &data[j]);
+	}
+	/* 0xA8 */
+	if(value_size - j >= 8) {
+		j += print_le64_dechex("Allocated size (2)", prefix, indent,
+			data, &data[j]);
+	}
+	/* 0xB0 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xB4 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xB8 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xBC */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xC0 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xC4 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xC8 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xCC */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xD0 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xD4 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xD8 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xDC */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xE0 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xE4 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xE8 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xEC */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xF0 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xF4 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xF8 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0xFC */
+	if(value_size - j >= 4) {
+		num_extents = read_le32(&data[j]);
+		j += print_le32_dechex("Number of extents (2)", prefix, indent,
+			data, &data[j]);
+	}
+	/* 0x100 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x104 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x108 */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x10C */
+	if(value_size - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+
+	/* Iterate over extents in stream. */
+	for(k = 0; k < num_extents && (value_size - j) >= 24; ++k) {
+		const u64 first_physical_block =
+			logical_to_physical_block_number(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* u64 logical_block_number */
+				read_le64(&data[j]));
+		const u32 cluster_count =
+			read_le32(&data[j + 20]);
+
+		if(visitor && visitor->node_stream_extent) {
+			err = visitor->node_stream_extent(
+				/* void *context */
+				visitor->context,
+				/* u64 stream_id */
+				stream_id,
+				/* u64 first_block */
+				first_physical_block,
+				/* u32 block_index_unit */
+				block_index_unit,
+				/* u32 cluster_count */
+				cluster_count);
+			if(err) {
+				goto out;
+			}
+		}
+
+		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 ":",
+			PRAu32(k + 1), PRAu32(num_extents));
+
+		if(!is_v3) {
+			/* v1: 0x110 */
+			j += print_le64_dechex("Block count", prefix,
+				indent + 1,
+				data, &data[j]);
+		}
+
+		/* v3: 0x110 */
+		j += print_le64_dechex("First block", prefix, indent + 1, data,
+			&data[j]);
+		emit(prefix, indent + 2,
+			"-> Physical block: %" PRIu64 " / 0x%" PRIX64 " (byte "
+			"offset: %" PRIu64 ")",
+			PRAu64(first_physical_block),
+			PRAX64(first_physical_block),
+			PRAu64(first_physical_block * block_index_unit));
+
+		/* v3: 0x118 */
+		j += print_le32_dechex("Flags", prefix, indent + 1, data,
+			&data[j]);
+
+		/* v3: 0x11C */
+		j += print_le64_dechex("Logical block", prefix, indent + 1,
+			data, &data[j]);
+
+		/* v3: 0x124 */
+		j += print_le32_dechex("Number of clusters in "
+			"extent (?)", prefix, indent + 1, data, &data[j]);
+	}
+
+	*jp = j;
 out:
 	return err;
 }
@@ -8020,9 +8421,15 @@ static int parse_attribute_leaf_value(
 #endif
 	}
 	else if(key_offset == 0x0010 && key_size == 0x50) {
+#if 1
+		const u64 stream_id = read_le64(&key[0x30]);
+#else
 		u64 stream_id = 0;
 		u32 num_extents = 0;
 		u32 k;
+#endif
+
+		sys_log_debug("Parsing named stream extent value.");
 
 #if 0
 		j += parse_level3_attribute_header(
@@ -8144,6 +8551,30 @@ static int parse_attribute_leaf_value(
 				value, &value[j]); /* 0x5C */
 		}
 #endif
+#if 1
+		if(value_size - j >= 4) {
+			err = parse_attribute_named_stream_extent_value(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* u64 stream_id */
+				stream_id,
+				/* const u8 *attribute */
+				value,
+				/* u16 value_size */
+				value_size,
+				/* u16 *jp */
+				&j);
+			if(err) {
+				goto out;
+			}
+		}
+#else
 		if(value_size - j >= 4) {
 			j += print_unknown32(prefix, indent,
 				value, &value[j]); /* 0x60 */
@@ -8373,6 +8804,7 @@ static int parse_attribute_leaf_value(
 				"extent (?)", prefix, indent + 1,
 				value, &value[j]); /* 0x124 */
 		}
+#endif
 	}
 	else if(key_offset == 0x10 && key_size == 0x00) {
 		/* This appears to contain an independently allocated
@@ -9331,10 +9763,13 @@ int parse_level3_long_value(
 	{
 		const size_t offset_in_value = i;
 		const size_t remaining_in_value = value_size - offset_in_value;
-		const u8 *attribute = &value[offset_in_value];
+		const u8 *const attribute = &value[offset_in_value];
+
 		u16 remaining_in_attribute = 0;
 		u16 attr_key_offset = 0;
 		u16 attr_key_size = 0;
+		u16 attr_value_offset = 0;
+		u16 attr_value_size = 0;
 		u16 attribute_type = 0;
 
 		attribute_size = 0;
@@ -9345,13 +9780,23 @@ int parse_level3_long_value(
 			break;
 		}
 
-		attr_key_offset =
-			(attribute_size >= 6) ? read_le16(&attribute[4]) : 0;
-		attr_key_size =
-			(attribute_size >= 8) ? read_le16(&attribute[6]) : 0;
-
 		remaining_in_attribute =
 			(u16) sys_min(attribute_size, remaining_in_value);
+
+		if(attribute_index >= 2) {
+			attr_key_offset =
+				(remaining_in_attribute >= 0x4 + 2) ?
+				read_le16(&attribute[0x4]) : 0;
+			attr_key_size =
+				(remaining_in_attribute >= 0x6 + 2) ?
+				read_le16(&attribute[0x6]) : 0;
+			attr_value_offset =
+				(remaining_in_attribute >= 0xA + 2) ?
+				read_le16(&attribute[0xA]) : 0;
+			attr_value_size =
+				(remaining_in_attribute >= 0xC + 2) ?
+				read_le16(&attribute[0xC]) : 0;
+		}
 
 		if(attribute_index == 1) {
 			emit(prefix, indent, "Attribute header @ %" PRIuz " / "
@@ -9428,19 +9873,6 @@ int parse_level3_long_value(
 			j += remaining_in_attribute;
 		}
 		else if(attribute_type == 0x0080) {
-			const u16 attr_key_offset =
-				(remaining_in_attribute > 0x4 + 2) ?
-				read_le16(&attribute[0x4]) : 0;
-			const u16 attr_key_size =
-				(remaining_in_attribute > 0x6 + 2) ?
-				read_le16(&attribute[0x6]) : 0;
-			const u16 attr_value_offset =
-				(remaining_in_attribute > 0xA + 2) ?
-				read_le16(&attribute[0xA]) : 0;
-			const u16 attr_value_size =
-				(remaining_in_attribute > 0xC + 2) ?
-				read_le16(&attribute[0xC]) : 0;
-
 			u16 data_stream_type;
 
 			sys_log_debug("Parsing data stream attribute.");
@@ -10174,17 +10606,7 @@ int parse_level3_long_value(
 			}
 		}
 		else if(attribute_type == 0x00B0) {
-#if 1
-			const u16 attr_key_size =
-				(remaining_in_attribute > 0x6 + 2) ?
-				read_le16(&attribute[0x6]) : 0;
-			const u16 attr_value_offset =
-				(remaining_in_attribute > 0xA + 2) ?
-				read_le16(&attribute[0xA]) : 0;
-			const u16 attr_value_size =
-				(remaining_in_attribute > 0xC + 2) ?
-				read_le16(&attribute[0xC]) : 0;
-#else
+#if 0
 			const u16 name_start = attr_key_offset;
 			const u16 name_end = attr_key_size;
 #endif
@@ -10575,8 +10997,12 @@ int parse_level3_long_value(
 		}
 		else if(attr_key_offset == 0x0010 && attr_key_size == 0x50) {
 			u64 stream_id = 0;
+#if 0
 			u32 num_extents = 0;
 			u32 k;
+#endif
+
+			sys_log_debug("Parsing named stream extent attribute.");
 
 			j += parse_level3_attribute_header(
 				/* refs_node_walk_visitor *visitor */
@@ -10593,6 +11019,14 @@ int parse_level3_long_value(
 				attribute_size,
 				/* u16 attribute_index */
 				attribute_index);
+
+			emit(prefix, indent + 1, "Key @ %" PRIuz " / "
+				"0x%" PRIXz " (size: %" PRIuz " / "
+				"0x%" PRIXz "):",
+				PRAuz(j), PRAXz(j), PRAuz(attr_key_size),
+				PRAXz(attr_key_size));
+
+#if 0
 			if(remaining_in_attribute - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -10607,6 +11041,34 @@ int parse_level3_long_value(
 					indent + 1, attribute,
 					&attribute[j]); /* 0x0C */
 			}
+#endif
+
+#if 1
+			if(remaining_in_attribute - j >= 4) {
+				err = parse_attribute_named_stream_extent_key(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* refs_node_walk_visitor *visitor */
+					visitor,
+					/* const char *prefix */
+					prefix,
+					/* size_t indent */
+					indent + 2,
+					/* const u8 *attribute */
+					attribute,
+					/* u16 value_size */
+					sys_min(remaining_in_attribute - j,
+					attr_key_size),
+					/* u16 *jp */
+					&j,
+					/* u64 *out_stream_id */
+					&stream_id);
+				if(err) {
+					goto out;
+				}
+			}
+#else
 			if(remaining_in_attribute - j >= 4) {
 				j += print_le32_dechex("Value size (2)", prefix,
 					indent + 1, attribute,
@@ -10694,6 +11156,49 @@ int parse_level3_long_value(
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x5C */
 			}
+#endif
+#if 1
+			if(j < attr_value_offset) {
+				const u32 print_end =
+					sys_min(attr_value_offset,
+					remaining_in_attribute);
+				print_data_with_base(prefix, indent + 1, j,
+					print_end, &attribute[j],
+					print_end - j);
+				j = print_end;
+			}
+
+			emit(prefix, indent + 1, "Value @ %" PRIuz " / "
+				"0x%" PRIXz " (size: %" PRIuz " / "
+				"0x%" PRIXz "):",
+				PRAuz(j), PRAXz(j), PRAuz(attr_value_size),
+				PRAXz(attr_value_size));
+
+			if(remaining_in_attribute - j >= 4) {
+				err = parse_attribute_named_stream_extent_value(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* refs_node_walk_visitor *visitor */
+					visitor,
+					/* const char *prefix */
+					prefix,
+					/* size_t indent */
+					indent + 2,
+					/* u64 stream_id */
+					stream_id,
+					/* const u8 *attribute */
+					attribute,
+					/* u16 value_size */
+					sys_min(remaining_in_attribute - j,
+					attr_value_size),
+					/* u16 *jp */
+					&j);
+				if(err) {
+					goto out;
+				}
+			}
+#else
 			if(remaining_in_attribute - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x60 */
@@ -10923,6 +11428,7 @@ int parse_level3_long_value(
 					"extent (?)", prefix, indent + 2,
 					attribute, &attribute[j]); /* 0x124 */
 			}
+#endif
 		}
 		else if(attr_key_offset == 0x0010 && attribute_type == 0x00C0) {
 			err = parse_reparse_point_attribute(
