@@ -9611,49 +9611,54 @@ static u16 parse_level3_attribute_header(
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
+	const u16 remaining_in_attribute =
+		sys_min(remaining_in_value, attribute_size);
 
 	u16 j = 0;
 
-	if(remaining_in_value - j < 2) {
+	(void) attribute_index;
+
+	if(remaining_in_attribute - j < 4) {
 		goto out;
 	}
+	j += print_le32_dechex("Size", prefix, indent + 1, attribute,
+		&attribute[j]); /* 0x00 */
 
-	emit(prefix, indent + 1, "Attribute size @ %" PRIuz " / "
-		"0x%" PRIXz ": %" PRIu16 " / 0x%" PRIX16 "%s",
-		PRAuz(j),
-		PRAXz(j),
-		PRAu16(read_le16(&attribute[j])),
-		PRAX16(read_le16(&attribute[j])),
-		(attribute_size > remaining_in_value) ?
-		" (OVERFLOW)" : "");
-
-	j += 2;
-
-	if(remaining_in_value - j < 2) {
+	if(remaining_in_attribute - j < 2) {
 		goto out;
 	}
+	j += print_le16_dechex("Key offset", prefix, indent + 1, attribute,
+		&attribute[j]); /* 0x04 */
 
+	if(remaining_in_attribute - j < 2) {
+		goto out;
+	}
+	j += print_le16_dechex("Key size", prefix, indent + 1, attribute,
+		&attribute[j]); /* 0x06 */
+
+	if(remaining_in_attribute - j < 2) {
+		goto out;
+	}
+	j += print_le16_dechex("Flags?", prefix, indent + 1, attribute,
+		&attribute[j]); /* 0x08 */
+
+	if(remaining_in_attribute - j < 2) {
+		goto out;
+	}
+	j += print_le16_dechex("Value offset", prefix, indent + 1, attribute,
+		&attribute[j]); /* 0x0A */
+
+	if(remaining_in_attribute - j < 2) {
+		goto out;
+	}
+	j += print_le16_dechex("Value size", prefix, indent + 1, attribute,
+		&attribute[j]); /* 0x0C */
+
+	if(remaining_in_attribute - j < 2) {
+		goto out;
+	}
 	j += print_unknown16(prefix, indent + 1, attribute,
-		&attribute[j]);
-
-	if(remaining_in_value - j < 2) {
-		goto out;
-	}
-
-	if(remaining_in_value - j < 4) {
-		goto out;
-	}
-
-	if(attribute_index <= 2) {
-		j += print_unknown32(prefix, indent + 1, attribute,
-			&attribute[j]);
-	}
-	else {
-		j += print_le16_hex("Attribute type 1", prefix,
-			indent + 1, attribute, &attribute[j]);
-		j += print_le16_hex("Attribute type 2", prefix,
-			indent + 1, attribute, &attribute[j]);
-	}
+		&attribute[j]); /* 0x0E */
 out:
 	return j;
 }
@@ -9695,18 +9700,6 @@ static int parse_reparse_point_attribute(
 		attribute_size,
 		/* u16 attribute_index */
 		attribute_index);
-	if(remaining_in_attribute - j >= 2) {
-		j += print_unknown16(prefix, indent + 1, attribute,
-			&attribute[j]); /* 0x08 */
-	}
-	if(remaining_in_attribute - j >= 2) {
-		j += print_le16_dechex("Value offset", prefix, indent + 1,
-			attribute, &attribute[j]); /* 0x0A */
-	}
-	if(remaining_in_attribute - j >= 4) {
-		j += print_le32_dechex("Value size (1)", prefix, indent + 1,
-			attribute, &attribute[j]); /* 0x0C */
-	}
 	if(remaining_in_attribute - j >= 4) {
 		j += print_le32_dechex("Value size (2)", prefix, indent + 1,
 			attribute, &attribute[j]); /* 0x10 */
