@@ -344,18 +344,23 @@ static int refsimage_node_hardlink_entry(
 
 static int refsimage_node_file_extent(
 		void *_context,
-		u64 first_block,
+		u64 first_logical_block,
+		u64 first_physical_block,
 		u64 block_count,
 		u32 block_index_unit)
 {
 	refsimage_crawl_context *const context =
 		(refsimage_crawl_context*) _context;
 	const u64 start_cluster =
-		(first_block * block_index_unit) / context->vol->cluster_size;
+		(first_physical_block * block_index_unit) /
+		context->vol->cluster_size;
 	u64 end_cluster =
 		(block_count * block_index_unit + context->vol->cluster_size -
 		1) / context->vol->cluster_size;
 	u64 i;
+
+	/* Which logical block this is doesn't matter when dumping an image. */
+	(void) first_logical_block;
 
 	if(context->metadata) {
 		/* Don't include file data in the metadata bitmap. */
@@ -440,14 +445,16 @@ static int refsimage_node_stream(
 static int refsimage_node_stream_extent(
 		void *_context,
 		u64 stream_id,
-		u64 first_block,
+		u64 first_logical_block,
+		u64 first_physical_block,
 		u32 block_index_unit,
 		u32 cluster_count)
 {
 		refsimage_crawl_context *const context =
 		(refsimage_crawl_context*) _context;
 	const u64 start_cluster =
-		(first_block * block_index_unit) / context->vol->cluster_size;
+		(first_physical_block * block_index_unit) /
+		context->vol->cluster_size;
 	u64 end_cluster =
 		(cluster_count * block_index_unit + context->vol->cluster_size -
 		1) / context->vol->cluster_size;
@@ -456,8 +463,11 @@ static int refsimage_node_stream_extent(
 	sys_log_debug("Stream extent with id %" PRIu64 ". First block: "
 		"%" PRIu64 " Block index unit: %" PRIu32 " Block count: "
 		"%" PRIu32,
-		PRAu64(stream_id), PRAu64(first_block),
+		PRAu64(stream_id), PRAu64(first_physical_block),
 		PRAu32(block_index_unit), PRAu32(cluster_count));
+
+	/* Which logical block this is doesn't matter when dumping an image. */
+	(void) first_logical_block;
 
 	if(context->metadata) {
 		/* Don't include stream data in the metadata bitmap. TODO: Maybe

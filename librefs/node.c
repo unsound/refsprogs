@@ -6782,6 +6782,7 @@ static int parse_attribute_non_resident_data_value(
 
 	for(k = 0; k < number_of_extents; ++k) {
 		u64 first_physical_block = 0;
+		u64 first_logical_block = 0;
 		u32 block_count = 0;
 
 		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 ":",
@@ -6826,6 +6827,7 @@ static int parse_attribute_non_resident_data_value(
 
 		if(is_v3);
 		else if(value_end - j >= 8) {
+			first_logical_block = read_le64(&value[j]);
 			j += print_le64_dechex("Extent start logical block",
 				prefix, indent + 1, value, &value[j]);
 		}
@@ -6881,6 +6883,7 @@ static int parse_attribute_non_resident_data_value(
 		if(!is_v3);
 		else if(value_end - j >= 8) {
 			/* XXX: Misaligned? */
+			first_logical_block = read_le64(&value[j]);
 			j += print_le64_dechex("Extent start logical block",
 				prefix, indent + 1, value, &value[j]);
 		}
@@ -6904,7 +6907,9 @@ static int parse_attribute_non_resident_data_value(
 			err = visitor->node_file_extent(
 				/* void *context */
 				visitor->context,
-				/* u64 first_block */
+				/* u64 first_logical_block */
+				first_logical_block,
+				/* u64 first_physical_block */
 				first_physical_block,
 				/* u64 block_count */
 				block_count,
@@ -7584,6 +7589,8 @@ static int parse_attribute_named_stream_extent_value(
 				crawl_context,
 				/* u64 logical_block_number */
 				read_le64(&data[j]));
+		const u32 first_logical_block =
+			read_le64(&data[j + 12]);
 		const u32 cluster_count =
 			read_le32(&data[j + 20]);
 
@@ -7593,7 +7600,9 @@ static int parse_attribute_named_stream_extent_value(
 				visitor->context,
 				/* u64 stream_id */
 				stream_id,
-				/* u64 first_block */
+				/* u64 first_logical_block */
+				first_logical_block,
+				/* u64 first_physical_block */
 				first_physical_block,
 				/* u32 block_index_unit */
 				block_index_unit,
