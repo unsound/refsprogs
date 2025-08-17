@@ -10318,10 +10318,14 @@ int parse_level3_long_value(
 				PRAXz(offset_in_value));
 		}
 		else {
-			const u16 attribute_type_offset = is_v3 ? 0x1C : 0x18;
+			const u16 attribute_type_offset =
+				attr_key_offset + (is_v3 ? 0xC : 0x8);
+			const u16 key_end =
+				(u16) sys_min(
+					attr_key_offset + (u32) attr_key_size,
+					remaining_in_attribute);
 
-			if(remaining_in_attribute >= attribute_type_offset + 2)
-			{
+			if(attribute_type_offset + 2 <= key_end) {
 				attribute_type = read_le16(
 					&attribute[attribute_type_offset]);
 			}
