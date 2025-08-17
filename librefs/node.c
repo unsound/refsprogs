@@ -6589,6 +6589,7 @@ static int parse_attribute_key(
 	}
 #endif
 	else {
+		sys_log_debug("Parsing unknown key.");
 		/* Unknown type, but assume it conforms to the same initial key
 		 * structure as we've seen in the past. */
 		if(key_size - j >= 4) {
@@ -9600,6 +9601,9 @@ static int parse_attribute_leaf_value(
 #endif
 	}
 #endif
+	else {
+		sys_log_debug("Parsing unknown value.");
+	}
 out:
 	if(j < value_size) {
 		print_data_with_base(prefix, indent, j, value_size, &value[j],
@@ -12370,6 +12374,9 @@ int parse_level3_long_value(
 				}
 			}
 #endif
+		}
+		else {
+			sys_log_debug("Parsing unknown attribute.");
 		}
 
 		if(j < remaining_in_attribute) {
