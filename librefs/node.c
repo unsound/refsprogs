@@ -4665,6 +4665,55 @@ static int parse_attribute_data_key(
 	return 0;
 }
 
+static int parse_attribute_ea_key(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const data,
+		const u16 key_size,
+		u16 *const jp)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+	const u16 j_start = *jp;
+	const u16 key_end = j_start + key_size;
+
+	u16 j = j_start;
+
+	(void) crawl_context;
+
+	/* 0x10 */
+	if(key_end - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x14 */
+	if(key_end - j >= 2) {
+		j += print_unknown16(prefix, indent, data, &data[j]);
+	}
+	/* 0x16 */
+	if(key_end - j >= 2) {
+		j += print_unknown16(prefix, indent, data, &data[j]);
+	}
+	/* 0x18 */
+	if(key_end - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x1C */
+	if(key_end - j >= 4) {
+		j += print_le16_dechex("Stream type ($EA)", prefix, indent,
+			data, &data[j]);
+	}
+	/* 0x1E */
+	if(key_end - j >= 2) {
+		j += print_unknown16(prefix, indent, data, &data[j]);
+	}
+
+	*jp = j;
+
+	return 0;
+}
+
 static int parse_attribute_named_stream_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -5348,11 +5397,12 @@ static int parse_attribute_key(
 		}
 	}
 #endif
-	else if(key_offset == 0x0010 && key_size == 0x0010 &&
-		attribute_type == 0x00E0)
-	{
+	else if(attribute_type == 0x00E0) {
 		/* This attribute type appears to be inline data for the
 		 * EA stream. Likely same format as the above. */
+		sys_log_debug("Parsing $EA attribute key.");
+
+#if 0
 		if(key_size - j >= 4) {
 			j += print_unknown32(prefix, indent,
 				key, &key[j]); /* 0x10 */
@@ -5501,6 +5551,25 @@ static int parse_attribute_key(
 					ea_end_offset - j);
 				j = ea_end_offset;
 			}
+		}
+#endif
+		err = parse_attribute_ea_key(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* const u8 *data */
+			key,
+			/* u16 key_size */
+			key_size,
+			/* u16 *jp */
+			&j);
+		if(err) {
+			goto out;
 		}
 	}
 	else if(attribute_type == 0x00B0) {
@@ -6965,6 +7034,150 @@ out:
 	return err;
 }
 
+static int parse_attribute_ea_value(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const data,
+		const u16 value_size,
+		u16 *const jp)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+	const u16 j_start = *jp;
+	const u16 value_end = j_start + value_size;
+
+	int err = 0;
+	u16 j = j_start;
+
+	(void) crawl_context;
+
+	/* 0x20 */
+	if(value_end - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x24 */
+	if(value_end - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+	/* 0x28 */
+	if(value_end - j >= 4) {
+		j += print_unknown32(prefix, indent, data, &data[j]);
+	}
+
+	/* After this, the EA list starts. */
+	/* 0x2C */
+	while(value_end - j >= 8) {
+		u32 offset_to_next_ea = 0;
+		u32 ea_end_offset = 0;
+		u8 name_length = 0;
+		u16 ea_data_length = 0;
+		const char *name = NULL;
+		const void *ea_data = NULL;
+
+		if(value_end - j >= 4) {
+			offset_to_next_ea = read_le32(&data[j]);
+			ea_end_offset = j + offset_to_next_ea;
+			j += print_le32_dechex("Offset to next EA", prefix,
+				indent, data, &data[j]);
+			if(ea_end_offset > value_end) {
+				sys_log_warning("Offset to next EA is outside "
+					"the bounds of the attribute: "
+					"%" PRIu32 " > %" PRIu32,
+					PRAu32(ea_end_offset),
+					PRAu32(value_end));
+				ea_end_offset = value_end;
+			}
+			else if(ea_end_offset <= j) {
+				break;
+			}
+		}
+		if(ea_end_offset - j >= 1) {
+			j += print_u8_dechex("Flags", prefix, indent, data,
+				&data[j]);
+		}
+		if(ea_end_offset - j >= 1) {
+			name_length = ((u8*) data)[j];
+			j += print_u8_dechex("Name length", prefix, indent,
+				data, &data[j]);
+		}
+		if(ea_end_offset - j >= 2) {
+			ea_data_length = read_le16(&data[j]);
+			j += print_le16_dechex("Data length", prefix, indent,
+				data, &data[j]);
+		}
+
+		if(name_length > ea_end_offset - j) {
+			sys_log_warning("Name length exceeds EA bounds: "
+				"%" PRIu8 " > %" PRIu32,
+				PRAu8(name_length), PRAu32(ea_end_offset - j));
+			name_length = ea_end_offset - j;
+		}
+
+		name = (const char*) &data[j];
+		emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz ": "
+			"%" PRIbs,
+			PRAuz(j), PRAXz(j), PRAbs(name_length, &data[j]));
+		if(ea_end_offset - j < name_length) {
+			break;
+		}
+		if(ea_end_offset - j < 1) {
+			break;
+		}
+		j += name_length;
+
+		print_u8_hex("Null terminator", prefix, indent, data,
+			&data[j]);
+		++j;
+
+		if(ea_data_length > ea_end_offset - j) {
+			sys_log_warning("data length exceeds EA bounds: "
+				"%" PRIu8 " > %" PRIu32,
+				PRAu8(ea_data_length),
+				PRAu32(ea_end_offset - j));
+			ea_data_length = ea_end_offset - j;
+		}
+
+		ea_data = &data[j];
+		emit(prefix, indent, "Data @ %" PRIuz " / 0x%" PRIXz ":",
+			PRAuz(j), PRAXz(j));
+		print_data_with_base(prefix, indent + 1, 0, ea_data_length,
+			&data[j], ea_data_length);
+
+		if(visitor && visitor->node_ea) {
+			err = visitor->node_ea(
+				/* void *context */
+				visitor->context,
+				/* const char *name */
+				name,
+				/* size_t name_length */
+				name_length,
+				/* const void *data */
+				ea_data,
+				/* size_t data_size */
+				ea_data_length);
+			if(err) {
+				goto out;
+			}
+		}
+
+		j += ea_data_length;
+
+		if(j < ea_end_offset) {
+			print_data_with_base(prefix, indent,
+				j, ea_end_offset,
+				&data[j],
+				ea_end_offset - j);
+			j = ea_end_offset;
+		}
+	}
+
+	*jp = j;
+out:
+	return err;
+}
+
 static int parse_attribute_named_stream_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -7953,11 +8166,11 @@ static int parse_attribute_leaf_value(
 		}
 	}
 #endif
-	else if(key_offset == 0x0010 && key_size == 0x0010 &&
-		attribute_type == 0x00E0)
-	{
+	else if(attribute_type == 0x00E0) {
 		/* This attribute type appears to be inline data for the
 		 * EA stream. Likely same format as the above. */
+		sys_log_debug("Parsing $EA attribute value.");
+
 #if 0
 		if(key_size - j >= 4) {
 			j += print_unknown32(prefix, indent,
@@ -7982,6 +8195,7 @@ static int parse_attribute_leaf_value(
 		}
 		/* Key ends here. */
 #endif
+#if 0
 		if(value_size - j >= 4) {
 			j += print_unknown32(prefix, indent,
 				value, &value[j]); /* 0x20 */
@@ -8109,6 +8323,25 @@ static int parse_attribute_leaf_value(
 					ea_end_offset - j);
 				j = ea_end_offset;
 			}
+		}
+#endif
+		err = parse_attribute_ea_value(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* const u8 *data */
+			value,
+			/* u16 value_size */
+			value_size,
+			/* u16 *jp */
+			&j);
+		if(err) {
+			goto out;
 		}
 	}
 	else if(attribute_type == 0x00B0) {
@@ -10423,11 +10656,12 @@ int parse_level3_long_value(
 			}
 		}
 #endif
-		else if(attr_key_offset == 0x0010 && attr_key_size == 0x0010 &&
-			attribute_type == 0x00E0)
-		{
+		else if(attribute_type == 0x00E0) {
 			/* This attribute type appears to be inline data for the
 			 * EA stream. Likely same format as the above. */
+
+			sys_log_debug("Parsing $EA attribute.");
+
 			j += parse_level3_attribute_header(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
@@ -10443,6 +10677,8 @@ int parse_level3_long_value(
 				attribute_size,
 				/* u16 attribute_index */
 				attribute_index);
+
+#if 0
 			if(attribute_size - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -10455,6 +10691,37 @@ int parse_level3_long_value(
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x0C */
 			}
+#endif
+
+			emit(prefix, indent + 1, "Key @ %" PRIuz " / "
+				"0x%" PRIXz " (size: %" PRIuz " / "
+				"0x%" PRIXz "):",
+				PRAuz(j), PRAXz(j), PRAuz(attr_key_size),
+				PRAXz(attr_key_size));
+#if 1
+			if(remaining_in_attribute - j >= 4) {
+				err = parse_attribute_ea_key(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* refs_node_walk_visitor *visitor */
+					visitor,
+					/* const char *prefix */
+					prefix,
+					/* size_t indent */
+					indent + 2,
+					/* const u8 *data */
+					attribute,
+					/* u16 key_size */
+					sys_min(remaining_in_attribute - j,
+					attr_key_size),
+					/* u16 *jp */
+					&j);
+				if(err) {
+					goto out;
+				}
+			}
+#else
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x10 */
@@ -10476,6 +10743,48 @@ int parse_level3_long_value(
 					prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x1C */
 			}
+#endif
+
+			if(j < attr_value_offset) {
+				const u32 print_end =
+					sys_min(attr_value_offset,
+					remaining_in_attribute);
+				print_data_with_base(prefix, indent + 1, j,
+					print_end, &attribute[j],
+					print_end - j);
+				j = print_end;
+			}
+
+			emit(prefix, indent + 1, "Value @ %" PRIuz " / "
+				"0x%" PRIXz " (size: %" PRIuz " / "
+				"0x%" PRIXz "):",
+				PRAuz(j), PRAXz(j), PRAuz(attr_value_size),
+				PRAXz(attr_value_size));
+
+#if 1
+			if(remaining_in_attribute - j >= 4) {
+				err = parse_attribute_ea_value(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* refs_node_walk_visitor *visitor */
+					visitor,
+					/* const char *prefix */
+					prefix,
+					/* size_t indent */
+					indent + 2,
+					/* const u8 *data */
+					attribute,
+					/* u16 key_size */
+					sys_min(remaining_in_attribute - j,
+					attr_value_size),
+					/* u16 *jp */
+					&j);
+				if(err) {
+					goto out;
+				}
+			}
+#else
 			if(attribute_size - j >= 4) {
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x20 */
@@ -10604,6 +10913,7 @@ int parse_level3_long_value(
 					j = ea_end_offset;
 				}
 			}
+#endif
 		}
 		else if(attribute_type == 0x00B0) {
 #if 0
