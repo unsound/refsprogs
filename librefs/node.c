@@ -12396,6 +12396,10 @@ int parse_level3_long_value(
 	}
 
 	for(j = 0; j < number_of_attributes; ++j) {
+		if(i + 4 > value_size) {
+			break;
+		}
+
 		emit(prefix, indent, "Index of attribute %" PRIu16 " @ "
 			"%" PRIuz " / 0x%" PRIXz ": %" PRIu16 " (absolute: "
 			"%" PRIu32 ", flags: 0x%" PRIX16 ")",
