@@ -58,6 +58,22 @@ typedef struct {
 
 /* Forward declarations. */
 
+static int parse_attribute_leaf_value(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const u8 *const key,
+		const u16 key_offset,
+		const u16 key_size,
+		const u8 *const value,
+		const u16 value_offset,
+		const u16 value_size,
+		const u16 entry_offset,
+		const u32 entry_size,
+		void *const context);
+
 static int parse_level3_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -4946,7 +4962,6 @@ static int parse_attribute_key(
 		const u32 entry_size,
 		void *const context)
 {
-	const u32 block_index_unit = crawl_context->block_index_unit;
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 	const u16 attribute_type_offset = is_v3 ? 0x0C : 0x08;
@@ -4962,6 +4977,7 @@ static int parse_attribute_key(
 	(void) is_v3;
 	(void) is_index;
 	(void) entry_size;
+	(void) context;
 
 	emit(prefix, indent - 1, "Key (attribute):");
 
@@ -6301,6 +6317,7 @@ static int parse_attribute_key(
 		}
 #endif
 	}
+#if 0
 	else if(key_offset == 0x10 && key_size == 0x00) {
 		/* This appears to contain an independently allocated
 		 * (non-resident) attribute list. */
@@ -6568,6 +6585,7 @@ static int parse_attribute_key(
 			}
 		}
 	}
+#endif
 	else {
 		/* Unknown type, but assume it conforms to the same initial key
 		 * structure as we've seen in the past. */
@@ -7622,6 +7640,260 @@ out:
 	return err;
 }
 
+static int parse_non_resident_attribute_list_value(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const data,
+		const u16 value_size,
+		void *const context,
+		u16 *const jp)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	const u32 block_index_unit = crawl_context->block_index_unit;
+	const u16 j_start = *jp;
+	const u16 value_end = j_start + value_size;
+
+	int err = 0;
+	u16 j = j_start;
+	u64 logical_blocks[4] = { 0, 0, 0, 0 };
+	u64 physical_blocks[4] = { 0, 0, 0, 0 };
+	u8 *block = NULL;
+
+	/* 0x10 */
+	if(value_end - j >= 8) {
+		logical_blocks[0] = read_le64(&data[j]);
+		physical_blocks[0] =
+			logical_to_physical_block_number(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* u64 logical_block_number */
+				logical_blocks[0]);
+
+		j += print_le64_dechex("Block number 1", prefix, indent, data,
+			&data[j]);
+		emit(prefix, indent + 1, "-> Physical block: %" PRIu64 " / "
+			"0x%" PRIX64 " (byte offset: %" PRIu64 ")",
+			PRAu64(physical_blocks[0]),
+			PRAX64(physical_blocks[0]),
+			PRAu64(physical_blocks[0] * block_index_unit));
+	}
+	/* v3: 0x18 */
+	if(is_v3 && value_end - j >= 8) {
+		logical_blocks[1] = read_le64(&data[j]);
+		physical_blocks[1] =
+			logical_to_physical_block_number(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* u64 logical_block_number */
+				logical_blocks[1]);
+
+		j += print_le64_dechex("Block number 2", prefix, indent,
+			data, &data[j]);
+		emit(prefix, indent + 1, "-> Physical block: %" PRIu64 " / "
+			"0x%" PRIX64 " (byte offset: %" PRIu64 ")",
+			PRAu64(physical_blocks[1]),
+			PRAX64(physical_blocks[1]),
+			PRAu64(physical_blocks[1] * block_index_unit));
+	}
+	/* v3: 0x20 */
+	if(is_v3 && value_end - j >= 8) {
+		logical_blocks[2] = read_le64(&data[j]);
+		physical_blocks[2] =
+			logical_to_physical_block_number(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* u64 logical_block_number */
+				logical_blocks[2]);
+
+		j += print_le64_dechex("Block number 3", prefix, indent,
+			data, &data[j]);
+		emit(prefix, indent + 1,
+			"-> Physical block: %" PRIu64 " / "
+			"0x%" PRIX64 " (byte offset: "
+			"%" PRIu64 ")",
+			PRAu64(physical_blocks[2]),
+			PRAX64(physical_blocks[2]),
+			PRAu64(physical_blocks[2] * block_index_unit));
+	}
+	/* v3: 0x28 */
+	if(is_v3 && value_end - j >= 8) {
+		logical_blocks[3] = read_le64(&data[j]);
+		physical_blocks[3] =
+			logical_to_physical_block_number(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* u64 logical_block_number */
+				logical_blocks[3]);
+
+		j += print_le64_dechex("Block number 4", prefix, indent,
+			data, &data[j]);
+		emit(prefix, indent + 1,
+			"-> Physical block: %" PRIu64 " / "
+			"0x%" PRIX64 " (byte offset: "
+			"%" PRIu64 ")",
+			PRAu64(physical_blocks[3]),
+			PRAX64(physical_blocks[3]),
+			PRAu64(physical_blocks[3] * block_index_unit));
+	}
+	/* v1: 0x18 v3: 0x30 */
+	if(value_end - j >= 8) {
+		j += print_le64_hex("Flags", prefix, indent, data,
+			&data[j]);
+	}
+	/* v1: 0x20 v3: 0x38 */
+	if(value_end - j >= 8) {
+		j += print_le64_hex("Checksum", prefix, indent, data,
+			&data[j]);
+	}
+
+	/* v1: 0x28 v3: 0x40 */
+	if(!logical_blocks[0]) {
+		sys_log_warning("Logical block 0 is invalid as a first block.");
+	}
+	else if(!physical_blocks[0]) {
+		sys_log_warning("Unable to map logical block %" PRIu64 " / "
+			"0x%" PRIX64 " to physical block.",
+			PRAu64(logical_blocks[0]),
+			PRAX64(logical_blocks[0]));
+	}
+	else {
+		const size_t bytes_per_read =
+			sys_min(crawl_context->cluster_size,
+			crawl_context->block_size);
+
+		size_t bytes_read = 0;
+		u8 k = 0;
+
+		err = sys_malloc(crawl_context->block_size, &block);
+		if(err) {
+			sys_log_perror(err, "Error while allocating "
+				"%" PRIu32 " byte block",
+				PRAu32(crawl_context->block_size));
+			goto out;
+		}
+
+		while(bytes_read < crawl_context->block_size) {
+			sys_log_debug("Reading logical block %" PRIu64 " / "
+				"physical block %" PRIu64 " into "
+				"%" PRIuz "-byte buffer %p at buffer offset "
+				"%" PRIuz,
+				PRAu64(logical_blocks[k]),
+				PRAu64(physical_blocks[k]),
+				PRAuz(crawl_context->block_size),
+				block,
+				PRAuz(bytes_read));
+			err = sys_device_pread(
+				/* sys_device *dev */
+				crawl_context->dev,
+				/* u64 pos */
+				physical_blocks[k] * block_index_unit,
+				/* size_t count */
+				bytes_per_read,
+				/* void *b */
+				&block[bytes_read]);
+			if(err) {
+				break;
+			}
+
+			bytes_read += bytes_per_read;
+			++k;
+		}
+
+		if(err) {
+			sys_log_perror(err, "Error while reading %" PRIuz " "
+				"bytes from attribute block %" PRIu64 " "
+				"(offset %" PRIu64 ")",
+				PRAuz(crawl_context->block_size),
+				PRAu64(physical_blocks[k]),
+				PRAu64(physical_blocks[k] * block_index_unit));
+			goto out;
+		}
+
+		emit(prefix, indent, "Attribute node @ block %" PRIu64 " / "
+			"0x%" PRIX64 ":",
+			PRAu64(logical_blocks[0]), PRAX64(logical_blocks[0]));
+
+		err = parse_generic_block(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* size_t indent */
+			indent + 1,
+			/* u64 cluster_number */
+			physical_blocks[0],
+			/* u64 block_number */
+			logical_blocks[0],
+			/* u64 block_queue_index */
+			0 /* Different block queue... */,
+			/* u8 level */
+			4,
+			/* const u8 *block */
+			block,
+			/* u32 block_size */
+			crawl_context->block_size,
+			/* block_queue *block_queue */
+			NULL,
+			/* sys_bool add_subnodes_in_offsets_order */
+			SYS_TRUE,
+			/* void *context */
+			context,
+			/* int (*parse_key)(
+			 *      refs_node_crawl_context *crawl_context,
+			 *      refs_node_walk_visitor *visitor,
+			 *      const char *prefix,
+			 *      size_t indent,
+			 *      u64 object_id,
+			 *      sys_bool is_index,
+			 *      sys_bool is_v3,
+			 *      const u8 *key,
+			 *      u16 key_offset,
+			 *      u16 key_size,
+			 *      u32 entry_size,
+			 *      void *context) */
+			parse_attribute_key,
+			/* int (*parse_leaf_value)(
+			 *      refs_node_crawl_context *crawl_context,
+			 *      refs_node_walk_visitor *visitor,
+			 *      const char *prefix,
+			 *      size_t indent,
+			 *      u64 object_id,
+			 *      const u8 *key,
+			 *      u16 key_size,
+			 *      const u8 *value,
+			 *      u16 value_offset,
+			 *      u16 value_size,
+			 *      u16 entry_offset,
+			 *      u32 entry_size,
+			 *      void *context) */
+			parse_attribute_leaf_value,
+			/* int (*leaf_entry_handler)(
+			 *      void *context,
+			 *      const u8 *data,
+			 *      u32 data_size,
+			 *      u32 node_type) */
+			NULL);
+		if(err) {
+			sys_log_perror(err, "Error while parsing non-resident "
+				"attribute list");
+			goto out;
+		}
+	}
+
+	*jp = j;
+out:
+	if(block) {
+		sys_free(&block);
+	}
+
+	return err;
+}
+
 static int parse_attribute_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -7638,7 +7910,6 @@ static int parse_attribute_leaf_value(
 		const u32 entry_size,
 		void *const context)
 {
-	const u32 block_index_unit = crawl_context->block_index_unit;
 	const sys_bool is_v3 =
 		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	refs_node_print_visitor *const print_visitor =
@@ -9039,6 +9310,7 @@ static int parse_attribute_leaf_value(
 		}
 #endif
 	}
+#if 0
 	else if(key_offset == 0x10 && key_size == 0x00) {
 		/* This appears to contain an independently allocated
 		 * (non-resident) attribute list. */
@@ -9314,6 +9586,7 @@ static int parse_attribute_leaf_value(
 		}
 #endif
 	}
+#endif
 out:
 	if(j < value_size) {
 		print_data_with_base(prefix, indent, j, value_size, &value[j],
@@ -9700,7 +9973,6 @@ int parse_level3_long_value(
 		const u16 value_size,
 		void *const context)
 {
-	const u32 block_index_unit = crawl_context->block_index_unit;
 	const sys_bool is_v3 =
 		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	const u16 key_type = (key_size < 2) ? 0 : read_le16(&key[0]);
@@ -11767,8 +12039,13 @@ int parse_level3_long_value(
 		else if(attr_key_offset == 0x10 && attr_key_size == 0x00) {
 			/* This appears to contain an independently allocated
 			 * (non-resident) attribute list. */
+#if 0
 			u64 logical_blocks[4] = { 0, 0, 0, 0 };
 			u64 physical_blocks[4] = { 0, 0, 0, 0 };
+#endif
+
+			sys_log_debug("Parsing non-resident attribute list "
+				"entry.");
 
 			j += parse_level3_attribute_header(
 				/* refs_node_walk_visitor *visitor */
@@ -11785,6 +12062,7 @@ int parse_level3_long_value(
 				attribute_size,
 				/* u16 attribute_index */
 				attribute_index);
+#if 0
 			if(remaining_in_attribute - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -11797,6 +12075,40 @@ int parse_level3_long_value(
 				j += print_unknown32(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x0C */
 			}
+#endif
+
+#if 1
+			emit(prefix, indent + 1, "Value @ %" PRIuz " / "
+				"0x%" PRIXz " (size: %" PRIuz " / "
+				"0x%" PRIXz "):",
+				PRAuz(j), PRAXz(j), PRAuz(attr_value_size),
+				PRAXz(attr_value_size));
+
+			if(remaining_in_attribute - j >= 4) {
+				err = parse_non_resident_attribute_list_value(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* refs_node_walk_visitor *visitor */
+					visitor,
+					/* const char *prefix */
+					prefix,
+					/* size_t indent */
+					indent + 2,
+					/* const u8 *data */
+					attribute,
+					/* u16 value_size */
+					sys_min(remaining_in_attribute - j,
+					attr_value_size),
+					/* void *context */
+					context,
+					/* u16 *jp */
+					&j);
+				if(err) {
+					goto out;
+				}
+			}
+#else
 			if(remaining_in_attribute - j >= 8) {
 				logical_blocks[0] = read_le64(&attribute[j]);
 				physical_blocks[0] =
@@ -12042,6 +12354,7 @@ int parse_level3_long_value(
 					continue;
 				}
 			}
+#endif
 		}
 
 		if(j < remaining_in_attribute) {
