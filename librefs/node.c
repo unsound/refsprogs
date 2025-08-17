@@ -9996,7 +9996,7 @@ int parse_level3_long_value(
 		(value_size < (is_v3 ? 88 : 104) + 8) ? 0 :
 		read_le64(&value[is_v3 ? 88 : 104]);
 	const u64 allocated_size =
-		(value_size < (is_v3 ? 96 : 104) + 8) ? 0 :
+		(value_size < (is_v3 ? 96 : 112) + 8) ? 0 :
 		read_le64(&value[is_v3 ? 96 : 112]);
 
 	refs_node_print_visitor *const print_visitor =
