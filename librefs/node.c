@@ -4979,7 +4979,9 @@ static int parse_attribute_key(
 	(void) entry_size;
 	(void) context;
 
-	emit(prefix, indent - 1, "Key (attribute):");
+	emit(prefix, indent - 1, "Key (attribute) @ %" PRIu16 " / "
+		"0x%" PRIX16 ":",
+		PRAu16(key_offset), PRAX16(key_offset));
 
 #if 0
 	if(attribute_index - 1 == 1 &&
@@ -7930,7 +7932,9 @@ static int parse_attribute_leaf_value(
 	(void) entry_size;
 	(void) context;
 
-	emit(prefix, indent - 1, "Value (attribute):");
+	emit(prefix, indent - 1, "Value (attribute) @ %" PRIu16 " / "
+		"0x%" PRIX16 ":",
+		PRAu16(value_offset), PRAX16(value_offset));
 
 #if 0
 	if(attribute_index - 1 == 1 &&
