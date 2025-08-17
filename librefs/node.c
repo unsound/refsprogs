@@ -4665,6 +4665,108 @@ static int parse_attribute_data_key(
 	return 0;
 }
 
+static int parse_attribute_named_stream_key(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u8 *const attribute,
+		const u16 key_size,
+		u16 *const jp,
+		char **const out_cstr,
+		size_t *const out_cstr_length)
+{
+	const sys_bool is_v3 =
+		(crawl_context->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+	const u16 j_start = *jp;
+	const u16 key_end = j_start + key_size;
+	const u16 name_start = j_start + (is_v3 ? 0x10 : 0xC);
+
+	int err = 0;
+	u16 j = j_start;
+	char *cstr = NULL;
+	size_t cstr_length = 0;
+
+	/* 0x00 */
+	if(key_end - j >= 4) {
+		j += print_le32_dechex("Value size (2)", prefix, indent,
+			attribute, &attribute[j]);
+	}
+	/* 0x04 */
+	if(key_end - j >= 2) {
+		j += print_unknown16(prefix, indent, attribute,
+			&attribute[j]);
+	}
+	/* 0x06 */
+	if(key_end - j >= 2) {
+		j += print_unknown16(prefix, indent, attribute,
+			&attribute[j]);
+	}
+	/* 0x08 */
+	if(is_v3 && key_end - j >= 4) {
+		j += print_unknown32(prefix, indent, attribute,
+			&attribute[j]);
+	}
+	/* 0x0C */
+	if(key_end - j >= 4) {
+		j += print_le16_dechex("Stream type (named $DATA)",
+			prefix, indent, attribute, &attribute[j]);
+	}
+	/* 0x0E */
+	if(key_end - j >= 2) {
+		j += print_unknown16(prefix, indent, attribute, &attribute[j]);
+	}
+
+	if(j < name_start) {
+		const u32 print_end = sys_min(name_start, key_end);
+
+		print_data_with_base(prefix, indent, j, print_end,
+			&attribute[j], print_end - j);
+		j = print_end;
+	}
+
+	if(key_end >= name_start) {
+		err = sys_unistr_decode(
+			/* const refschar *ins */
+			(const refschar*) &attribute[name_start],
+			/* size_t ins_len */
+			(key_end - name_start) / sizeof(refschar),
+			/* char **outs */
+			&cstr,
+			/* size_t *outs_len */
+			&cstr_length);
+		if(err) {
+			sys_log_perror(err, "Error while decoding stream name");
+			goto out;
+		}
+
+		emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
+			"(length: %" PRIuz "):",
+			PRAuz(j), PRAXz(j), PRAuz(cstr_length));
+		emit(prefix, indent + 1, "%" PRIbs, PRAbs(cstr_length, cstr));
+		j += key_end - name_start;
+	}
+
+	*jp = j;
+
+	if(out_cstr) {
+		*out_cstr = cstr;
+		cstr = NULL;
+	}
+
+	if(out_cstr_length) {
+		*out_cstr_length = cstr_length;
+	}
+out:
+	if(cstr) {
+		sys_free(&cstr);
+	}
+
+	return err;
+}
+
 static int parse_attribute_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -5285,7 +5387,8 @@ static int parse_attribute_key(
 			}
 		}
 	}
-	else if(key_offset == 0x0010 && attribute_type == 0x00B0) {
+	else if(attribute_type == 0x00B0) {
+#if 0
 		const u16 name_start = 0x10;
 		const u16 name_end = key_size;
 #if 0
@@ -5297,9 +5400,13 @@ static int parse_attribute_key(
 		u32 data_size = 0;
 		sys_bool non_resident = SYS_FALSE;
 #endif
+#endif
 
 		/* This attribute type contains data about alternate data
 		 * streams. */
+
+		sys_log_debug("Parsing named stream key.");
+
 #if 0
 		j += parse_level3_attribute_header(
 			/* refs_node_walk_visitor *visitor */
@@ -5333,6 +5440,30 @@ static int parse_attribute_key(
 				&key[j]); /* 0x0C */
 		}
 #endif
+#if 1
+		err = parse_attribute_named_stream_key(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent,
+			/* const u8 *attribute */
+			key,
+			/* u16 key_size */
+			key_size,
+			/* u16 *jp */
+			&j,
+			/* char **out_cstr */
+			NULL,
+			/* size_t *out_cstr_length */
+			NULL);
+		if(err) {
+			goto out;
+		}
+#else
 		if(key_size - j >= 4) {
 			j += print_le32_dechex("Value size (2)", prefix,
 				indent, key,
@@ -5600,6 +5731,7 @@ static int parse_attribute_key(
 
 			j += k;
 		}
+#endif
 #endif
 	}
 	else if(key_offset == 0x0010 && key_size == 0x50) {
@@ -6688,6 +6820,194 @@ out:
 	return err;
 }
 
+static int parse_attribute_named_stream_value(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const char *const cstr,
+		const size_t cstr_length,
+		const u8 *const attribute,
+		const u16 value_size,
+		u16 *const jp)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+	const u16 j_start = *jp;
+	const u8 *const attr_value = &attribute[j_start];
+
+	int err = 0;
+	u16 k = 0;
+	sys_bool non_resident = SYS_FALSE;
+	u32 data_size = 0;
+
+	(void) crawl_context;
+
+	if(value_size - k >= 4) {
+		u32 flags;
+
+		flags = read_le32(&attr_value[k]);
+		k += print_le32_dechex("Flags", prefix, indent, attr_value,
+			&attr_value[k]);
+
+		if(flags & 0x10000000UL) {
+			flags &= ~0x10000000UL;
+			emit(prefix, indent + 1, "NON_RESIDENT%s",
+				flags ? " |" : "");
+			non_resident = SYS_TRUE;
+		}
+		if(flags) {
+			emit(prefix, indent + 1, "<unknown: 0x%" PRIu32 ">",
+				PRAu32(flags));
+		}
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_le32_dechex("Allocated size (1)", prefix, indent,
+			attr_value, &attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		data_size = read_le32(&attr_value[k]);
+		k += print_le32_dechex("Attribute size (1)", prefix, indent,
+			attr_value, &attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_le32_dechex("Attribute size (2)", prefix, indent,
+			attr_value, &attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_le32_dechex("Allocated size (2)", prefix, indent,
+			attr_value, &attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k >= 4) {
+		k += print_unknown32(prefix, indent, attr_value,
+			&attr_value[k]);
+	}
+	if(value_size - k > 0 && !non_resident) {
+		const u32 data_limit =
+			sys_min(data_size, (u16) (value_size - k));
+		refs_node_stream_data data;
+
+		memset(&data, 0, sizeof(data));
+
+		emit(prefix, indent, "Resident data @ %" PRIuz " / "
+			"0x%" PRIXz " (length: %" PRIuz "):",
+			PRAuz(k), PRAXz(k), PRAuz(data_size));
+
+		data.resident = SYS_TRUE;
+		data.data.resident = &attr_value[k];
+
+		if(visitor && visitor->node_stream) {
+			err = visitor->node_stream(
+				/* void *context */
+				visitor->context,
+				/* const char *name */
+				cstr,
+				/* size_t name_length */
+				cstr_length,
+				/* u64 data_size */
+				data_size,
+				/* const refs_node_stream_data
+				 * *data_reference */
+				&data);
+			if(err) {
+				goto out;
+			}
+		}
+
+		print_data_with_base(prefix, indent + 1, k, k + data_limit,
+			&attr_value[k], data_limit);
+		k += data_limit;
+	}
+	else if(non_resident) {
+		u64 stream_id = 0;
+
+		emit(prefix, indent, "Non-resident data @ %" PRIuz " / "
+			"0x%" PRIXz " (length: %" PRIuz "):",
+			PRAuz(k), PRAXz(k), PRAuz(data_size));
+		if(value_size - k >= 4) {
+			stream_id = read_le64(&attr_value[k]);
+			k += print_le64_dechex("Stream ID", prefix, indent + 1,
+				attr_value, &attr_value[k]);
+		}
+
+		if(visitor && visitor->node_stream && stream_id) {
+			refs_node_stream_data data;
+
+			memset(&data, 0, sizeof(data));
+
+			data.resident = SYS_FALSE;
+			data.data.non_resident.stream_id = stream_id;
+
+			err = visitor->node_stream(
+				/* void *context */
+				visitor->context,
+				/* const char *name */
+				cstr,
+				/* size_t name_length */
+				cstr_length,
+				/* u64 data_size */
+				data_size,
+				/* const refs_node_stream_data
+				 * *data_reference */
+				&data);
+			if(err) {
+				goto out;
+			}
+		}
+
+		if(value_size - k >= 4) {
+			k += print_unknown32(prefix, indent + 1, attr_value,
+				&attr_value[k]);
+		}
+	}
+
+	if(k < value_size) {
+		print_data_with_base(prefix, indent, k, value_size,
+			&attr_value[k], value_size - k);
+		k = value_size;
+	}
+
+	*jp += k;
+out:
+	return err;
+}
+
 static int parse_attribute_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -7390,12 +7710,16 @@ static int parse_attribute_leaf_value(
 			}
 		}
 	}
-	else if(key_offset == 0x0010 && attribute_type == 0x00B0) {
-		const u16 name_start = 0x10;
+	else if(attribute_type == 0x00B0) {
+		const u16 name_start = is_v3 ? 0x10 : 0xC;
 		const u16 name_end = key_size;
 
+#if 0
 		u32 data_size = 0;
 		sys_bool non_resident = SYS_FALSE;
+#endif
+
+		sys_log_debug("Parsing named stream value.");
 
 		/* This attribute type contains data about alternate data
 		 * streams. */
@@ -7518,6 +7842,32 @@ static int parse_attribute_leaf_value(
 			PRAXz(value_size));
 #endif
 
+#if 1
+		if(value_size - j >= 4) {
+			err = parse_attribute_named_stream_value(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent,
+				/* const char *cstr */
+				cstr,
+				/* size_t cstr_length */
+				cstr_length,
+				/* const u8 *attribute */
+				value,
+				/* u16 value_size */
+				value_size,
+				/* u16 *jp */
+				&j);
+			if(err) {
+				goto out;
+			}
+		}
+#else
 		if(value_size - j >= 4) {
 			u32 flags;
 
@@ -7667,6 +8017,7 @@ static int parse_attribute_leaf_value(
 				&value[j], value_size - j);
 			j = value_size;
 		}
+#endif
 	}
 	else if(key_offset == 0x0010 && key_size == 0x50) {
 		u64 stream_id = 0;
@@ -9822,15 +10173,34 @@ int parse_level3_long_value(
 				}
 			}
 		}
-		else if(attr_key_offset == 0x0010 && attribute_type == 0x00B0) {
+		else if(attribute_type == 0x00B0) {
+#if 1
+			const u16 attr_key_size =
+				(remaining_in_attribute > 0x6 + 2) ?
+				read_le16(&attribute[0x6]) : 0;
+			const u16 attr_value_offset =
+				(remaining_in_attribute > 0xA + 2) ?
+				read_le16(&attribute[0xA]) : 0;
+			const u16 attr_value_size =
+				(remaining_in_attribute > 0xC + 2) ?
+				read_le16(&attribute[0xC]) : 0;
+#else
 			const u16 name_start = attr_key_offset;
 			const u16 name_end = attr_key_size;
+#endif
+
+#if 0
 			u16 attr_value_offset = 0;
 			u32 attr_value_size = 0;
 			u32 real_name_offset = 0;
+#endif
 			size_t cstr_length = 0;
+#if 0
 			u32 data_size = 0;
 			sys_bool non_resident = SYS_FALSE;
+#endif
+
+			sys_log_debug("Parsing named stream attribute.");
 
 			/* This attribute type contains data relating to
 			 * alternate data streams. */
@@ -9849,6 +10219,38 @@ int parse_level3_long_value(
 				attribute_size,
 				/* u16 attribute_index */
 				attribute_index);
+
+#if 1
+			emit(prefix, indent + 1, "Key @ %" PRIuz " / "
+				"0x%" PRIXz " (size: %" PRIuz " / "
+				"0x%" PRIXz "):",
+				PRAuz(j), PRAXz(j), PRAuz(attr_key_size),
+				PRAXz(attr_key_size));
+
+			err = parse_attribute_named_stream_key(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* const char *prefix */
+				prefix,
+				/* size_t indent */
+				indent + 2,
+				/* const u8 *attribute */
+				attribute,
+				/* u16 key_size */
+				sys_min(remaining_in_attribute - j,
+				attr_key_size),
+				/* u16 *jp */
+				&j,
+				/* char **out_cstr */
+				&cstr,
+				/* size_t *out_cstr_length */
+				&cstr_length);
+			if(err) {
+				goto out;
+			}
+#else
 			if(remaining_in_attribute - j >= 2) {
 				j += print_unknown16(prefix, indent + 1,
 					attribute, &attribute[j]); /* 0x08 */
@@ -9927,6 +10329,7 @@ int parse_level3_long_value(
 					j += cstr_length * sizeof(refschar);
 				}
 			}
+#endif
 
 			if(j < attr_value_offset) {
 				const u32 print_end =
@@ -9944,6 +10347,34 @@ int parse_level3_long_value(
 				PRAuz(j), PRAXz(j), PRAuz(attr_value_size),
 				PRAXz(attr_value_size));
 
+#if 1
+			if(remaining_in_attribute > j) {
+				err = parse_attribute_named_stream_value(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* refs_node_walk_visitor *visitor */
+					visitor,
+					/* const char *prefix */
+					prefix,
+					/* size_t indent */
+					indent + 2,
+					/* const char *cstr */
+					cstr,
+					/* size_t cstr_length */
+					cstr_length,
+					/* const u8 *attribute */
+					attribute,
+					/* u16 value_size */
+					sys_min(remaining_in_attribute - j,
+					attr_value_size),
+					/* u16 *jp */
+					&j);
+				if(err) {
+					goto out;
+				}
+			}
+#else
 			if(remaining_in_attribute > j) {
 				const u8 *const attr_value = &attribute[j];
 				const u32 true_value_size =
@@ -10140,6 +10571,7 @@ int parse_level3_long_value(
 
 				j += k;
 			}
+#endif
 		}
 		else if(attr_key_offset == 0x0010 && attr_key_size == 0x50) {
 			u64 stream_id = 0;
