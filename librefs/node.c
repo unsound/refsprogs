@@ -2071,6 +2071,18 @@ static int parse_generic_block(
 	u32 value_offsets_end_real = 0;
 	u32 j = 0;
 
+	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
+		"cluster_number=%" PRIu64 ", block_number=%" PRIu64 ", "
+		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
+		"block_size=%" PRIu32 ", block_queue=%p, "
+		"add_subnodes_in_offsets_order=%d, context=%p, parse_key=%p, "
+		"parse_leaf_value=%p, leaf_entry_handler=%p): Entering...",
+		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
+		PRAu64(cluster_number), PRAu64(block_number),
+		PRAu64(block_queue_index), PRAu8(level), block,
+		PRAu32(block_size), block_queue, add_subnodes_in_offsets_order,
+		context, parse_key, parse_leaf_value, leaf_entry_handler);
+
 	if(block_size < 512) {
 		/* It doesn't make sense to have blocks less than a sector, and
 		 * the smallest sector size that we support is 512 bytes.
@@ -2580,6 +2592,18 @@ out:
 	if(value_offsets) {
 		sys_free(&value_offsets);
 	}
+
+	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
+		"cluster_number=%" PRIu64 ", block_number=%" PRIu64 ", "
+		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
+		"block_size=%" PRIu32 ", block_queue=%p, "
+		"add_subnodes_in_offsets_order=%d, context=%p, parse_key=%p, "
+		"parse_leaf_value=%p, leaf_entry_handler=%p): Leaving.",
+		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
+		PRAu64(cluster_number), PRAu64(block_number),
+		PRAu64(block_queue_index), PRAu8(level), block,
+		PRAu32(block_size), block_queue, add_subnodes_in_offsets_order,
+		context, parse_key, parse_leaf_value, leaf_entry_handler);
 
 	return err;
 }
@@ -10021,6 +10045,26 @@ int parse_level3_long_value(
 
 	(void) context;
 
+	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
+		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
+		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
+		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
+		"context=%p): Entering...",
+		__FUNCTION__,
+		crawl_context,
+		visitor,
+		prefix ? "\"" : "", prefix ? prefix : "NULL",
+		prefix ? "\"" : "",
+		PRAuz(indent),
+		PRAu64(parent_node_object_id),
+		PRAu16(entry_offset),
+		key,
+		PRAu16(key_size),
+		value,
+		PRAu16(value_offset),
+		PRAu16(value_size),
+		context);
+
 	sys_log_debug("Long value for key type 0x%" PRIX16 ".",
 		PRAX16(key_type));
 
@@ -12431,6 +12475,26 @@ out:
 		sys_free(&cstr);
 	}
 
+	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
+		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
+		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
+		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
+		"context=%p): Leaving",
+		__FUNCTION__,
+		crawl_context,
+		visitor,
+		prefix ? "\"" : "", prefix ? prefix : "NULL",
+		prefix ? "\"" : "",
+		PRAuz(indent),
+		PRAu64(parent_node_object_id),
+		PRAu16(entry_offset),
+		key,
+		PRAu16(key_size),
+		value,
+		PRAu16(value_offset),
+		PRAu16(value_size),
+		context);
+
 	return err;
 }
 
@@ -12483,6 +12547,26 @@ int parse_level3_short_value(
 		visitor ? &visitor->print_visitor : NULL;
 
 	int err = 0;
+
+	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
+		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
+		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
+		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
+		"context=%p): Entering...",
+		__FUNCTION__,
+		crawl_context,
+		visitor,
+		prefix ? "\"" : "", prefix ? prefix : "NULL",
+		prefix ? "\"" : "",
+		PRAuz(indent),
+		PRAu64(parent_node_object_id),
+		PRAu16(entry_offset),
+		key,
+		PRAu16(key_size),
+		value,
+		PRAu16(value_offset),
+		PRAu16(value_size),
+		context);
 
 	(void) crawl_context;
 	(void) context;
@@ -12573,6 +12657,26 @@ int parse_level3_short_value(
 			&value[72], value_size - 72);
 	}
 out:
+	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
+		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
+		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
+		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
+		"context=%p): Leaving.",
+		__FUNCTION__,
+		crawl_context,
+		visitor,
+		prefix ? "\"" : "", prefix ? prefix : "NULL",
+		prefix ? "\"" : "",
+		PRAuz(indent),
+		PRAu64(parent_node_object_id),
+		PRAu16(entry_offset),
+		key,
+		PRAu16(key_size),
+		value,
+		PRAu16(value_offset),
+		PRAu16(value_size),
+		context);
+
 	return err;
 }
 
