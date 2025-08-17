@@ -10009,6 +10009,8 @@ int parse_level3_long_value(
 	u16 attribute_index = 0;
 	u32 attributes_offset = 0;
 	u32 number_of_attributes = 0;
+	u32 value_offsets_start = 0;
+	u32 value_offsets_end = 0;
 	u16 offsets_start = 0;
 	u16 j = 0;
 	char *cstr = NULL;
@@ -10363,14 +10365,17 @@ int parse_level3_long_value(
 				/* u32 *out_flags */
 				NULL,
 				/* u32 *out_value_offsets_start */
-				NULL,
+				&value_offsets_start,
 				/* u32 *out_value_offsets_end */
-				NULL,
+				&value_offsets_end,
 				/* u32 *out_value_count */
 				&number_of_attributes);
 			if(err) {
 				goto out;
 			}
+
+			value_offsets_start += offset_in_value;
+			value_offsets_end += offset_in_value;
 
 			if(number_of_attributes > value_size) {
 				sys_log_warning("Inconsistent number of "
@@ -12377,7 +12382,13 @@ int parse_level3_long_value(
 		}
 	}
 
-	offsets_start = value_size - number_of_attributes * 4;
+	if(value_offsets_start && value_offsets_start < value_size) {
+		offsets_start = value_offsets_start;
+	}
+	else {
+		offsets_start = value_size - number_of_attributes * 4;
+	}
+
 	if(i < offsets_start) {
 		print_data_with_base(prefix, indent, i, value_size, &value[i],
 			offsets_start - i);
