@@ -44,6 +44,26 @@ AC_ARG_ENABLE(
 	[enable_refs_fuse="yes"]
 )
 
+AC_ARG_ENABLE(
+	[fuse3],
+	[AS_HELP_STRING(
+		[--disable-fuse3],
+		[do not build the FUSE driver against libfuse3, even when available)]
+	)],
+	[case $enableval in
+	yes)
+		enable_fuse3="yes"
+		;;
+	no)
+		enable_fuse3="no"
+		;;
+	*)
+		AC_MSG_ERROR([[Unknown option to --enable-fuse3: $enableval]])
+		;;
+	esac],
+	[enable_fuse3="yes"]
+)
+
 # Amend default include/library paths depending on the platform.
 case "$target_os" in
 openbsd*)
@@ -179,15 +199,17 @@ if test "x$enable_refs_fuse" = "xyes"; then
 			[]
 		)
 
-		PKG_CHECK_MODULES(
-			[FUSE3_MODULE],
-			[fuse3 >= 3.2.0],
-			[enable_fuse3="yes"],
-			[]
-		)
+		if test "x$enable_fuse3" == "xyes"; then
+			PKG_CHECK_MODULES(
+				[FUSE3_MODULE],
+				[fuse3 >= 3.2.0],
+				[use_fuse3="yes"],
+				[]
+			)
+		fi
 
 		__SAVED_CPPFLAGS="$CPPFLAGS"
-		if test "x$enable_fuse3" != "xyes"; then
+		if test "x$use_fuse3" != "xyes"; then
 			CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
 		else
 			CPPFLAGS="$CPPFLAGS $FUSE3_MODULE_CFLAGS -DFUSE_USE_VERSION=32"
@@ -209,7 +231,7 @@ AC_SUBST([FUSE_MODULE_LIBS])
 AM_CONDITIONAL([INSTALL_LIBRARY], [test "${enable_library}" = "yes"])
 AM_CONDITIONAL([ENABLE_NFCONV], [test "${enable_nfconv}" = "yes"])
 AM_CONDITIONAL([ENABLE_REFS_FUSE], [test "x${enable_refs_fuse}" = "xyes"])
-AM_CONDITIONAL([ENABLE_FUSE3], [test "x$enable_fuse3" = "xyes"])
+AM_CONDITIONAL([ENABLE_FUSE3], [test "x$use_fuse3" = "xyes"])
 
 # generate files
 AC_CONFIG_FILES([
