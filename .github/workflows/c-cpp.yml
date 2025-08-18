@@ -20,7 +20,7 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure
+      run: ./configure CFLAGS='-Wall -Wextra'
     - name: make
       run: make
     - name: make check
@@ -40,7 +40,7 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure
+      run: ./configure CFLAGS='-Wall -Wextra'
     - name: make
       run: make
     - name: make check
@@ -63,7 +63,7 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure --host=i686-w64-mingw32 --disable-shared CFLAGS="-I`pwd`/dokan/Win32/Msys2/include/fuse" LDFLAGS="-L`pwd`/dokan/Win32/Release -ldokanfuse2"
+      run: ./configure --host=i686-w64-mingw32 --disable-shared CFLAGS="-Wall -Wextra -I`pwd`/dokan/Win32/Msys2/include/fuse" LDFLAGS="-L`pwd`/dokan/Win32/Release -ldokanfuse2"
     - name: make
       run: make
     - name: make check
@@ -86,7 +86,7 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure --host=x86_64-w64-mingw32 --disable-shared CFLAGS="-I`pwd`/dokan/x64/Msys2/include/fuse" LDFLAGS="-L`pwd`/dokan/x64/Release -ldokanfuse2"
+      run: ./configure --host=x86_64-w64-mingw32 --disable-shared CFLAGS="-Wall -Wextra -I`pwd`/dokan/x64/Msys2/include/fuse" LDFLAGS="-L`pwd`/dokan/x64/Release -ldokanfuse2"
     - name: make
       run: make
     - name: make check
@@ -109,7 +109,7 @@ jobs:
           pkg install -y fusefs-libs autoconf automake libtool pkgconf
         run: |
           ./autogen.sh
-          ./configure
+          ./configure CFLAGS='-Wall -Wextra'
           make
           make check
           make distcheck
@@ -127,7 +127,7 @@ jobs:
           /usr/sbin/pkg_add autoconf automake libtool pkgconf
         run: |
           ./autogen.sh
-          ./configure
+          ./configure CFLAGS='-Wall -Wextra'
           make
           make check
           make distcheck
@@ -145,7 +145,7 @@ jobs:
           pkg_add autoconf-2.72p0 automake-1.17 libtool pkgconf
         run: |
           AUTOCONF_VERSION=2.72 AUTOMAKE_VERSION=1.17 ./autogen.sh
-          ./configure
+          ./configure CFLAGS='-Wall -Wextra'
           make
           make check
           make distcheck
@@ -163,7 +163,7 @@ jobs:
           pkg install -y fusefs-libs autoconf autoconf-switch automake libtool pkgconf
         run: |
           ./autogen.sh
-          ./configure
+          ./configure CFLAGS='-Wall -Wextra'
           make
           make check
           make distcheck
@@ -183,7 +183,7 @@ jobs:
           pkg install libfuse
         run: |
           ./autogen.sh
-          ./configure
+          ./configure CFLAGS='-Wall -Wextra'
           make
           make check
           make distcheck
@@ -201,7 +201,7 @@ jobs:
           pkg install base-developer-utilities gcc-c autoconf automake libtool pkg-config library/libfuse
         run: |
           ./autogen.sh
-          ./configure
+          ./configure CFLAGS='-Wall -Wextra'
           make
           make check
           make distcheck
