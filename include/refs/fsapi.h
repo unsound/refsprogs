@@ -95,6 +95,7 @@ typedef enum {
 	FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME = 0x400,
 	FSAPI_NODE_ATTRIBUTE_TYPE_BSD_FLAGS = 0x400,
 	FSAPI_NODE_ATTRIBUTE_TYPE_WINDOWS_FLAGS = 0x800,
+	FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET = 0x1000,
 } fsapi_node_attribute_types;
 
 typedef struct {
@@ -194,6 +195,34 @@ typedef struct {
 	 * The Windows file flags of the node.
 	 */
 	u32 windows_flags;
+
+	/**
+	 * The target of a symlink, as a string.
+	 *
+	 * If returned, and @p symlink_target is @ NULL then the target is
+	 * returned as a @p NULL terminated string with the length matching
+	 * @p size (excludes the @p NULL terminator).
+	 *
+	 * The returned string must be freed by the caller using @ref sys_free
+	 * when the caller is done using it.
+	 */
+	char *symlink_target;
+
+	/**
+	 * The length of @p symlink_target, in bytes (excluding the @p NULL
+	 * terminator).
+	 *
+	 * In the case of an fsapi-allocated buffer, the string will always have
+	 * a @p NULL terminator.
+	 *
+	 * In the case of a preallocated buffer, set this to the buffer size
+	 * before calling @ref fsapi_node_get_attributes. A @p NULLterminator
+	 * will be inserted if there is room in the buffer, but in the case of a
+	 * preallocated buffer it is not guaranteed.
+	 * If the caller needs to guarantee a @p NULL terminated buffer, pass
+	 * the buffer size minus one and set the final byte to @p NULL manually.
+	 */
+	size_t symlink_target_length;
 } fsapi_node_attributes;
 
 /**

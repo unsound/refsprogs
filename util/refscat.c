@@ -76,18 +76,23 @@ typedef struct {
 	char *stream_name;
 	size_t stream_name_length;
 	sys_bool name_matches;
+	sys_bool is_sparse;
 	sys_bool is_hard_link;
 	sys_bool hard_link_found;
 	sys_bool stream_found;
 	u64 hard_link_parent_object_id;
 	u64 hard_link_id;
 	u64 stream_non_resident_id;
+
+	/* Stream state variables. */
+	u64 cur_offset;
 	u64 remaining_bytes;
 } refscat_print_data_ctx;
 
 static int refscat_node_file_extent(
 		void *const _context,
-		const u64 first_block,
+		const u64 first_logical_block,
+		const u64 first_physical_block,
 		const u64 block_count,
 		const u32 block_index_unit)
 {
@@ -101,15 +106,39 @@ static int refscat_node_file_extent(
 		(!context->is_hard_link || context->hard_link_found) &&
 		!context->ea_name && !context->stream_name)
 	{
-		u64 extent_size = block_count * block_index_unit;
-		u64 valid_extent_size =
-			sys_min(extent_size, context->remaining_bytes);
-		u64 cur_pos = first_block * block_index_unit;
-		u64 bytes_remaining = valid_extent_size;
+		const u64 extent_logical_start =
+			first_logical_block * block_index_unit;
+		const u64 extent_size = block_count * block_index_unit;
+		const u64 bytes_to_extent_end =
+			(extent_logical_start + extent_size) -
+			context->cur_offset;
+		u64 cur_pos = first_physical_block * block_index_unit;
+		u64 bytes_remaining =
+			sys_min(bytes_to_extent_end, context->remaining_bytes);
 		size_t buf_size =
-			(size_t) sys_min(valid_extent_size, 1024UL * 1024U);
+			(size_t) sys_min(bytes_remaining, 4U * 1024UL * 1024U);
 
 		context->stream_found = SYS_TRUE;
+
+		sys_log_debug("Got file extent - First logical block: "
+			"%" PRIu64 " First physical block: %" PRIu64 " "
+			"Block count: %" PRIu64,
+			PRAu64(first_logical_block),
+			PRAu64(first_physical_block), PRAu64(block_count));
+
+		if(!context->is_sparse &&
+			extent_logical_start > context->cur_offset)
+		{
+			sys_log_error("Missing region for non-sparse file: "
+				"[%" PRIu64 " - %" PRIu64 "] (%" PRIu64 " "
+				"bytes)",
+				PRAu64(context->cur_offset),
+				PRAu64(extent_logical_start),
+				PRAu64(extent_logical_start -
+				context->cur_offset));
+			err = EIO;
+			goto out;
+		}
 
 		err = sys_malloc(buf_size, &buf);
 		if(err) {
@@ -119,55 +148,82 @@ static int refscat_node_file_extent(
 		}
 
 		while(bytes_remaining) {
-			const size_t bytes_to_read =
+			const size_t bytes_to_process =
 				(size_t) sys_min(bytes_remaining, buf_size);
-			size_t bytes_read = 0;
+			const u64 bytes_to_extent =
+				(extent_logical_start > context->cur_offset) ?
+				extent_logical_start - context->cur_offset : 0;
+			const size_t bytes_to_fill =
+				(size_t) sys_min(bytes_to_extent,
+				bytes_to_process);
+			const size_t bytes_to_read =
+				bytes_to_process - bytes_to_fill;
+
 			ssize_t bytes_written = 0;
 
-			err = sys_device_pread(
-				/* sys_device *dev */
-				context->vol->dev,
-				/* u64 pos */
-				cur_pos,
-				/* size_t count */
-				bytes_to_read,
-				/* void *b */
-				buf);
-			if(err) {
-				sys_log_perror(err, "Error while reading data "
-					"from device offset %" PRIu64,
-					PRAu64(cur_pos));
-				goto out;
+			sys_log_trace("[%" PRIu64 "] remaining: %" PRIu64 " "
+				"(in extent: %" PRIu64 "), bytes_to_process: "
+				"%" PRIuz ", bytes_to_fill: %" PRIuz ", "
+				"bytes_to_read: %" PRIuz,
+				PRAu64(context->cur_offset),
+				PRAu64(context->remaining_bytes),
+				PRAu64(bytes_remaining),
+				PRAuz(bytes_to_process), PRAuz(bytes_to_fill),
+				PRAuz(bytes_to_read));
+
+			if(bytes_to_fill) {
+				memset(buf, 0, bytes_to_fill);
+			}
+
+			if(bytes_to_read) {
+				err = sys_device_pread(
+					/* sys_device *dev */
+					context->vol->dev,
+					/* u64 pos */
+					cur_pos,
+					/* size_t count */
+					bytes_to_read,
+					/* void *b */
+					&buf[bytes_to_fill]);
+				if(err) {
+					sys_log_perror(err, "Error while "
+						"reading data from device "
+						"offset %" PRIu64,
+						PRAu64(cur_pos));
+					goto out;
+				}
 			}
 
 			/* sys_device_pread ensures that we always read all of
 			 * the requested data or an error is thrown. */
-			bytes_read = bytes_to_read;
-			context->remaining_bytes -= bytes_read;
+			context->remaining_bytes -= bytes_to_process;
+			context->cur_offset += bytes_to_process;
 
-			bytes_written = write(STDOUT_FILENO, buf, bytes_read);
+			bytes_written = write(STDOUT_FILENO, buf,
+				bytes_to_process);
 			if(bytes_written < 0) {
-				err = errno;
+				err = (err = errno) ? err : EIO;;
 				sys_log_perror(err, "Error while writing "
 					"%" PRIuz " bytes to stdout",
-					PRAuz(bytes_read));
+					PRAuz(bytes_to_process));
 				goto out;
 			}
-			else if((size_t) bytes_written != bytes_read) {
+			else if((size_t) bytes_written != bytes_to_process) {
 				sys_log_perror(errno, "Partial write of file "
 					"data to stdout: %" PRIuz " / "
 					"%" PRIuz " bytes written",
 					PRAuz((size_t) bytes_written),
-					PRAuz(bytes_read));
+					PRAuz(bytes_to_process));
+				err = EIO;
 				goto out;
 			}
 
-			if(bytes_remaining == bytes_read) {
+			if(bytes_remaining == bytes_to_process) {
 				break;
 			}
 
-			cur_pos += bytes_read;
-			bytes_remaining -= bytes_read;
+			cur_pos += bytes_to_read;
+			bytes_remaining -= bytes_to_process;
 		}
 	}
 out:
@@ -267,6 +323,12 @@ static int refscat_node_long_entry(
 		context->name_matches = SYS_TRUE;
 		if(!(context->ea_name || context->stream_name)) {
 			context->remaining_bytes = file_size;
+		}
+
+		if(!context->ea_name && !context->stream_name &&
+			(file_flags & REFS_FILE_ATTRIBUTE_SPARSE_FILE))
+		{
+			context->is_sparse = SYS_TRUE;
 		}
 	}
 
@@ -507,7 +569,8 @@ out:
 static int refscat_node_stream_extent(
 		void *_context,
 		u64 stream_id,
-		u64 first_block,
+		u64 first_logical_block,
+		u64 first_physical_block,
 		u32 block_index_unit,
 		u32 cluster_count)
 {
@@ -524,13 +587,16 @@ static int refscat_node_stream_extent(
 
 	int err = 0;
 	char *buf = NULL;
-	u64 cur_pos = first_block * block_index_unit;
+	u64 cur_pos = first_physical_block * block_index_unit;
 	u64 bytes_remaining = valid_extent_size;
 	u64 aligned_bytes_remaining = aligned_extent_size;
 
+	/* XXX: Can stream extents be sparse? */
+	(void) first_logical_block;
+
 	sys_log_debug("Got stream extent with stream id 0x%" PRIX64 ", first "
 		"block 0x%" PRIX64 "...",
-		PRAX64(stream_id), PRAX64(first_block));
+		PRAX64(stream_id), PRAX64(first_physical_block));
 
 	if(stream_id != context->stream_non_resident_id) {
 		/* Not the stream that we are looking for. */
@@ -541,7 +607,7 @@ static int refscat_node_stream_extent(
 		"bytes) of non-resident named stream data from block "
 		"%" PRIu64 " / 0x%" PRIX64 " to stdout.",
 		PRAuz(bytes_remaining), PRAuz(aligned_bytes_remaining),
-		PRAu64(first_block), PRAX64(first_block));
+		PRAu64(first_physical_block), PRAX64(first_physical_block));
 
 	err = sys_malloc(buf_size, &buf);
 	if(err) {
@@ -944,7 +1010,7 @@ int main(int argc, char **argv)
 			"directory", last_elementp);
 		goto out;
 	}
-	else if(!context.stream_found) {
+	else if(!context.is_sparse && !context.stream_found) {
 		fprintf(stderr, "Unable to find %s stream%s%" PRIbs "%s in "
 			"node \"%s\".\n",
 			(context.ea_name ? "$EA" :
@@ -961,10 +1027,36 @@ int main(int argc, char **argv)
 		goto out;
 	}
 	else if(context.remaining_bytes) {
-		sys_log_error("Unable to write all data to stdout: %" PRIu64 " "
-			"bytes remaining after iterating over file extents.",
-			PRAu64(context.remaining_bytes));
-		goto out;
+		if(!context.is_sparse) {
+			sys_log_error("Unable to write all data to stdout: "
+				"%" PRIu64 " bytes remaining after iterating "
+				"over file extents.",
+				PRAu64(context.remaining_bytes));
+			goto out;
+		}
+		else {
+			/* Simulate final 0-block extent to fill the tail
+			 * part. */
+			const u32 block_index_unit =
+				(vol->bs->version_major == 1) ? 16384 :
+				vol->cluster_size;
+
+			err = refscat_node_file_extent(
+				/* void *context */
+				&context,
+				/* u64 first_logical_block */
+				(context.cur_offset + context.remaining_bytes +
+				(block_index_unit - 1)) / block_index_unit,
+				/* u64 first_physical_block */
+				0,
+				/* u64 block_count */
+				0,
+				/* u32 block_index_unit */
+				block_index_unit);
+			if(err) {
+				goto out;
+			}
+		}
 	}
 
 	ret = (EXIT_SUCCESS);

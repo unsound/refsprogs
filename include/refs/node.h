@@ -54,6 +54,13 @@ struct refs_node_stream_data {
 	} data;
 };
 
+typedef enum {
+	REFS_SYMLINK_TYPE_SYMLINK_ABSOLUTE,
+	REFS_SYMLINK_TYPE_SYMLINK_RELATIVE,
+	REFS_SYMLINK_TYPE_JUNCTION,
+	REFS_SYMLINK_TYPE_WSL,
+} refs_symlink_type;
+
 struct refs_node_walk_visitor {
 	void *context;
 
@@ -141,7 +148,8 @@ struct refs_node_walk_visitor {
 		size_t record_size);
 	int (*node_file_extent)(
 		void *context,
-		u64 first_block,
+		u64 first_logical_block,
+		u64 first_physical_block,
 		u64 block_count,
 		u32 block_index_unit);
 	int (*node_file_data)(
@@ -163,9 +171,15 @@ struct refs_node_walk_visitor {
 	int (*node_stream_extent)(
 		void *context,
 		u64 stream_id,
-		u64 first_block,
+		u64 first_logical_block,
+		u64 first_physical_block,
 		u32 block_index_unit,
 		u32 cluster_count);
+	int (*node_symlink)(
+		void *context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length);
 };
 
 struct refs_node_crawl_context {
