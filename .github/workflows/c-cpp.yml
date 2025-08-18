@@ -40,13 +40,13 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure CFLAGS='-Wall -Wextra'
+      run: ./configure --disable-fuse3 CFLAGS='-Wall -Wextra'
     - name: make
       run: make
     - name: make check
       run: make check
     - name: make distcheck
-      run: make distcheck
+      run: make distcheck DISTCHECK_CONFIGURE_FLAGS='--disable-fuse3'
 
   build-mingw-w64-i686:
 
