@@ -403,6 +403,11 @@ static inline char makeprintable(const char c)
 	return (c < 0x20 || c >= 0x7F) ? '.' : c;
 }
 
+static inline char hex2char(const char c)
+{
+	return ((c >= 0xA) ? 'A' + (c - 0xA) : '0' + c) ;
+}
+
 static void _print_data_with_base(
 		refs_node_print_visitor *const print_visitor,
 		const char *const prefix,
@@ -413,145 +418,30 @@ static void _print_data_with_base(
 		const size_t size)
 {
 	static const char spaces[17] = "                ";
+	const size_t i_end = base + size;
 	const u8 max_hex_digits =
-		(u8) ((sys_fls64(!maxvalue ? base + size : maxvalue) + 3) / 4);
+		(u8) ((sys_fls64(!maxvalue ? i_end : maxvalue) + 3) / 4);
 
+	size_t remaining_size = size;
 	size_t i = 0;
 	size_t id_run = 0;
 	char id[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	switch(8 - (base % 8)) {
-	case 1:
-		emit(prefix, indent, "%*" PRIXz " |                      "
-			"%" PRI0PAD(2) PRIX8 " "
-			"|        %c",
-			max_hex_digits,
-			base + i - 7,
-			PRAX8(data[i + 0]),
-			makeprintable(data[i + 0]));
-		i += 1;
-		break;
-	case 2:
-		emit(prefix, indent, "%*" PRIXz " |                   "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"|       %c%c",
-			max_hex_digits,
-			base + i - 6,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]));
-		i += 2;
-		break;
-	case 3:
-		emit(prefix, indent, "%*" PRIXz " |                "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " "
-			"|      %c%c%c",
-			max_hex_digits,
-			base + i - 5,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]));
-		i += 3;
-		break;
-	case 4:
-		emit(prefix, indent, "%*" PRIXz " |             "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"|     %c%c%c%c",
-			max_hex_digits,
-			base + i - 4,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]));
-		i += 4;
-		break;
-	case 5:
-		emit(prefix, indent, "%*" PRIXz " |          "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " "
-			"|    %c%c%c%c%c",
-			max_hex_digits,
-			base + i - 3,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			PRAX8(data[i + 4]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]),
-			makeprintable(data[i + 4]));
-		i += 5;
-		break;
-	case 6:
-		emit(prefix, indent, "%*" PRIXz " |       "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"|   %c%c%c%c%c%c",
-			max_hex_digits,
-			base + i - 2,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			PRAX8(data[i + 4]),
-			PRAX8(data[i + 5]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]),
-			makeprintable(data[i + 4]),
-			makeprintable(data[i + 5]));
-		i += 6;
-		break;
-	case 7:
-		emit(prefix, indent, "%*" PRIXz " |    "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " "
-			"|  %c%c%c%c%c%c%c",
-			max_hex_digits,
-			base + i - 1,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			PRAX8(data[i + 4]),
-			PRAX8(data[i + 5]),
-			PRAX8(data[i + 6]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]),
-			makeprintable(data[i + 4]),
-			makeprintable(data[i + 5]),
-			makeprintable(data[i + 6]));
-		i += 7;
-		break;
-	default:
-		break;
-	}
-
-	for(; i + 7 < size; i += 8) {
+	while(remaining_size) {
+		const size_t true_i = base + i;
+		const size_t i_offset = true_i % 8;
+		const size_t i_base = true_i - i_offset;
+		const size_t remaining_size_in_run =
+			sys_min(8 - i_offset, remaining_size);
 		const sys_bool is_id =
-			memcmp(&data[i], id, 8) ? SYS_FALSE : SYS_TRUE;
+			(remaining_size_in_run < 8 ||
+			memcmp(&data[i], id, 8) ? SYS_FALSE : SYS_TRUE);
+		const u8 *const data_run = &data[i - i_offset];
 
-		if(id_run && (i + 8 + 7) < size && is_id) {
+		if(id_run && remaining_size > 8 && is_id) {
 			++id_run;
+			i += remaining_size_in_run;
+			remaining_size -= remaining_size_in_run;
 			continue;
 		}
 		else if(id_run) {
@@ -573,7 +463,7 @@ static void _print_data_with_base(
 					"%" PRI0PAD(2) PRIX8 " | "
 					"%c%c%c%c%c%c%c%c",
 					max_hex_digits,
-					PRAXz(base + i - 8),
+					PRAXz(i_base - 8),
 					PRAX8(id[0]),
 					PRAX8(id[1]),
 					PRAX8(id[2]),
@@ -595,161 +485,79 @@ static void _print_data_with_base(
 			id_run = 0;
 		}
 
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " | "
-			"%c%c%c%c%c%c%c%c",
+		emit(prefix, indent, "%*" PRIXz " | %c%c %c%c %c%c %c%c "
+			"%c%c %c%c %c%c %c%c | %c%c%c%c%c%c%c%c",
 			max_hex_digits,
-			PRAXz(base + i),
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			PRAX8(data[i + 4]),
-			PRAX8(data[i + 5]),
-			PRAX8(data[i + 6]),
-			PRAX8(data[i + 7]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]),
-			makeprintable(data[i + 4]),
-			makeprintable(data[i + 5]),
-			makeprintable(data[i + 6]),
-			makeprintable(data[i + 7]));
+			PRAXz(i_base),
+			(((i_base + 0) < true_i) || ((i_base + 0) >= i_end)) ?
+				' ' : hex2char((data_run[0] >> 4) & 0xF),
+			(((i_base + 0) < true_i) || ((i_base + 0) >= i_end)) ?
+				' ' : hex2char(data_run[0] & 0xF),
+			(((i_base + 1) < true_i) || ((i_base + 1) >= i_end)) ?
+				' ' : hex2char((data_run[1] >> 4) & 0xF),
+			(((i_base + 1) < true_i) || ((i_base + 1) >= i_end)) ?
+				' ' : hex2char(data_run[1] & 0xF),
+			(((i_base + 2) < true_i) || ((i_base + 2) >= i_end)) ?
+				' ' : hex2char((data_run[2] >> 4) & 0xF),
+			(((i_base + 2) < true_i) || ((i_base + 2) >= i_end)) ?
+				' ' : hex2char(data_run[2] & 0xF),
+			(((i_base + 3) < true_i) || ((i_base + 3) >= i_end)) ?
+				' ' : hex2char((data_run[3] >> 4) & 0xF),
+			(((i_base + 3) < true_i) || ((i_base + 3) >= i_end)) ?
+				' ' : hex2char(data_run[3] & 0xF),
+			(((i_base + 4) < true_i) || ((i_base + 4) >= i_end)) ?
+				' ' : hex2char((data_run[4] >> 4) & 0xF),
+			(((i_base + 4) < true_i) || ((i_base + 4) >= i_end)) ?
+				' ' : hex2char(data_run[4] & 0xF),
+			(((i_base + 5) < true_i) || ((i_base + 5) >= i_end)) ?
+				' ' : hex2char((data_run[5] >> 4) & 0xF),
+			(((i_base + 5) < true_i) || ((i_base + 5) >= i_end)) ?
+				' ' : hex2char(data_run[5] & 0xF),
+			(((i_base + 6) < true_i) || ((i_base + 6) >= i_end)) ?
+				' ' : hex2char((data_run[6] >> 4) & 0xF),
+			(((i_base + 6) < true_i) || ((i_base + 6) >= i_end)) ?
+				' ' : hex2char(data_run[6] & 0xF),
+			(((i_base + 7) < true_i) || ((i_base + 7) >= i_end)) ?
+				' ' : hex2char((data_run[7] >> 4) & 0xF),
+			(((i_base + 7) < true_i) || ((i_base + 7) >= i_end)) ?
+				' ' : hex2char(data_run[7] & 0xF),
+			(((i_base + 0) < true_i) || ((i_base + 0) >= i_end)) ?
+				' ' : makeprintable(data_run[0]),
+			(((i_base + 1) < true_i) || ((i_base + 1) >= i_end)) ?
+				' ' : makeprintable(data_run[1]),
+			(((i_base + 2) < true_i) || ((i_base + 2) >= i_end)) ?
+				' ' : makeprintable(data_run[2]),
+			(((i_base + 3) < true_i) || ((i_base + 3) >= i_end)) ?
+				' ' : makeprintable(data_run[3]),
+			(((i_base + 4) < true_i) || ((i_base + 4) >= i_end)) ?
+				' ' : makeprintable(data_run[4]),
+			(((i_base + 5) < true_i) || ((i_base + 5) >= i_end)) ?
+				' ' : makeprintable(data_run[5]),
+			(((i_base + 6) < true_i) || ((i_base + 6) >= i_end)) ?
+				' ' : makeprintable(data_run[6]),
+			(((i_base + 7) < true_i) || ((i_base + 7) >= i_end)) ?
+				' ' : makeprintable(data_run[7]));
 		if(is_id) {
 			id_run = 1;
 		}
-		else {
-			memcpy(id, &data[i], 8);
+		else if(remaining_size_in_run) {
+			memcpy(&id[i_offset], &data[i],
+				remaining_size_in_run);
 		}
-	}
 
-	switch(size - i) {
-	case 1:
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " "
-			"                     | %c",
-			max_hex_digits,
-			base + i,
-			PRAX8(data[i + 0]),
-			makeprintable(data[i + 0]));
-		break;
-	case 2:
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"                  | %c%c",
-			max_hex_digits,
-			base + i,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]));
-		break;
-	case 3:
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " "
-			"               | %c%c%c",
-			max_hex_digits,
-			base + i,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]));
-		break;
-	case 4:
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"            | %c%c%c%c",
-			max_hex_digits,
-			base + i,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]));
-		break;
-	case 5:
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " "
-			"         | %c%c%c%c%c",
-			max_hex_digits,
-			base + i,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			PRAX8(data[i + 4]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]),
-			makeprintable(data[i + 4]));
-		break;
-	case 6:
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"      | %c%c%c%c%c%c",
-			max_hex_digits,
-			base + i,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			PRAX8(data[i + 4]),
-			PRAX8(data[i + 5]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]),
-			makeprintable(data[i + 4]),
-			makeprintable(data[i + 5]));
-		break;
-	case 7:
-		emit(prefix, indent, "%*" PRIXz " | "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " %" PRI0PAD(2) PRIX8 " "
-			"%" PRI0PAD(2) PRIX8 " "
-			"   | %c%c%c%c%c%c%c",
-			max_hex_digits,
-			base + i,
-			PRAX8(data[i + 0]),
-			PRAX8(data[i + 1]),
-			PRAX8(data[i + 2]),
-			PRAX8(data[i + 3]),
-			PRAX8(data[i + 4]),
-			PRAX8(data[i + 5]),
-			PRAX8(data[i + 6]),
-			makeprintable(data[i + 0]),
-			makeprintable(data[i + 1]),
-			makeprintable(data[i + 2]),
-			makeprintable(data[i + 3]),
-			makeprintable(data[i + 4]),
-			makeprintable(data[i + 5]),
-			makeprintable(data[i + 6]));
-		break;
-	default:
-		break;
+		i += remaining_size_in_run;
+		
+		remaining_size -= remaining_size_in_run;
 	}
 }
 
 #define print_data_with_base(prefix, indent, base, maxvalue, data, size) \
-	_print_data_with_base(print_visitor, (prefix), (indent), (base), \
-		(maxvalue), (data), (size))
+	do { \
+		if(print_visitor && print_visitor->print_message) { \
+			_print_data_with_base(print_visitor, (prefix), \
+				(indent), (base), (maxvalue), (data), (size)); \
+		} \
+	} while(0)
 
 static inline void _print_data(
 		refs_node_print_visitor *const print_visitor,
@@ -762,7 +570,12 @@ static inline void _print_data(
 }
 
 #define print_data(prefix, indent, data, size) \
-	_print_data(print_visitor, (prefix), (indent), (data), (size))
+	do { \
+		if(print_visitor && print_visitor->print_message) { \
+			_print_data(print_visitor, (prefix), (indent), (data), \
+				(size)); \
+		} \
+	} while(0)
 
 static inline void _print_filetime(
 		refs_node_print_visitor *const print_visitor,
@@ -783,7 +596,7 @@ static inline void _print_filetime(
 			identifier,
 			PRAd64(filetime));
 	}
-	else if(print_visitor && print_visitor->verbose) {
+	else if(print_visitor->verbose) {
 		emit(prefix, indent, "%s: %" PRIbs ".%" PRI0PAD(7) PRId64
 			"%" PRIbs " (%" PRId64 ")",
 			identifier,
@@ -803,6 +616,10 @@ static inline void _print_filetime(
 }
 
 #define print_filetime(...) \
-	_print_filetime(print_visitor, __VA_ARGS__)
+	do { \
+		if(print_visitor && print_visitor->print_message) { \
+			_print_filetime(print_visitor, __VA_ARGS__); \
+		} \
+	} while(0)
 
 #endif /* !defined(_REFS_UTIL_H) */

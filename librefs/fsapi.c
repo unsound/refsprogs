@@ -64,6 +64,19 @@ struct fsapi_node {
 	fsapi_node *next;
 };
 
+static int fsapi_node_get_attributes_visit_symlink(
+		void *context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length);
+
+static int fsapi_node_list_visit_symlink(
+		void *_context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length);
+
+
 static void fsapi_node_init(
 		fsapi_node *const node,
 		char *const path,
@@ -782,7 +795,20 @@ static int fsapi_fill_attributes(
 	attrs->is_directory = is_directory;
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
-		attrs->mode = (is_directory ? S_IFDIR : S_IFREG) | 0777;
+		attrs->mode = 0;
+#ifdef S_IFLNK
+		if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+			attrs->mode |= S_IFLNK;
+		}
+		else
+#endif
+		if(is_directory) {
+			attrs->mode |= S_IFDIR;
+		}
+		else {
+			attrs->mode |= S_IFREG;
+		}
+		attrs->mode |= 0777U;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_MODE;
 	}
 
@@ -884,8 +910,13 @@ static int fsapi_fill_attributes(
 	return 0;
 }
 
+typedef struct {
+	refs_volume *vol;
+	fsapi_node_attributes *attrs;
+} fsapi_node_get_attributes_context;
+
 static int fsapi_node_get_attributes_visit_short_entry(
-		void *const context,
+		void *const _context,
 		const refschar *const file_name,
 		const u16 file_name_length,
 		const u16 child_entry_offset,
@@ -904,6 +935,11 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		const u8 *const record,
 		const size_t record_size)
 {
+	fsapi_node_get_attributes_context *const context =
+		(fsapi_node_get_attributes_context*) _context;
+
+	int err = 0;
+
 	(void) file_name;
 	(void) file_name_length;
 	(void) object_id;
@@ -913,9 +949,9 @@ static int fsapi_node_get_attributes_visit_short_entry(
 	(void) record;
 	(void) record_size;
 
-	return fsapi_fill_attributes(
-		/* fsapi_node_attributes *stbuf */
-		(fsapi_node_attributes*) context,
+	err = fsapi_fill_attributes(
+		/* fsapi_node_attributes *attrs */
+		context->attrs,
 		/* sys_bool is_directory */
 		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
@@ -936,6 +972,43 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		file_size,
 		/* u64 allocated_size */
 		allocated_size);
+	if(err) {
+		goto out;
+	}
+
+	if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+		/* Parse the reparse point node to get the symlink target. */
+		refs_node_walk_visitor visitor;
+
+		memset(&visitor, 0, sizeof(visitor));
+
+		visitor.context = context;
+		visitor.version_major = context->vol->bs->version_major;
+		visitor.version_minor = context->vol->bs->version_minor;
+		visitor.node_symlink = fsapi_node_get_attributes_visit_symlink;
+
+		err = refs_node_walk(
+			/* sys_device *dev */
+			context->vol->dev,
+			/* REFS_BOOT_SECTOR *bs */
+			context->vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&context->vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&context->vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&context->vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&context->vol->block_map,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+	}
+out:
+	return err;
 }
 
 static int fsapi_node_get_attributes_visit_long_entry(
@@ -964,8 +1037,8 @@ static int fsapi_node_get_attributes_visit_long_entry(
 	(void) record_size;
 
 	return fsapi_fill_attributes(
-		/* fsapi_node_attributes *stbuf */
-		(fsapi_node_attributes*) context,
+		/* fsapi_node_attributes *attrs */
+		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u16 child_entry_offset */
@@ -1013,8 +1086,8 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 	(void) record_size;
 
 	return fsapi_fill_attributes(
-		/* fsapi_node_attributes *stbuf */
-		(fsapi_node_attributes*) context,
+		/* fsapi_node_attributes *attrs */
+		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
 		SYS_FALSE,
 		/* u16 child_entry_offset */
@@ -1037,6 +1110,60 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		allocated_size);
 }
 
+static int fsapi_node_get_attributes_visit_symlink(
+		void *context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length)
+{
+	fsapi_node_attributes *const attrs =
+		((fsapi_node_get_attributes_context*) context)->attrs;
+
+	int err = 0;
+
+	(void) type;
+
+	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
+		attrs->size = target_length;
+		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
+	}
+
+#ifdef S_IFLNK
+	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
+		attrs->mode = S_IFLNK | (attrs->mode & ~S_IFMT);
+	}
+#endif
+
+	if((attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) &&
+		!(attrs->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
+	{
+		size_t symlink_target_size;
+
+		if(!attrs->symlink_target) {
+			symlink_target_size = target_length + 1;
+			err = sys_malloc(symlink_target_size,
+				&attrs->symlink_target);
+			if(err) {
+				goto out;
+			}
+		}
+		else {
+			symlink_target_size = attrs->symlink_target_length;
+		}
+
+		memcpy(attrs->symlink_target, target,
+			sys_min(symlink_target_size, target_length));
+		if(symlink_target_size > target_length) {
+			attrs->symlink_target[target_length] = '\0';
+		}
+		attrs->symlink_target_length = target_length;
+
+		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+	}
+out:
+	return err;
+}
+
 static int fsapi_node_get_attributes_common(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -1047,14 +1174,19 @@ static int fsapi_node_get_attributes_common(
 
 	int err = 0;
 	refs_node_crawl_context crawl_context;
+	fsapi_node_get_attributes_context context;
 	refs_node_walk_visitor visitor;
 
 	memset(&visitor, 0, sizeof(visitor));
+	memset(&context, 0, sizeof(context));
 
 	crawl_context = refs_volume_init_node_crawl_context(
 		/* refs_volume *vol */
 		vol->vol);
-	visitor.context = attributes;
+	context.vol = vol->vol;
+	context.attrs = attributes;
+	visitor.context = &context;
+
 	if(node->directory_object_id == 0x600) {
 		/* Root directory. */
 		err = fsapi_fill_attributes(
@@ -1117,6 +1249,8 @@ static int fsapi_node_get_attributes_common(
 			fsapi_node_get_attributes_visit_long_entry;
 		visitor.node_hardlink_entry =
 			fsapi_node_get_attributes_visit_hardlink_entry;
+		visitor.node_symlink =
+			fsapi_node_get_attributes_visit_symlink;
 
 		err = parse_level3_long_value(
 			/* refs_node_crawl_context *crawl_context */
@@ -1564,7 +1698,10 @@ out:
 }
 
 typedef struct {
+	refs_volume *vol;
 	fsapi_node_attributes *attributes;
+	char *cname;
+	size_t cname_length;
 	void *handle_dirent_context;
 	int (*handle_dirent)(
 		void *context,
@@ -1591,6 +1728,23 @@ static int fsapi_node_list_filldir(
 	int err = 0;
 	char *cname = NULL;
 	size_t cname_length = 0;
+
+	if(context->cname) {
+		/* We have a reparse point without finding its attribute. Just
+		 * return it as-is. */
+		err = context->handle_dirent(
+			/* void *context */
+			context->handle_dirent_context,
+			/* const char *name */
+			context->cname,
+			/* size_t name_length */
+			context->cname_length,
+			/* fsapi_node_attributes *attributes */
+			context->attributes);
+
+		sys_free(&context->cname);
+		context->cname_length = 0;
+	}
 
 	if(context->attributes) {
 		err = fsapi_fill_attributes(
@@ -1635,15 +1789,25 @@ static int fsapi_node_list_filldir(
 		goto out;
 	}
 
-	err = context->handle_dirent(
-		/* void *context */
-		context->handle_dirent_context,
-		/* const char *name */
-		cname,
-		/* size_t name_length */
-		cname_length,
-		/* fsapi_node_attributes *attributes */
-		context->attributes);
+	if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+		/* Save the cname in the context and wait for the reparse point
+		 * attribute to appear. */
+		context->cname = cname;
+		context->cname_length = cname_length;
+		cname = NULL;
+		cname_length = 0;
+	}
+	else {
+		err = context->handle_dirent(
+			/* void *context */
+			context->handle_dirent_context,
+			/* const char *name */
+			cname,
+			/* size_t name_length */
+			cname_length,
+			/* fsapi_node_attributes *attributes */
+			context->attributes);
+	}
 out:
 	if(cname) {
 		sys_free(&cname);
@@ -1653,7 +1817,7 @@ out:
 }
 
 static int fsapi_node_list_visit_short_entry(
-		void *const context,
+		void *const _context,
 		const refschar *const file_name,
 		const u16 file_name_length,
 		const u16 child_entry_offset,
@@ -1672,16 +1836,20 @@ static int fsapi_node_list_visit_short_entry(
 		const u8 *const record,
 		const size_t record_size)
 {
-	(void) object_id;
+	fsapi_readdir_context *const context =
+		(fsapi_readdir_context*) _context;
+
+	int err = 0;
+
 	(void) hard_link_id;
 	(void) key;
 	(void) key_size;
 	(void) record;
 	(void) record_size;
 
-	return fsapi_node_list_filldir(
+	err = fsapi_node_list_filldir(
 		/* fsapi_readdir_context *context */
-		(fsapi_readdir_context*) context,
+		context,
 		/* const refschar *file_name */
 		file_name,
 		/* u16 file_name_length */
@@ -1706,6 +1874,43 @@ static int fsapi_node_list_visit_short_entry(
 		file_size,
 		/* u64 allocated_size */
 		allocated_size);
+	if(err) {
+		goto out;
+	}
+
+	if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
+		/* Parse the reparse point node to get the symlink target. */
+		refs_node_walk_visitor visitor;
+
+		memset(&visitor, 0, sizeof(visitor));
+
+		visitor.context = context;
+		visitor.version_major = context->vol->bs->version_major;
+		visitor.version_minor = context->vol->bs->version_minor;
+		visitor.node_symlink = fsapi_node_list_visit_symlink;
+
+		err = refs_node_walk(
+			/* sys_device *dev */
+			context->vol->dev,
+			/* REFS_BOOT_SECTOR *bs */
+			context->vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&context->vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&context->vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&context->vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&context->vol->block_map,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+	}
+out:
+	return err;
 }
 
 static int fsapi_node_list_visit_long_entry(
@@ -1760,6 +1965,78 @@ static int fsapi_node_list_visit_long_entry(
 		allocated_size);
 }
 
+static int fsapi_node_list_visit_symlink(
+		void *_context,
+		refs_symlink_type type,
+		const char *target,
+		size_t target_length)
+{
+	fsapi_readdir_context *const context =
+		(fsapi_readdir_context*) _context;
+
+	int err = 0;
+
+	(void) type;
+
+	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
+		context->attributes->size = target_length;
+		context->attributes->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
+	}
+
+#ifdef S_IFLNK
+	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
+		context->attributes->mode =
+			S_IFLNK | (context->attributes->mode & ~S_IFMT);
+	}
+#endif
+
+	if(context->attributes->requested &
+		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET)
+	{
+		size_t symlink_target_size;
+
+		if(!context->attributes->symlink_target) {
+			symlink_target_size = target_length + 1;
+			err = sys_malloc(symlink_target_size,
+				&context->attributes->symlink_target);
+			if(err) {
+				goto out;
+			}
+		}
+		else {
+			symlink_target_size =
+				context->attributes->symlink_target_length;
+		}
+
+		memcpy(context->attributes->symlink_target, target,
+			sys_min(symlink_target_size, target_length));
+		if(symlink_target_size > target_length) {
+			context->attributes->symlink_target[target_length] =
+				'\0';
+		}
+
+		context->attributes->valid |=
+			FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+	}
+
+	err = context->handle_dirent(
+		/* void *context */
+		context->handle_dirent_context,
+		/* const char *name */
+		context->cname,
+		/* size_t name_length */
+		context->cname_length,
+		/* fsapi_node_attributes *attributes */
+		context->attributes);
+out:
+	if(context->cname) {
+		sys_free(&context->cname);
+		context->cname_length = 0;
+	}
+
+	return err;
+}
+
 int fsapi_node_list(
 		fsapi_volume *vol,
 		fsapi_node *directory_node,
@@ -1783,12 +2060,14 @@ int fsapi_node_list(
 		goto out;
 	}
 
+	readdir_context.vol = vol->vol;
 	readdir_context.attributes = attributes;
 	readdir_context.handle_dirent_context = context;
 	readdir_context.handle_dirent = handle_dirent;
 	visitor.context = &readdir_context;
 	visitor.node_long_entry = fsapi_node_list_visit_long_entry;
 	visitor.node_short_entry = fsapi_node_list_visit_short_entry;
+	visitor.node_symlink = fsapi_node_list_visit_symlink;
 
 	err = refs_node_walk(
 		/* sys_device *dev */
@@ -1817,7 +2096,28 @@ int fsapi_node_list(
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
 	}
+
+	if(readdir_context.cname) {
+		/* We have a reparse point without finding its attribute. Just
+		 * return it as-is. */
+		err = readdir_context.handle_dirent(
+			/* void *context */
+			readdir_context.handle_dirent_context,
+			/* const char *name */
+			readdir_context.cname,
+			/* size_t name_length */
+			readdir_context.cname_length,
+			/* fsapi_node_attributes *attributes */
+			readdir_context.attributes);
+
+		sys_free(&readdir_context.cname);
+		readdir_context.cname_length = 0;
+	}
 out:
+	if(readdir_context.cname) {
+		sys_free(&readdir_context.cname);
+	}
+
 	return err;
 }
 
@@ -1874,18 +2174,189 @@ typedef struct {
 	refs_volume *vol;
 	fsapi_iohandler *iohandler;
 	size_t size;
+	sys_bool is_sparse;
 	u64 cur_offset;
 	u64 start_offset;
 } fsapi_node_read_context;
 
+static int fsapi_node_read_zeroes(
+		fsapi_node_read_context *const context,
+		const size_t bytes_to_zero)
+{
+	int err = 0;
+	u8 zero_data[512];
+	size_t remaining_bytes_to_zero = bytes_to_zero;
+
+	memset(zero_data, 0, sizeof(zero_data));
+
+	while(remaining_bytes_to_zero) {
+		const size_t cur_bytes_to_zero =
+			sys_min(sizeof(zero_data), remaining_bytes_to_zero);
+
+		err = context->iohandler->copy_data(
+			/* void *context */
+			context->iohandler->context,
+			/* const void *data */
+			zero_data,
+			/* size_t size */
+			cur_bytes_to_zero);
+		if(err) {
+			context->cur_offset +=
+				bytes_to_zero - remaining_bytes_to_zero;
+			context->size -=
+				bytes_to_zero - remaining_bytes_to_zero;
+			goto out;
+		}
+
+		remaining_bytes_to_zero -= cur_bytes_to_zero;
+	}
+
+	context->cur_offset += bytes_to_zero;
+	context->size -= bytes_to_zero;
+out:
+	return err;
+}
+
+static int fsapi_node_read_visit_entry(
+		fsapi_node_read_context *const context,
+		const u32 file_flags,
+		const u64 file_size)
+{
+	int err = 0;
+	u64 bytes_to_eof;
+
+	if(file_flags & REFS_FILE_ATTRIBUTE_SPARSE_FILE) {
+		sys_log_debug("File is sparse.");
+		context->is_sparse = SYS_TRUE;
+	}
+
+	if(context->start_offset >= file_size) {
+		/* Nothing to read. */
+		sys_log_debug("Nothing to read, offset is beyond or at file "
+			"size.");
+		context->size = 0;
+		err = -1;
+		goto out;
+	}
+
+	bytes_to_eof = file_size - context->start_offset;
+	if(context->size > bytes_to_eof) {
+		/* Limit read to the end of the file. */
+		sys_log_debug("Limiting read to end of file: %" PRIu64 " -> "
+			"%" PRIu64,
+			PRAu64(context->size), PRAu64(bytes_to_eof));
+		context->size = bytes_to_eof;
+	}
+out:
+	return err;
+}
+
+static int fsapi_node_read_visit_long_entry(
+		void *const _context,
+		const le16 *const file_name,
+		const u16 file_name_length,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	fsapi_node_read_context *const context =
+		(fsapi_node_read_context*) _context;
+
+	int err = 0;
+
+	(void) file_name;
+	(void) file_name_length;
+	(void) child_entry_offset;
+	(void) file_flags;
+	(void) parent_node_object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	err = fsapi_node_read_visit_entry(
+		/* fsapi_node_read_context *context */
+		context,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 file_size */
+		file_size);
+
+	return err;
+}
+
+static int fsapi_node_read_visit_hardlink_entry(
+		void *const _context,
+		const u64 hard_link_id,
+		const u64 parent_id,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	fsapi_node_read_context *const context =
+		(fsapi_node_read_context*) _context;
+
+	int err = 0;
+
+	(void) hard_link_id;
+	(void) parent_id;
+	(void) child_entry_offset;
+	(void) file_flags;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	err = fsapi_node_read_visit_entry(
+		/* fsapi_node_read_context *context */
+		context,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 file_size */
+		file_size);
+
+	return err;
+}
+
 static int fsapi_node_read_visit_file_extent(
 		void *const _context,
-		const u64 first_block,
+		const u64 first_logical_block,
+		const u64 first_physical_block,
 		const u64 block_count,
 		const u32 block_index_unit)
 {
 	fsapi_node_read_context *const context =
 		(fsapi_node_read_context*) _context;
+	const u64 extent_logical_start = first_logical_block * block_index_unit;
 	const u64 extent_size = block_count * block_index_unit;
 
 	int err = 0;
@@ -1896,20 +2367,45 @@ static int fsapi_node_read_visit_file_extent(
 	u64 bytes_remaining = 0;
 	size_t bytes_to_read = 0;
 
-	sys_log_debug("Visiting file extent: %" PRIu64 " - %" PRIu64 " "
-		"(%" PRIu64 " blocks) Position (current): %" PRIu64 " Position "
-		"(start): %" PRIu64 " Remaining size: %" PRIuz,
-		PRAu64(first_block), PRAu64(first_block + block_count - 1),
+	sys_log_debug("Visiting file extent: [%" PRIu64 " - %" PRIu64 "] -> "
+		"[%" PRIu64 " - %" PRIu64 "] (%" PRIu64 " blocks) Position "
+		"(current): %" PRIu64 " Position (start): %" PRIu64 " "
+		"Remaining size: %" PRIuz,
+		PRAu64(first_logical_block),
+		PRAu64(first_logical_block + block_count - 1),
+		PRAu64(first_physical_block),
+		PRAu64(first_physical_block + block_count - 1),
 		PRAu64(block_count), PRAu64(context->cur_offset),
 		PRAu64(context->start_offset), PRAuz(context->size));
 
-	if(context->cur_offset + extent_size <= context->start_offset) {
+	if(extent_logical_start + extent_size <= context->start_offset) {
 		sys_log_debug("Skipping extent that precedes the start offset "
 			"of the read: %" PRIu64 " <= %" PRIu64,
 			PRAu64(context->cur_offset + extent_size),
 			PRAu64(context->start_offset));
 		context->cur_offset += extent_size;
 		goto out;
+	}
+	else if(extent_logical_start > context->cur_offset) {
+		/* We have encountered a hole. Return zeroes until we reach
+		 * context->cur_offset or until the end of the read. */
+		const u64 bytes_to_extent =
+			extent_logical_start - context->cur_offset;
+		const size_t bytes_to_zero =
+			(size_t) sys_min(bytes_to_extent, context->size);
+
+		err = fsapi_node_read_zeroes(
+			/* fsapi_node_read_context *context */
+			context,
+			/* size_t bytes_to_zero */
+			bytes_to_zero);
+		if(err) {
+			goto out;
+		}
+
+		if(!context->size) {
+			goto out;
+		}
 	}
 
 	copy_offset_in_buffer =
@@ -1922,7 +2418,7 @@ static int fsapi_node_read_visit_file_extent(
 		 * sector size is a power of 2!). */
 		(valid_extent_size + (context->vol->sector_size - 1)) &
 		~((u64) (context->vol->sector_size - 1));
-	cur_pos = first_block * block_index_unit;
+	cur_pos = first_physical_block * block_index_unit;
 	bytes_remaining = valid_extent_size;
 	bytes_to_read = (size_t) sys_min(bytes_remaining, context->size);
 
@@ -2033,6 +2529,8 @@ int fsapi_node_read(
 		/* refs_volume *vol */
 		vol->vol);
 	visitor.context = &context;
+	visitor.node_long_entry = fsapi_node_read_visit_long_entry;
+	visitor.node_hardlink_entry = fsapi_node_read_visit_hardlink_entry;
 	visitor.node_file_extent = fsapi_node_read_visit_file_extent;
 	visitor.node_file_data = fsapi_node_read_visit_file_data;
 
@@ -2063,6 +2561,30 @@ int fsapi_node_read(
 		NULL);
 	if(err == -1) {
 		err = 0;
+	}
+	else if(err) {
+		goto out;
+	}
+
+	if(context.size) {
+		if(!context.is_sparse) {
+			sys_log_error("Couldn't find all extents in non-sparse "
+				"file: %" PRIuz " remaining bytes",
+				PRAuz(context.size));
+			err = EIO;
+			goto out;
+		}
+
+		sys_log_debug("Filling sparse tail with %" PRIuz " zeroed "
+			"bytes.", PRAuz(context.size));
+		err = fsapi_node_read_zeroes(
+			/* fsapi_node_read_context *context */
+			&context,
+			/* size_t bytes_to_zero */
+			context.size);
+		if(err) {
+			goto out;
+		}
 	}
 out:
 	sys_log_ptrace(err, "%s(vol=%p, node=%p, offset=%" PRIu64 ", "
@@ -2330,13 +2852,14 @@ out:
 static int fsapi_node_read_extended_attribute_visit_stream_extent(
 		void *const _context,
 		const u64 stream_id,
-		const u64 first_block,
+		const u64 first_logical_block,
+		const u64 first_physical_block,
 		const u32 block_index_unit,
 		const u32 cluster_count)
 {
 	fsapi_node_read_extended_attribute_context *const context =
 		(fsapi_node_read_extended_attribute_context*) _context;
-	const u64 read_offset = first_block * block_index_unit;
+	const u64 read_offset = first_physical_block * block_index_unit;
 	const u64 extent_size = cluster_count * context->vol->cluster_size;
 	const u64 valid_extent_size =
 		sys_min(extent_size, context->remaining_bytes);
@@ -2344,13 +2867,19 @@ static int fsapi_node_read_extended_attribute_visit_stream_extent(
 	int err = 0;
 
 	sys_log_debug("Got stream extent with stream id 0x%" PRIX64 ", first "
-		"block 0x%" PRIX64 "...",
-		PRAX64(stream_id), PRAX64(first_block));
+		"logical block 0x%" PRIX64 ", first physical block "
+		"0x%" PRIX64 "...",
+		PRAX64(stream_id), PRAX64(first_logical_block),
+		PRAX64(first_physical_block));
 
 	if(stream_id != context->stream_non_resident_id) {
 		/* Not the stream that we are looking for. */
 		goto out;
 	}
+
+	/* TODO: Skip holes in attribute stream extents? Are they even allowed
+	 * to be sparse? */
+	(void) first_logical_block;
 
 	err = context->iohandler->handle_io(
 		/* void *context */

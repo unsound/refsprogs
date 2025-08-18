@@ -62,7 +62,7 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 #endif
 #if defined(__illumos__)
 	const char *ins_tmp = (const char*) ins;
-#else
+#elif !defined(_WIN32)
 	char *ins_tmp = (char*) ins;
 #endif
 	size_t ins_remaining = 0;
@@ -194,7 +194,7 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 #endif
 #if defined(__illumos__)
 	const char *ins_tmp = ins;
-#else
+#elif !defined(_WIN32)
 	char *ins_tmp = (char*) ins;
 #endif
 	size_t ins_remaining = ins_len;

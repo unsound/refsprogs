@@ -344,18 +344,23 @@ static int refsimage_node_hardlink_entry(
 
 static int refsimage_node_file_extent(
 		void *_context,
-		u64 first_block,
+		u64 first_logical_block,
+		u64 first_physical_block,
 		u64 block_count,
 		u32 block_index_unit)
 {
 	refsimage_crawl_context *const context =
 		(refsimage_crawl_context*) _context;
 	const u64 start_cluster =
-		(first_block * block_index_unit) / context->vol->cluster_size;
+		(first_physical_block * block_index_unit) /
+		context->vol->cluster_size;
 	u64 end_cluster =
 		(block_count * block_index_unit + context->vol->cluster_size -
 		1) / context->vol->cluster_size;
 	u64 i;
+
+	/* Which logical block this is doesn't matter when dumping an image. */
+	(void) first_logical_block;
 
 	if(context->metadata) {
 		/* Don't include file data in the metadata bitmap. */
@@ -440,14 +445,16 @@ static int refsimage_node_stream(
 static int refsimage_node_stream_extent(
 		void *_context,
 		u64 stream_id,
-		u64 first_block,
+		u64 first_logical_block,
+		u64 first_physical_block,
 		u32 block_index_unit,
 		u32 cluster_count)
 {
 		refsimage_crawl_context *const context =
 		(refsimage_crawl_context*) _context;
 	const u64 start_cluster =
-		(first_block * block_index_unit) / context->vol->cluster_size;
+		(first_physical_block * block_index_unit) /
+		context->vol->cluster_size;
 	u64 end_cluster =
 		(cluster_count * block_index_unit + context->vol->cluster_size -
 		1) / context->vol->cluster_size;
@@ -456,8 +463,11 @@ static int refsimage_node_stream_extent(
 	sys_log_debug("Stream extent with id %" PRIu64 ". First block: "
 		"%" PRIu64 " Block index unit: %" PRIu32 " Block count: "
 		"%" PRIu32,
-		PRAu64(stream_id), PRAu64(first_block),
+		PRAu64(stream_id), PRAu64(first_physical_block),
 		PRAu32(block_index_unit), PRAu32(cluster_count));
+
+	/* Which logical block this is doesn't matter when dumping an image. */
+	(void) first_logical_block;
 
 	if(context->metadata) {
 		/* Don't include stream data in the metadata bitmap. TODO: Maybe
@@ -837,6 +847,31 @@ static refsimage_output_stream refsimage_ntfsclone_stream_init(
 	return stream;
 }
 
+static ssize_t refsimage_read_all(
+		const int fd,
+		void *const data,
+		const size_t size)
+{
+	size_t remaining_size = size;
+	char *datap = data;
+	ssize_t res = 0;
+
+	while(remaining_size) {
+		res = read(fd, datap, remaining_size);
+		if(res < 0) {
+			break;
+		}
+		else if(!res) {
+			break;
+		}
+
+		remaining_size -= (size_t) res;
+		datap = &datap[(size_t) res];
+	}
+
+	return (res < 0) ? -1 : (ssize_t) (size - remaining_size);
+}
+
 static int refsimage_restore_ntfsclone_image(
 		const char *input_file,
 		int out_fd)
@@ -852,15 +887,28 @@ static int refsimage_restore_ntfsclone_image(
 	le32 data_offset_le;
 	u32 block_size = 0;
 	void *buffer = NULL;
+	u64 cur_cluster = 0;
 	u64 cmd_index = 0;
 
 	memset(&context, 0, sizeof(context));
 
-	in_fd = open(input_file, O_RDONLY);
-	if(in_fd == -1) {
-		err = (err = errno) ? err : ENOENT;
-		goto out;
+	if(input_file[0] == '-' && input_file[1] == '\0') {
+		in_fd = STDIN_FILENO;
 	}
+	else {
+		in_fd = open(input_file, O_RDONLY);
+		if(in_fd == -1) {
+			fprintf(stderr, "Error while opening input file "
+				"\"%s\": %s\n",
+				input_file, strerror(errno));
+			err = (err = errno) ? err : ENOENT;
+			goto out;
+		}
+	}
+
+#ifdef O_BINARY
+	setmode(in_fd, O_BINARY);
+#endif
 
 	bytes_transferred =
 		read(in_fd, &context.header, sizeof(context.header));
@@ -926,7 +974,13 @@ static int refsimage_restore_ntfsclone_image(
 	while(1) {
 		u8 cmd = 0;
 
-		bytes_transferred = read(in_fd, &cmd, sizeof(cmd));
+		bytes_transferred = refsimage_read_all(
+			/* int fd */
+			in_fd,
+			/* char *data */
+			&cmd,
+			/* size_t size */
+			sizeof(cmd));
 		if(bytes_transferred == 0) {
 			break;
 		}
@@ -944,7 +998,13 @@ static int refsimage_restore_ntfsclone_image(
 			le64 count = cpu_to_le64(0);
 			off_t new_size = 0;
 
-			bytes_transferred = read(in_fd, &count, sizeof(count));
+			bytes_transferred = refsimage_read_all(
+				/* int fd */
+				in_fd,
+				/* char *data */
+				&count,
+				/* size_t size */
+				sizeof(count));
 			if(bytes_transferred < 0 ||
 				(size_t) bytes_transferred != sizeof(count))
 			{
@@ -980,21 +1040,50 @@ static int refsimage_restore_ntfsclone_image(
 					strerror(errno));
 				goto out;
 			}
+
+			cur_cluster += le64_to_cpu(count);
 		}
 		else if(cmd == 0x1) {
 			/* CMD_NEXT */
 			sys_log_debug("[%" PRIu64 "] CMD_NEXT",
 				PRAu64(cmd_index));
 
-			bytes_transferred = read(in_fd, buffer, block_size);
-			if(bytes_transferred < 0 ||
-				(size_t) bytes_transferred != block_size)
-			{
+			bytes_transferred = refsimage_read_all(
+				/* int fd */
+				in_fd,
+				/* char *data */
+				buffer,
+				/* size_t size */
+				block_size);
+			if(!bytes_transferred) {
+				fprintf(stderr, "Unexpected end of file when "
+					"reading data of cluster %" PRIu64 " "
+					"from command %" PRIu64 "\n",
+					PRAu64(cur_cluster), PRAu64(cmd_index));
+				err = EIO;
+				goto out;
+			}
+			else if(bytes_transferred < 0) {
 				err = (err = errno) ? err : EIO;
 				fprintf(stderr, "Error while reading "
-					"%" PRIu64 " bytes of cluster data "
-					"from ntfsclone image: %s\n",
-					PRAu64(block_size), strerror(errno));
+					"%" PRIu64 " bytes of cluster "
+					"%" PRIu64 "'s data from ntfsclone "
+					"image command %" PRIu64 ": %s\n",
+					PRAu64(block_size), PRAu64(cur_cluster),
+					PRAu64(cmd_index), strerror(errno));
+				goto out;
+			}
+			else if((size_t) bytes_transferred != block_size) {
+				fprintf(stderr, "Partial read while reading "
+					"%" PRIu64 " bytes of cluster "
+					"%" PRIu64 "'s data from ntfsclone "
+					"image command %" PRIu64 ": "
+					"%" PRIdz " / %" PRIu32 " bytes read\n",
+					PRAu64(block_size), PRAu64(cur_cluster),
+					PRAu64(cmd_index),
+					PRAdz(bytes_transferred),
+					PRAu32(block_size));
+				err = EIO;
 				goto out;
 			}
 
@@ -1004,11 +1093,15 @@ static int refsimage_restore_ntfsclone_image(
 			{
 				err = (err = errno) ? err : EIO;
 				fprintf(stderr, "Error while writing "
-					"%" PRIu64 " bytes of cluster data to "
-					"output file: %s\n",
-					PRAu64(block_size), strerror(errno));
+					"%" PRIu64 " bytes of cluster "
+					"%" PRIu64 "'s data to output file: "
+					"%s\n",
+					PRAu64(block_size), PRAu64(cur_cluster),
+					strerror(errno));
 				goto out;
 			}
+
+			cur_cluster++;
 		}
 		else {
 			fprintf(stderr, "Invalid command read from ntfsclone "

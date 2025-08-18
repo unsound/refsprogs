@@ -91,7 +91,13 @@ static int refs_fuse_fill_stat(
 		PRAu64(attributes->size),
 		PRAu64(attributes->allocated_size));
 
-	stbuf->st_mode = (attributes->is_directory ? S_IFDIR : S_IFREG) | 0777;
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
+		stbuf->st_mode = attributes->mode;
+	}
+	else {
+		stbuf->st_mode =
+			(attributes->is_directory ? S_IFDIR : S_IFREG) | 0777;
+	}
 	stbuf->st_nlink = attributes->is_directory ? 2 /* TODO */ : 1;
 
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
@@ -155,6 +161,43 @@ static int refs_fuse_fill_stat(
 #endif
 
 	return 0;
+}
+
+static void refs_fuse_transform_symlink(
+		char *const symlink_data,
+		const size_t symlink_data_length)
+{
+	size_t i = 0;
+
+	/* Iterate over symlink_target and transform '\' to '/' and change
+	 * initial prefix for absolute links. */
+	if(symlink_data_length >= 3 &&
+		symlink_data[1] == ':' &&
+		symlink_data[2] >= '\\')
+	{
+		if(symlink_data[0] >= 'A' &&
+			symlink_data[0] <= 'Z')
+		{
+			symlink_data[1] =
+				'a' + (symlink_data[0] - 'A');
+		}
+		else {
+			symlink_data[1] =
+				symlink_data[0];
+		}
+
+		symlink_data[0] = '/';
+		i = 2;
+	}
+
+	for(; i < symlink_data_length; ++i) {
+		if(symlink_data[i] == '\\') {
+			symlink_data[i] = '/';
+		}
+		else if(symlink_data[i] == '/') {
+			symlink_data[i] = '\\';
+		}
+	}
 }
 
 typedef struct {
@@ -301,6 +344,74 @@ out:
 	return -err;
 }
 
+static int refs_fuse_op_readlink(const char *path, char *buf, size_t size)
+{
+	fsapi_volume *const vol =
+		(fsapi_volume*) fuse_get_context()->private_data;
+
+	int err = 0;
+	fsapi_node *node = NULL;
+	fsapi_node_attributes attributes;
+
+	memset(&attributes, 0, sizeof(attributes));
+
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ")",
+		__FUNCTION__, path, buf, PRAuz(size));
+
+	attributes.requested = FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+	attributes.symlink_target = buf;
+	attributes.symlink_target_length = size;
+
+	err = fsapi_node_lookup(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *parent_node */
+		NULL,
+		/* const char *path */
+		path,
+		/* size_t path_length */
+		strlen(path),
+		/* fsapi_node **out_child_node */
+		&node,
+		/* fsapi_node_attributes *out_attributes */
+		&attributes);
+	if(err) {
+		goto out;
+	}
+	else if(!node) {
+		err = ENOENT;
+		goto out;
+	}
+
+	if(attributes.symlink_target_length == size) {
+		/* Ensure that the returned buffer is NULL-terminated. */
+		--attributes.symlink_target_length;
+		attributes.symlink_target[attributes.symlink_target_length] =
+			'\0';
+	}
+
+	refs_fuse_transform_symlink(
+		/* char *symlink_data */
+		attributes.symlink_target,
+		/* size_t symlink_data_length */
+		attributes.symlink_target_length);
+out:
+	if(node) {
+		fsapi_node_release(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node **node */
+			&node,
+			/* size_t release_count */
+			1);
+	}
+
+	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz "): %d (%s)",
+		__FUNCTION__, path, buf, PRAuz(size), -err, strerror(err));
+
+	return -err;
+}
+
 static int refs_fuse_op_open(const char *path, struct fuse_file_info *fi)
 {
 	fsapi_volume *const vol =
@@ -361,6 +472,7 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_get_context()->private_data;
+	const size_t bytes_to_read = (size > INT_MAX) ? INT_MAX : size;
 
 	int err = 0;
 	fsapi_node *node = NULL;
@@ -401,9 +513,8 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		goto out;
 	}
 
-
 	context.buf.rw = buf;
-	context.remaining_size = size;
+	context.remaining_size = bytes_to_read;
 	context.is_read = SYS_TRUE;
 	iohandler.context = &context;
 	iohandler.handle_io = fsapi_iohandler_buffer_handle_io;
@@ -417,7 +528,7 @@ static int refs_fuse_op_read(const char *path, char *buf, size_t size,
 		/* u64 offset */
 		offset,
 		/* size_t size */
-		size,
+		bytes_to_read,
 		/* fsapi_iohandler *iohandler */
 		&iohandler);
 out:
@@ -434,10 +545,10 @@ out:
 	sys_log_debug("%s(path=\"%s\", buf=%p, size=%" PRIuz ", "
 		"offset=%" PRId64 ", fi=%p): %" PRIdz " (%s)",
 		__FUNCTION__, path, buf, PRAuz(size), PRAd64(offset), fi,
-		PRAdz(err ? -err : (size - context.remaining_size)),
-		strerror(err));
+		PRAdz(err ? -err :
+		(int) (bytes_to_read - context.remaining_size)), strerror(err));
 
-	return err ? -err : (size - context.remaining_size);
+	return err ? -err : (int) (size - context.remaining_size);
 }
 
 static int refs_fuse_op_statfs(const char *path, struct statvfs *stvbuf)
@@ -719,6 +830,7 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 #ifndef __APPLE__
 	const uint32_t position = 0;
 #endif
+	const size_t bytes_to_read = (size > INT_MAX) ? INT_MAX : size;
 
 	int err = 0;
 	fsapi_node *node = NULL;
@@ -786,7 +898,7 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		memset(&iohandler, 0, sizeof(iohandler));
 
 		buffer_context.buf.rw = buf;
-		buffer_context.remaining_size = size;
+		buffer_context.remaining_size = bytes_to_read;
 		buffer_context.is_read = SYS_TRUE;
 
 		iohandler.context = &buffer_context;
@@ -805,7 +917,7 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 			/* u64 offset */
 			position,
 			/* size_t size */
-			size,
+			bytes_to_read,
 			/* fsapi_iohandler *iohandler */
 			&iohandler);
 	}
@@ -831,7 +943,8 @@ out:
 	}
 
 	return err ? -err :
-		(buf ? size - buffer_context.remaining_size : context.size);
+		(buf ? (int) (bytes_to_read - buffer_context.remaining_size) :
+		((context.size > INT_MAX) ? INT_MAX : (int) context.size));
 }
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API */
 
@@ -880,6 +993,7 @@ static int refs_fuse_op_listxattr(const char *path, char *buf, size_t size)
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_get_context()->private_data;
+	const size_t bytes_to_read = (size > INT_MAX) ? INT_MAX : size;
 
 	int err = 0;
 	fsapi_node *node = NULL;
@@ -913,7 +1027,7 @@ static int refs_fuse_op_listxattr(const char *path, char *buf, size_t size)
 
 	if(buf) {
 		context.buf = buf;
-		context.size = size;
+		context.size = bytes_to_read;
 	}
 
 	err = fsapi_node_list_extended_attributes(
@@ -940,7 +1054,8 @@ out:
 			1);
 	}
 
-	return err ? -err : (buf ? size - context.size : context.size);
+	return err ? -err : (buf ? (int) (bytes_to_read - context.size) :
+		((context.size > INT_MAX) ? INT_MAX : (int) context.size));
 }
 
 #if defined(_WIN32)
@@ -1006,6 +1121,8 @@ out:
 static struct fuse_operations refs_fuse_operations = {
 	/* int (*getattr) (const char *, struct FUSE_STAT *) */
 	.getattr = refs_fuse_op_getattr,
+	/* int (*readlink) (const char *, char *, size_t) */
+	.readlink = refs_fuse_op_readlink,
 	/* int (*open) (const char *, struct fuse_file_info *) */
 	.open = refs_fuse_op_open,
 	/* int (*read) (const char *, char *, size_t, off_t,
@@ -1232,6 +1349,68 @@ out:
 	}
 	else {
 		fuse_reply_attr(req, &stbuf, 3600);
+	}
+}
+
+static void refs_fuse_ll_op_readlink(
+		fuse_req_t req,
+		fuse_ino_t ino)
+{
+	fsapi_volume *const vol =
+		(fsapi_volume*) fuse_req_userdata(req);
+	fsapi_node *const node =
+		refs_fuse_ll_fuse_ino_to_node(
+			/* fuse_ino_t ino */
+			ino,
+			/* fsapi_volume *vol */
+			vol);
+
+	int err = 0;
+	fsapi_node_attributes attributes;
+
+	memset(&attributes, 0, sizeof(attributes));
+
+	sys_log_debug("%s(req=%p, ino=0x%lX)",
+		__FUNCTION__, req, ino);
+
+	attributes.requested =
+		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
+
+	err = fsapi_node_get_attributes(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* fsapi_node_attributes *out_attributes */
+		&attributes);
+	if(err) {
+		goto out;
+	}
+	else if(!(attributes.valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
+	{
+		err = EINVAL;
+		goto out;
+	}
+
+	refs_fuse_transform_symlink(
+		/* char *symlink_data */
+		attributes.symlink_target,
+		/* size_t symlink_data_length */
+		attributes.symlink_target_length);
+out:
+	sys_log_debug("%s(req=%p, ino=0x%lX): %d (%s)",
+		__FUNCTION__, req, ino, err, strerror(err));
+
+	if(err) {
+		fuse_reply_err(req, err);
+	}
+	else {
+		fuse_reply_buf(req, attributes.symlink_target,
+			attributes.symlink_target_length + 1);
+	}
+
+	if(attributes.symlink_target) {
+		sys_free(&attributes.symlink_target);
 	}
 }
 
@@ -1875,6 +2054,8 @@ static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	/* void (*getattr) (fuse_req_t req, fuse_ino_t ino,
 	 *         struct fuse_file_info *fi); */
 	.getattr = refs_fuse_ll_op_getattr,
+	/* void (*readlink) (fuse_req_t req, fuse_ino_t ino); */
+	.readlink = refs_fuse_ll_op_readlink,
 	/* void (*open) (fuse_req_t req, fuse_ino_t ino,
 	 *         struct fuse_file_info *fi); */
 	.open = refs_fuse_ll_op_open,
@@ -1906,7 +2087,9 @@ int main(int argc, char **argv)
 {
 	int err = 0;
 	const char *device_name = NULL;
+#if REFS_FUSE_USE_LOWLEVEL_API
 	const char *mount_point = NULL;
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
 	sys_device *dev = NULL;
 	fsapi_volume *vol = NULL;
 #if REFS_FUSE_USE_LOWLEVEL_API
@@ -1930,7 +2113,9 @@ int main(int argc, char **argv)
 	}
 
 	device_name = argv[1];
+#if REFS_FUSE_USE_LOWLEVEL_API
 	mount_point = argv[2];
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	err = sys_device_open(&dev, device_name);
 	if(err) {

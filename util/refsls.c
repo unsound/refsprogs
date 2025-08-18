@@ -92,6 +92,26 @@ static int refsls_node_short_entry(
 		const u8 *const record,
 		const size_t record_size);
 
+static int refsls_node_ea(
+		void *context,
+		const char *name,
+		size_t name_length,
+		const void *data,
+		size_t data_size);
+
+static int refsls_node_stream(
+		void *context,
+		const char *name,
+		size_t name_length,
+		u64 data_size,
+		const refs_node_stream_data *data_reference);
+
+static int refsls_node_symlink(
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length);
+
 
 static void print_help(FILE *out)
 {
@@ -108,6 +128,7 @@ static void print_about(FILE *out)
 
 typedef struct {
 	refs_volume *vol;
+	sys_bool first_line;
 	sys_bool long_format;
 	sys_bool show_eas;
 	sys_bool show_streams;
@@ -172,6 +193,10 @@ static int refsls_print_dirent(
 
 
 	{
+		if(!ctx->first_line) {
+			fprintf(stdout, "\n");
+		}
+
 		if(options.long_format) {
 			static const s64 filetime_offset =
 				((s64) (369 * 365 + 89)) * 24 * 3600 * 10000000;
@@ -238,9 +263,11 @@ static int refsls_print_dirent(
 		}
 	}
 
-	fprintf(stdout, "\n");
+	ctx->first_line = SYS_FALSE;
 
-	if(is_directory && options.recursive) {
+	if(is_directory && (options.recursive ||
+		(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT)))
+	{
 		refsls_list_dir_fill_ctx subdir_ctx;
 		size_t subdir_prefix_string_length;
 		size_t prev_prefix_length = 0;
@@ -251,6 +278,8 @@ static int refsls_print_dirent(
 
 		subdir_ctx.vol = ctx->vol;
 		subdir_ctx.long_format = ctx->long_format;
+		subdir_ctx.show_eas = ctx->show_eas;
+		subdir_ctx.show_streams = ctx->show_streams;
 		subdir_ctx.prefix = NULL;
 
 		/* Build the prefix string for the subdirectory's fill
@@ -282,6 +311,9 @@ static int refsls_print_dirent(
 		subdir_visitor.context = &subdir_ctx;
 		subdir_visitor.node_long_entry = refsls_node_long_entry;
 		subdir_visitor.node_short_entry = refsls_node_short_entry;
+		subdir_visitor.node_ea = refsls_node_ea;
+		subdir_visitor.node_stream = refsls_node_stream;
+		subdir_visitor.node_symlink = refsls_node_symlink;
 
 		err = refs_node_walk(
 			/* sys_device *dev */
@@ -492,6 +524,8 @@ static int refsls_node_ea(
 	(void) data;
 
 	if(ctx->show_eas) {
+		fprintf(stdout, "\n");
+
 		if(ctx->long_format) {
 			fprintf(stdout, "%" PRIPAD(13) PRIu64
 				"                        ",
@@ -499,13 +533,15 @@ static int refsls_node_ea(
 		}
 
 		if(ctx->cur_name) {
-			fprintf(stdout, "%" PRIbs ":$EA:%" PRIbs "\n",
+			fprintf(stdout, "%s%s%" PRIbs ":$EA:%" PRIbs,
+				ctx->prefix ? ctx->prefix : "",
+				ctx->prefix ? "/" : "",
 				PRAbs(ctx->cur_name_length, ctx->cur_name),
 				PRAbs(name_length, name));
 		}
 		else {
 			fprintf(stdout, "<Hard link entry with id "
-				"0x%" PRIX64 ">:$EA:%" PRIbs "\n",
+				"0x%" PRIX64 ">:$EA:%" PRIbs,
 				PRAX64(ctx->cur_hard_link_id),
 				PRAbs(name_length, name));
 		}
@@ -527,6 +563,8 @@ static int refsls_node_stream(
 	(void) data_reference;
 
 	if(ctx->show_streams) {
+		fprintf(stdout, "\n");
+
 		if(ctx->long_format) {
 			fprintf(stdout, "%" PRIPAD(13) PRIu64
 				"                        ",
@@ -534,21 +572,39 @@ static int refsls_node_stream(
 		}
 
 		if(ctx->cur_name) {
-			fprintf(stdout, "%" PRIbs ":%" PRIbs ":$DATA%s\n",
+			fprintf(stdout, "%s%s%" PRIbs ":%" PRIbs ":$DATA%s",
+				ctx->prefix ? ctx->prefix : "",
+				ctx->prefix ? "/" : "",
 				PRAbs(ctx->cur_name_length, ctx->cur_name),
 				PRAbs(name_length, name),
 				data_reference->resident ? " (resident)" :
 				" (non-resident)");
 		}
 		else {
-			fprintf(stdout, "<Hard link entry with id "
-				"0x%" PRIX64 ">:%" PRIbs ":$DATA%s\n",
+			fprintf(stdout, "%s%s<Hard link entry with id "
+				"0x%" PRIX64 ">:%" PRIbs ":$DATA%s",
+				ctx->prefix ? ctx->prefix : "",
+				ctx->prefix ? "/" : "",
 				PRAX64(ctx->cur_hard_link_id),
 				PRAbs(name_length, name),
 				data_reference->resident ? " (resident)" :
 				" (non-resident)");
 		}
 	}
+
+	return 0;
+}
+
+static int refsls_node_symlink(
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
+{
+	(void) context;
+	(void) type;
+
+	fprintf(stdout, " -> %" PRIbs, PRAbs(target_length, target));
 
 	return 0;
 }
@@ -715,6 +771,7 @@ int main(int argc, char **argv)
 	}
 
 	context.vol = vol;
+	context.first_line = SYS_TRUE;
 	context.long_format = options.long_format;
 	context.show_eas = options.show_eas;
 	context.show_streams = options.show_streams;
@@ -724,6 +781,7 @@ int main(int argc, char **argv)
 	visitor.node_hardlink_entry = refsls_node_hardlink_entry;
 	visitor.node_ea = refsls_node_ea;
 	visitor.node_stream = refsls_node_stream;
+	visitor.node_symlink = refsls_node_symlink;
 
 	err = refs_node_walk(
 		/* sys_device *dev */
@@ -747,6 +805,10 @@ int main(int argc, char **argv)
 	if(err) {
 		sys_log_perror(err, "Error while listing directory");
 		goto out;
+	}
+
+	if(!context.first_line) {
+		fprintf(stdout, "\n");
 	}
 
 	ret = (EXIT_SUCCESS);
