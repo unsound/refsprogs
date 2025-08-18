@@ -1,3 +1,9 @@
+refsprogs (2025.8.17-1) main; urgency=medium
+
+  * New upstream release.
+
+ -- Erik Larsson <catacombae@gmail.com>  Mon, 18 Aug 2025 21:05:19 +0300
+
 refsprogs (2025.8.11-1) main; urgency=medium
 
   * New upstream release.
