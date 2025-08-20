@@ -1,11 +1,11 @@
 .\" Copyright (c) 2025 Erik Larsson
 .\"
-.TH REFSIMAGE 8 "July 2025" "refsprogs @VERSION@"
+.TH REFSIMAGE 8 "August 2025" "refsprogs @VERSION@"
 .SH NAME
 refsimage - Create and restore ReFS volume images.
 .SH SYNOPSIS
 .B refsimage
-[\fIoptions\fR] \fIdevice\fR
+[\fIoptions\fR] \fIdevice|image\fR
 .SH DESCRIPTION
 .B refsimage
 is able to create/restore filesystem images, optionally excluding data and only
@@ -35,6 +35,27 @@ Write the resulting image to \fBFILE\fR instead of writing it to stdout.
 .TP
 \fB\-r\fR, \fB\-\-restore-image\fR
 Restore an ntfsclone format image to a sparse image file in the filesystem.
+.SH EXAMPLES
+Dump the metadata of an ReFS volume on /dev/sdb1 to a sparse file sdb1.img:
+.RS
+.sp
+.B refsimage \-\metadata \-\output sdb1.img /dev/sdb1
+.sp
+.RE
+Dump the metadata of an ReFS volume on /dev/sdb1 to an ntfsclone format file
+sdb1.cloneimg:
+.RS
+.sp
+.B refsimage \-\-ntfsclone-image \-\-metadata \-\-output sdb1.cloneimg /dev/sdb1
+.sp
+.RE
+Restore a compressed ntfsclone format image sdb1.cloneimg.bz2 containing ReFS
+to a sparse file sdb1.img for inspection/debugging:
+.RS
+.sp
+.B bzcat sdb1.cloneimg.bz2 | refsimage \-\-restore-image \-\-output sdb1.img -
+.sp
+.RE
 .SH BUGS
 There are no known problems with
 .BR refsimage .
