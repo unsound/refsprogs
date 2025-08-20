@@ -1,6 +1,6 @@
 .\" Copyright (c) 2022-2025 Erik Larsson
 .\"
-.TH REFS\-FUSE 8 "May 2023" "refsprogs @VERSION@"
+.TH REFS\-FUSE 8 "August 2025" "refsprogs @VERSION@"
 .SH NAME
 refs\-fuse \- Mount an ReFS volume as a filesystem backed by a FUSE daemon
 .SH SYNOPSIS
@@ -26,12 +26,8 @@ enabling debug output, \fI\-ononempty\fR to allow mounting over a non-empty
 directory.
 .SH BUGS
 .BR refs\-fuse
-is currently unable to reliably read file data for many files especially on
-newer ReFS versions due to insufficient information about the volume format.
-This is being worked on.
-
-It is also limited to read-only operation, which isn't technically a bug but a
-design limitation for now.
+is currently limited to read\-only operation, which isn't technically a bug but
+a design limitation for now.
 
 If you find a bug, then please report it to the refsprogs bug tracker on github:
 https://github.com/unsound/refsprogs/issues
