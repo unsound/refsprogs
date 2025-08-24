@@ -37,6 +37,20 @@
 #include <errno.h>
 
 
+/* Macros. */
+
+#define emit_entry_header(prefix, indent, title, entry_index, num_entries, \
+		entry_offset, type) \
+	emit((prefix), (indent), "%s %" PRIu32 " / %" PRIu32 " (%s) @ " \
+		"%" PRIu32 " / 0x%" PRIX32 ":", \
+		(title), \
+		PRAu32((entry_index) + 1), \
+		PRAu32(num_entries), \
+		(type), \
+		PRAu32(entry_offset), \
+		PRAX32(entry_offset))
+
+
 /* Type declarations / definitions. */
 
 typedef struct {
@@ -1646,7 +1660,8 @@ static int parse_level2_block_unknown_table_entry(
 		const u8 *const entry,
 		const u32 entry_size,
 		const u32 entry_offset,
-		const u32 entry_index)
+		const u32 entry_index,
+		const u32 num_entries)
 {
 	static const char *const prefix = "\t";
 	static const size_t indent = 1;
@@ -1656,12 +1671,9 @@ static int parse_level2_block_unknown_table_entry(
 
 	int err = 0;
 
-	emit(prefix, 0, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / 0x%" PRIX32 ":",
-		PRAu32(entry_index),
-		(entry_index == 0) ? "table header" :
-		((entry_index == 1) ? "allocation entry" : "regular entry"),
-		PRAu32(entry_offset),
-		PRAX32(entry_offset));
+	emit_entry_header(prefix, 0, "Entry", entry_index, num_entries,
+		entry_offset, "regular entry");
+
 	emit(prefix, indent, "Size: %" PRIu64,
 		PRAu64(entry_size));
 
@@ -1809,6 +1821,7 @@ static int parse_generic_entry(
 		const u32 entry_size,
 		const u16 entry_offset,
 		const u32 entry_index,
+		const u32 num_entries,
 		void *const context,
 		int (*const parse_key)(
 			refs_node_crawl_context *crawl_context,
@@ -1866,16 +1879,14 @@ static int parse_generic_entry(
 			/* size_t entry_offset */
 			entry_offset,
 			/* u32 entry_index */
-			entry_index);
+			entry_index,
+			/* u32 num_entries */
+			num_entries);
 		goto out;
 	}
 
-	emit(prefix, indent, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
-		"0x%" PRIX32 ":",
-		PRAu32(entry_index),
-		"regular entry",
-		PRAu32(entry_offset),
-		PRAX32(entry_offset));
+	emit_entry_header(prefix, indent, "Entry", entry_index, num_entries,
+		entry_offset, "regular entry");
 
 	print_le16_dechex("Size", prefix, indent + 1, entry, &entry[0x0]);
 	print_le16_dechex("Key offset", prefix, indent + 1, entry, &entry[0x4]);
@@ -2125,12 +2136,10 @@ static int parse_generic_block(
 
 	entry = &block[i];
 	entry_size = read_le32(entry);
-	emit(prefix, indent, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
-		"0x%" PRIX32 ":",
-		PRAu32(0),
-		"table header",
-		PRAu32(i),
-		PRAX32(i));
+
+	emit(prefix, indent, "Node header @ %" PRIu32 " / 0x%" PRIX32 ":",
+		PRAu32(i), PRAX32(i));
+
 	err = parse_block_header_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
@@ -2162,12 +2171,11 @@ static int parse_generic_block(
 
 	entry = &block[i];
 	entry_size = read_le32(entry);
-	emit(prefix, indent, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
+
+	emit(prefix, indent, "Node allocation entry @ %" PRIu32 " / "
 		"0x%" PRIX32 ":",
-		PRAu32(1),
-		"allocation entry",
-		PRAu32(i),
-		PRAX32(i));
+		PRAu32(i), PRAX32(i));
+
 	err = parse_block_allocation_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
@@ -2324,6 +2332,8 @@ static int parse_generic_block(
 			cur_offset,
 			/* u32 entry_index */
 			cur_index,
+			/* u32 num_entries */
+			values_count,
 			/* void *context */
 			context,
 			/* int (*parse_key)(
@@ -2485,7 +2495,9 @@ static int parse_generic_block(
 				/* u16 entry_offset */
 				i,
 				/* u32 entry_index */
-				2 + smallest_matching_entryno,
+				smallest_matching_entryno,
+				/* u32 num_entries */
+				values_count,
 				/* void *context */
 				context,
 				/* int (*parse_key)(
@@ -3193,7 +3205,8 @@ static int parse_level2_block_0xD_table_entry(
 		const u8 *const entry,
 		const u32 entry_size,
 		const u32 entry_offset,
-		const u32 entry_index)
+		const u32 entry_index,
+		const u32 num_entries)
 {
 	static const char *const prefix = "\t";
 
@@ -3214,12 +3227,9 @@ static int parse_level2_block_0xD_table_entry(
 		goto out;
 	}
 
-	emit("%sEntry %" PRIu32 " (%s) @ %" PRIu32 " / 0x%" PRIX32 ":",
-		prefix,
-		PRAu32(entry_index),
-		"regular entry",
-		PRAu32(entry_offset),
-		PRAX32(entry_offset));
+	emit_entry_header(prefix, indent, "Entry", entry_index, num_entries,
+		entry_offset, "regular entry");
+
 	emit("%s\tSize: %" PRIu64 " / 0x%" PRIX64,
 		prefix,
 		PRAu64(entry_size),
@@ -3266,7 +3276,8 @@ static int parse_level2_block_0xE_table_entry(
 		const u8 *const entry,
 		const u32 entry_size,
 		const u32 entry_offset,
-		const u32 entry_index)
+		const u32 entry_index,
+		const u32 num_entries)
 {
 	static const char *const prefix = "\t";
 
@@ -3287,12 +3298,9 @@ static int parse_level2_block_0xE_table_entry(
 		goto out;
 	}
 
-	emit(prefix, 0, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
-		"0x%" PRIX32 ":",
-		PRAu32(entry_index),
-		"regular entry",
-		PRAu32(entry_offset),
-		PRAX32(entry_offset));
+	emit_entry_header(prefix, indent - 1, "Entry", entry_index, num_entries,
+		entry_offset, "regular entry");
+
 	emit(prefix, indent, "Size: %" PRIu64 " / 0x%" PRIX64,
 		PRAu64(entry_size),
 		PRAX64(entry_size));
@@ -3407,7 +3415,8 @@ static int parse_level2_block_0x22_table_entry(
 		const u8 *const entry,
 		const u32 entry_size,
 		const u32 entry_offset,
-		const u32 entry_index)
+		const u32 entry_index,
+		const u32 num_entries)
 {
 	static const char *const prefix = "\t";
 
@@ -3416,12 +3425,9 @@ static int parse_level2_block_0x22_table_entry(
 
 	int err = 0;
 
-	emit(prefix, indent - 1, "Entry %" PRIu32 " (%s) @ %" PRIu32 " / "
-		"0x%" PRIX32 ":",
-		PRAu32(entry_index),
-		"regular entry",
-		PRAu32(entry_offset),
-		PRAX32(entry_offset));
+	emit_entry_header(prefix, indent, "Entry", entry_index, num_entries,
+		entry_offset, "regular entry");
+
 	emit(prefix, indent, "Size: %" PRIu64 " / 0x%" PRIX64,
 		PRAu64(entry_size),
 		PRAX64(entry_size));
