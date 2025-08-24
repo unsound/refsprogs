@@ -983,8 +983,6 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		memset(&visitor, 0, sizeof(visitor));
 
 		visitor.context = context;
-		visitor.version_major = context->vol->bs->version_major;
-		visitor.version_minor = context->vol->bs->version_minor;
 		visitor.node_symlink = fsapi_node_get_attributes_visit_symlink;
 
 		err = refs_node_walk(
@@ -1885,8 +1883,6 @@ static int fsapi_node_list_visit_short_entry(
 		memset(&visitor, 0, sizeof(visitor));
 
 		visitor.context = context;
-		visitor.version_major = context->vol->bs->version_major;
-		visitor.version_minor = context->vol->bs->version_minor;
 		visitor.node_symlink = fsapi_node_list_visit_symlink;
 
 		err = refs_node_walk(
