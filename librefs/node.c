@@ -6457,8 +6457,7 @@ static u16 parse_level3_attribute_header(
 		const size_t indent,
 		const size_t remaining_in_value,
 		const u8 *const attribute,
-		const u16 attribute_size,
-		const u16 attribute_index)
+		const u16 attribute_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -6466,8 +6465,6 @@ static u16 parse_level3_attribute_header(
 		sys_min(remaining_in_value, attribute_size);
 
 	u16 j = 0;
-
-	(void) attribute_index;
 
 	if(remaining_in_attribute - j < 4) {
 		goto out;
@@ -6826,12 +6823,13 @@ int parse_level3_long_value(
 	u32 i = 0;
 	size_t cur_attribute_end = 0;
 	u16 attribute_size = 0;
-	u16 attribute_index = 0;
-	u32 attributes_offset = 0;
+	u16 attribute_number = 0;
+	u32 attributes_offset_base = 0;
 	size_t remaining_in_value = 0;
 	u32 number_of_attributes = 0;
 	u32 value_offsets_start = 0;
 	u32 value_offsets_end = 0;
+	u16 attributes_start = 0;
 	u16 offsets_start = 0;
 	u16 j = 0;
 	char *cstr = NULL;
@@ -6946,7 +6944,6 @@ int parse_level3_long_value(
 		PRAX16(value_offset));
 
 	emit(prefix, indent, "Basic information @ 0 / 0x0:");
-	++attribute_index;
 
 	/* This field has the observed values 0 and 168 / 0xA8 with the latter
 	 * occurring the most (about 20 times more often than the value 0). */
@@ -7108,7 +7105,7 @@ int parse_level3_long_value(
 		i += attribute_size - i;
 	}
 
-	attributes_offset = i;
+	attributes_offset_base = i;
 	remaining_in_value = value_size - i;
 	if(remaining_in_value < 0x18) {
 		goto out;
@@ -7153,6 +7150,22 @@ int parse_level3_long_value(
 		goto out;
 	}
 
+	/* The value offsets start/end values are counted from the start of the
+	 * allocation entry, so add 'i' to the offsets before incrementing to
+	 * get an absolute byte offset from the start of the value data. */
+	if(value_offsets_end < value_offsets_start ||
+		value_offsets_start > 0xFFFFFFFFUL - i ||
+		value_offsets_end > 0xFFFFFFFFUL - i)
+	{
+		/* Overflow guard. */
+		sys_log_warning("Invalid start/end offsets for attribute "
+			"offsets array: %" PRIu32 " / %" PRIu32 "(%s)",
+			PRAu32(value_offsets_start), PRAu32(value_offsets_end),
+			(value_offsets_end < value_offsets_start) ?
+			"invalid start/end order" : "would overflow type");
+		goto out;
+	}
+
 	value_offsets_start += i;
 	value_offsets_end += i;
 
@@ -7163,15 +7176,27 @@ int parse_level3_long_value(
 			PRAu16(value_size));
 		number_of_attributes = 0;
 	}
+	else if(value_offsets_start >= value_size ||
+		value_offsets_end > value_size ||
+		value_offsets_end - value_offsets_start !=
+		number_of_attributes * 4)
+	{
+		sys_log_warning("Invalid start/end offsets for attribute "
+			"offsets array: %" PRIu32 " / %" PRIu32 "(%s)",
+			PRAu32(value_offsets_start), PRAu32(value_offsets_end),
+			(value_offsets_start >= value_size ||
+			value_offsets_end > value_size) ? "overflows value" :
+			"doesn't match the number of attributes");
+		goto out;
+	}
 
 	i += (u16) sys_min(attribute_size, remaining_in_value);
-	++attribute_index;
+	attributes_start = i;
 
-	while(i + 2 <= value_size && (attribute_index < 2 ||
-		(u16) (attribute_index - 2) < number_of_attributes))
-	{
+	while(attribute_number < number_of_attributes) {
 		const size_t offset_in_value = i;
-		const u8 *const attribute = &value[offset_in_value];
+		const le16 *const value_offsets =
+			(const le16*) &value[value_offsets_start];
 
 		u16 remaining_in_attribute = 0;
 		u16 attr_key_offset = 0;
@@ -7181,6 +7206,79 @@ int parse_level3_long_value(
 		u16 attribute_type_offset = 0;
 		u16 key_end = 0 ;
 		u16 attribute_type = 0;
+		const u8 *attribute = NULL;
+		u16 attribute_index = 0;
+
+		if(print_visitor && print_visitor->print_message) {
+			/* We iterate in descending order when printing. Search
+			 * for the next attribute offset in the index. */
+			u16 next_offset = value_offsets_start;
+
+			if(i + 2 > value_size) {
+				break;
+			}
+
+			for(j = 0; j < number_of_attributes; ++j) {
+				const u16 cur_value =
+					read_le16(&value_offsets[j * 2]);
+				const u32 cur_offset =
+					attributes_offset_base + cur_value;
+
+				if(cur_offset < attributes_start ||
+					cur_offset + 2 > value_size)
+				{
+					sys_log_warning("Invalid offset for "
+						"attribute %" PRIu16 ": "
+						"%" PRIu32,
+						PRAu16(j), PRAu32(cur_offset));
+					break;
+				}
+
+				if(cur_offset >= i && cur_offset < next_offset)
+				{
+					next_offset = (u16) cur_offset;
+					attribute_index = j;
+				}
+			}
+
+			if(next_offset >= value_offsets_start) {
+				sys_log_warning("Could not find next offset "
+					"following: %" PRIu32, PRAu32(i));
+				break;
+			}
+
+			if(i < next_offset) {
+				print_data_with_base(prefix, indent, i,
+					value_size, &value[i],
+					next_offset - i);
+				i = next_offset;
+			}
+
+			attribute = &value[i];
+		}
+		else {
+			/* When not printing, we iterate in the order that the
+			 * attributes are listed in the attrbute offsets to have
+			 * the attributes returned to the caller in the right
+			 * order. */
+			const u16 attribute_offset_value =
+				read_le16(&value_offsets[attribute_number * 2]);
+			const u32 attribute_offset =
+				attributes_offset_base + attribute_offset_value;
+
+			if(attribute_offset < attributes_start ||
+				attribute_offset + 2 > value_size)
+			{
+				sys_log_warning("Invalid offset for attribute "
+					"%" PRIu16 ": %" PRIu32,
+					PRAu16(attribute_number),
+					PRAu32(attribute_offset));
+				break;
+			}
+
+			attribute = &value[attribute_offset];
+			attribute_index = attribute_number;
+		}
 
 		attribute_size = 0;
 		remaining_in_value = value_size - offset_in_value;
@@ -7220,12 +7318,12 @@ int parse_level3_long_value(
 
 		emit(prefix, indent, "Attribute %" PRIu16 " / %" PRIu32 " @ "
 			"%" PRIuz " / 0x%" PRIXz ":",
-			PRAu16((attribute_index - 2) + 1),
+			PRAu16(attribute_index + 1),
 			PRAu32(number_of_attributes),
 			PRAuz(offset_in_value),
 			PRAXz(offset_in_value));
 
-		++attribute_index;
+		++attribute_number;
 
 		j = 0;
 
@@ -7245,9 +7343,7 @@ int parse_level3_long_value(
 			/* const u8 *attribute */
 			attribute,
 			/* u16 attribute_size */
-			attribute_size,
-			/* u16 attribute_index */
-			attribute_index);
+			attribute_size);
 
 		if(attribute_type == 0x0080) {
 			u16 data_stream_type;
@@ -7671,7 +7767,7 @@ int parse_level3_long_value(
 			"%" PRIu32 ", flags: 0x%" PRIX16 ")",
 			PRAu16(j + 1), PRAuz(i), PRAXz(i),
 			PRAu16(read_le16(&value[i])),
-			PRAu32(attributes_offset + read_le16(&value[i])),
+			PRAu32(attributes_offset_base + read_le16(&value[i])),
 			PRAX16(read_le16(&value[i + 2])));
 		i += 4;
 	}
