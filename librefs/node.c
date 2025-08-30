@@ -6227,7 +6227,10 @@ static int parse_non_resident_attribute_list_value(
 			 *      u32 data_size,
 			 *      u32 node_type) */
 			NULL);
-		if(err) {
+		if(err == -1) {
+			goto out;
+		}
+		else if(err) {
 			sys_log_perror(err, "Error while parsing non-resident "
 				"attribute list");
 			goto out;
