@@ -1503,6 +1503,10 @@ out:
 		sys_free(&buffer);
 	}
 
+	if(bitmap) {
+		sys_free(&bitmap);
+	}
+
 	if(vol) {
 		refs_volume_destroy(&vol);
 	}

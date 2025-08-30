@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.8.17],[catacombae@gmail.com])
-LIBREFS_VERSION="8"
+AC_INIT([refsprogs],[2025.8.30],[catacombae@gmail.com])
+LIBREFS_VERSION="9"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -48,7 +48,7 @@ AC_ARG_ENABLE(
 	[fuse3],
 	[AS_HELP_STRING(
 		[--disable-fuse3],
-		[do not build the FUSE driver against libfuse3, even when available)]
+		[do not build the FUSE driver against libfuse3, even when available]
 	)],
 	[case $enableval in
 	yes)
@@ -62,6 +62,26 @@ AC_ARG_ENABLE(
 		;;
 	esac],
 	[enable_fuse3="yes"]
+)
+
+AC_ARG_ENABLE(
+	[fuse-lowlevel],
+	[AS_HELP_STRING(
+		[--disable-fuse-lowlevel],
+		[do not use the FUSE lowlevel API for the filesystem operations, even when it's available but instead use the highlevel FUSE API]
+	)],
+	[case $enableval in
+	yes)
+		enable_fuse_lowlevel="yes"
+		;;
+	no)
+		enable_fuse_lowlevel="no"
+		;;
+	*)
+		AC_MSG_ERROR([[Unknown option to --enable-fuse-lowlevel: $enableval]])
+		;;
+	esac],
+	[enable_fuse_lowlevel="yes"]
 )
 
 # Amend default include/library paths depending on the platform.
@@ -199,7 +219,7 @@ if test "x$enable_refs_fuse" = "xyes"; then
 			[]
 		)
 
-		if test "x$enable_fuse3" == "xyes"; then
+		if test "x$enable_fuse3" = "xyes"; then
 			PKG_CHECK_MODULES(
 				[FUSE3_MODULE],
 				[fuse3 >= 3.2.0],
@@ -208,14 +228,16 @@ if test "x$enable_refs_fuse" = "xyes"; then
 			)
 		fi
 
-		__SAVED_CPPFLAGS="$CPPFLAGS"
-		if test "x$use_fuse3" != "xyes"; then
-			CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
-		else
-			CPPFLAGS="$CPPFLAGS $FUSE3_MODULE_CFLAGS -DFUSE_USE_VERSION=32"
+		if test "x$enable_fuse_lowlevel" = "xyes"; then
+			__SAVED_CPPFLAGS="$CPPFLAGS"
+			if test "x$use_fuse3" != "xyes"; then
+				CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
+			else
+				CPPFLAGS="$CPPFLAGS $FUSE3_MODULE_CFLAGS -DFUSE_USE_VERSION=32"
+			fi
+			AC_CHECK_HEADERS([fuse_lowlevel.h])
+			CPPFLAGS="$__SAVED_CPPFLAGS"
 		fi
-		AC_CHECK_HEADERS([fuse_lowlevel.h])
-		CPPFLAGS="$__SAVED_CPPFLAGS"
 		;;
 	esac
 fi
