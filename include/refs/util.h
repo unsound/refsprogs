@@ -622,4 +622,68 @@ static inline void _print_filetime(
 		} \
 	} while(0)
 
+static inline void refs_util_trim_string(
+		const char **const stringp,
+		size_t *const sizep,
+		char char_to_trim)
+{
+	size_t i;
+
+	for(i = 0; i < *sizep; ++i) {
+		if((*stringp)[i] != char_to_trim) {
+			break;
+		}
+	}
+
+	*stringp = &(*stringp)[i];
+	*sizep -= i;
+}
+
+static inline void refs_util_reverse_trim_string(
+		const char *const string,
+		size_t *const sizep,
+		char char_to_trim)
+{
+	size_t i;
+
+	for(i = *sizep; i > 0; --i) {
+		if(string[i - 1] != char_to_trim) {
+			break;
+		}
+	}
+
+	*sizep = i;
+}
+
+static inline void refs_util_search_string(
+		const char *string,
+		size_t *const sizep,
+		char end_char)
+{
+	size_t i;
+
+	for(i = 0; i < *sizep; ++i) {
+		if(string[i] == end_char) {
+			break;
+		}
+	}
+
+	*sizep = i;
+}
+
+static inline void refs_util_reverse_search_string(
+		const char *const string,
+		size_t *const sizep,
+		char end_char)
+{
+	size_t i;
+
+	for(i = *sizep; i > 0; --i) {
+		if(string[i - 1] == end_char) {
+			break;
+		}
+	}
+
+	*sizep = i;
+}
 #endif /* !defined(_REFS_UTIL_H) */
