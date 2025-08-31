@@ -1254,7 +1254,12 @@ out:
 static void refs_fuse_ll_op_forget(
 		fuse_req_t req,
 		fuse_ino_t ino,
-		unsigned long nlookup)
+#if FUSE_VERSION >= 30
+		uint64_t nlookup
+#else
+		unsigned long nlookup
+#endif /* FUSE_VERSION >= 30 ... */
+		)
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_req_userdata(req);
