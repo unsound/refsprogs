@@ -16,7 +16,7 @@ Architecture: linux-any kfreebsd-any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
- librefs8 (= ${binary:Version}),
+ librefs9 (= ${binary:Version}),
  fuse3 [linux-any],
  fuse4bsd [kfreebsd-any]
 #Provides: ${refsprogs:Provides}
@@ -35,14 +35,14 @@ Architecture: linux-any kfreebsd-any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
- librefs8 (= ${binary:Version}),
+ librefs9 (= ${binary:Version}),
 Description: read-only ReFS library (development)
  librefs provides a read-only interface for interacting with the ReFS filesystem
  filesystem used by recent versions of Microsoft Windows.
  .
  This package contains the development files.
 
-Package: librefs8
+Package: librefs9
 Section: libs
 Architecture: linux-any kfreebsd-any
 Multi-Arch: same
