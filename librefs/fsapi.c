@@ -29,9 +29,11 @@
 #include "layout.h"
 #include "node.h"
 #include "rb_tree.h"
+#include "util.h"
 #include "volume.h"
 
 typedef struct fsapi_volume fsapi_volume;
+typedef struct fsapi_node_path_element fsapi_node_path_element;
 typedef struct fsapi_node fsapi_node;
 
 static const size_t cached_nodes_max = 1024;
@@ -47,10 +49,33 @@ struct fsapi_volume {
 	struct rb_tree *oid_to_cached_directory_tree;
 };
 
+struct fsapi_node_path_element {
+	fsapi_node_path_element *parent;
+	size_t depth;
+	sys_bool name_is_subpath;
+	union {
+		/**
+		 * When @p name_is_subpath is @ref SYS_FALSE, then this field is
+		 * interpreted as a refcount.
+		 */
+		size_t refcount;
+		/**
+		 * When @p name_is_subpath is @ref SYS_TRUE, then this field is
+		 * interprested as a subpath depth, i.e. the number of path
+		 * elements in @p name.
+		 */
+		size_t subpath_depth;
+	} u;
+	size_t name_length;
+	union {
+		const char *ro;
+		char *rw;
+	} name;
+};
+
 struct fsapi_node {
 	u64 refcount;
-	char *path;
-	size_t path_length;
+	fsapi_node_path_element *path;
 	u64 parent_directory_object_id;
 	u64 directory_object_id;
 	sys_bool is_short_entry;
@@ -76,11 +101,345 @@ static int fsapi_node_list_visit_symlink(
 		const char *target,
 		size_t target_length);
 
+static int fsapi_node_path_element_compare(
+		const fsapi_node_path_element *const a,
+		const fsapi_node_path_element *const b);
+
+
+static void fsapi_node_path_element_release(
+		fsapi_node_path_element **const element)
+{
+	if((*element)->name_is_subpath) {
+		sys_log_critical("Attempted to release element %p with "
+			"subpath.", *element);
+		return;
+	}
+	else if(!(*element)->u.refcount) {
+		sys_log_critical("Attempted to release element %p with no "
+			"references.", *element);
+		return;
+	}
+
+	sys_log_debug("Releasing path element %p. Refcount: %" PRIuz " -> "
+		"%" PRIuz,
+		*element,
+		PRAuz((*element)->u.refcount),
+		PRAuz((*element)->u.refcount - 1));
+	if(!--(*element)->u.refcount) {
+		if((*element)->parent) {
+			fsapi_node_path_element_release(&(*element)->parent);
+		}
+
+		sys_free(&(*element)->name.rw);
+		sys_free(element);
+	}
+}
+
+static int fsapi_node_path_element_compare(
+		const fsapi_node_path_element *const a,
+		const fsapi_node_path_element *const b)
+{
+	const fsapi_node_path_element *a_cur = a;
+	const fsapi_node_path_element *b_cur = b;
+	size_t a_true_depth = a->depth;
+	size_t b_true_depth = b->depth;
+	size_t a_subpath_depth = 0;
+	size_t a_subpath_length = 0;
+	size_t b_subpath_depth = 0;
+	size_t b_subpath_length = 0;
+	size_t i = 0;
+	int res = 0;
+
+	sys_log_trace("Comparing paths %p (depth: %" PRIuz ", name_length: "
+		"%" PRIuz ", name: \"%" PRIbs "\", subpath: %" PRIu8 ", "
+		"subpath_depth: %" PRIuz ") and %p (depth: %" PRIuz ", "
+		"name_length: %" PRIuz ", name: \"%" PRIbs "\", "
+		"subpath: %" PRIu8 ", subpath_depth: %" PRIuz ")...",
+		a, PRAuz(a->depth), PRAuz(a->name_length),
+		PRAbs(a->name_length, a->name.ro), PRAu8(a->name_is_subpath),
+		PRAuz(a->name_is_subpath ? a->u.subpath_depth : 0),
+		b, PRAuz(b->depth), PRAuz(b->name_length),
+		PRAbs(b->name_length, b->name.ro), PRAu8(b->name_is_subpath),
+		PRAuz(b->name_is_subpath ? b->u.subpath_depth : 0));
+
+	if(a_cur == b_cur) {
+		sys_log_trace("Taking shortcut because we are comparing the "
+			"identical element.");
+		res = 0;
+		goto out;
+	}
+
+	if(a_cur->name_is_subpath) {
+		a_subpath_depth = a_cur->u.subpath_depth;
+		a_subpath_length = a_cur->name_length;
+		a_true_depth += a_subpath_depth - 1;
+	}
+
+	if(b_cur->name_is_subpath) {
+		b_subpath_depth = b_cur->u.subpath_depth;
+		b_subpath_length = b_cur->name_length;
+		b_true_depth += b_subpath_depth - 1;
+	}
+
+	/* Find the smallest common depth so that we can start comparing at the
+	 * same depth. */
+	if(a_true_depth < b_true_depth) {
+		if(a_true_depth < b->depth) {
+			size_t descend_count = b->depth - a_true_depth;
+
+			sys_log_trace("Descending B to the smallest common "
+				"depth: %" PRIuz " -> %" PRIuz " (%" PRIuz " "
+				"levels)",
+				PRAuz(b->depth),
+				PRAuz(b->depth - descend_count),
+				PRAuz(descend_count));
+
+			while(descend_count--) {
+				b_cur = b_cur->parent;
+			}
+
+			b_subpath_depth = 0;
+		}
+		else {
+			/* Descend through subpaths of B. */
+			size_t descend_count = b_true_depth - a_true_depth;
+
+			sys_log_trace("Descending B subpath to the smallest "
+				"common depth: %" PRIuz " -> %" PRIuz " "
+				"(%" PRIuz " levels)",
+				PRAuz(b_true_depth),
+				PRAuz(b_true_depth - descend_count),
+				PRAuz(descend_count));
+
+			sys_log_trace("Subpath before descending: "
+				"\"%" PRIbs "\" (length: %" PRIuz ")",
+				PRAbs(b_subpath_length, b->name.ro),
+				PRAuz(b_subpath_length));
+
+			while(descend_count--) {
+				refs_util_reverse_trim_string(b_cur->name.ro,
+					&b_subpath_length, '/');
+				refs_util_reverse_search_string(b_cur->name.ro,
+					&b_subpath_length, '/');
+				sys_log_trace("Subpath with %" PRIuz " more "
+					"steps remaining: \"%" PRIbs "\" "
+					"(length: %" PRIuz ")",
+					PRAuz(descend_count),
+					PRAbs(b_subpath_length, b->name.ro),
+					PRAuz(b_subpath_length));
+				--b_subpath_depth;
+			}
+		}
+	}
+	else if(a_true_depth > b_true_depth) {
+		if(b_true_depth < a->depth) {
+			size_t descend_count = a->depth - b_true_depth;
+
+			sys_log_trace("Descending A to the smallest common "
+				"depth: %" PRIuz " -> %" PRIuz " (%" PRIuz " "
+				"levels)",
+				PRAuz(a->depth),
+				PRAuz(a->depth - descend_count),
+				PRAuz(descend_count));
+
+			while(descend_count--) {
+				a_cur = a_cur->parent;
+			}
+
+			a_subpath_depth = 0;
+		}
+		else {
+			/* Descend through subpaths of A. */
+			size_t descend_count = a_true_depth - b_true_depth;
+
+			sys_log_trace("Descending A subpath to the smallest "
+				"common depth: %" PRIuz " -> %" PRIuz " "
+				"(%" PRIuz " levels)",
+				PRAuz(a_true_depth),
+				PRAuz(a_true_depth - descend_count),
+				PRAuz(descend_count));
+
+			sys_log_trace("Subpath before descending: "
+				"\"%" PRIbs "\" (length: %" PRIuz ")",
+				PRAbs(a_subpath_length, a->name.ro),
+				PRAuz(a_subpath_length));
+
+			while(descend_count--) {
+				refs_util_reverse_trim_string(a_cur->name.ro,
+					&a_subpath_length, '/');
+				refs_util_reverse_search_string(a_cur->name.ro,
+					&a_subpath_length, '/');
+				refs_util_reverse_trim_string(a_cur->name.ro,
+					&a_subpath_length, '/');
+				sys_log_trace("Subpath with %" PRIuz " more "
+					"steps remaining: \"%" PRIbs "\" "
+					"(length: %" PRIuz ")",
+					PRAuz(descend_count),
+					PRAbs(a_subpath_length, a->name.ro),
+					PRAuz(a_subpath_length));
+				--a_subpath_depth;
+			}
+		}
+	}
+
+	/* Iterate over the path in reverse order from the common prefix.
+	 *
+	 * If a difference is found in a path element, record it and overwrite
+	 * any existing 'res' value. If there is no difference, then keep the
+	 * current 'res' value and keep descending to get a stable sort from the
+	 * root up. */
+	while(a_cur && b_cur) {
+		const char *a_name;
+		size_t a_name_length;
+		const char *b_name;
+		size_t b_name_length;
+		int cur_res;
+
+		sys_log_trace("Iteration %" PRIuz ":", PRAuz(i + 1));
+		++i;
+		sys_log_trace("  A: %p", a_cur);
+		sys_log_trace("    parent: %p", a_cur->parent);
+		sys_log_trace("    depth: %" PRIuz, PRAuz(a_cur->depth));
+		if(a_subpath_depth) {
+			sys_log_trace("    subpath_depth: %" PRIuz,
+				PRAuz(a_subpath_depth));
+			sys_log_trace("    subpath_length: %" PRIuz,
+				PRAuz(a_subpath_length));
+			sys_log_trace("    subpath: \"%" PRIbs "\"",
+				PRAbs(a_subpath_length, a_cur->name.ro));
+
+			/* Skip any trailing '/':es. */
+			refs_util_reverse_trim_string(a_cur->name.ro,
+				&a_subpath_length, '/');
+			if(!a_subpath_length) {
+				a_cur = a_cur->parent;
+				continue;
+			}
+
+			/* Iterate backwards until we find the next '/'. */
+			a_name_length = a_subpath_length;
+			refs_util_reverse_search_string(a_cur->name.ro,
+				&a_subpath_length, '/');
+
+			/* Set the name at the current subpath length. */
+			a_name = &a_cur->name.ro[a_subpath_length];
+			a_name_length -= a_subpath_length;
+			a_subpath_depth--;
+			if(!a_subpath_depth) {
+				a_cur = a_cur->parent;
+			}
+			else {
+				/* Trim any trailing '/' from the new subpath
+				 * after extracting the current component's
+				 * name. */
+				refs_util_reverse_trim_string(a_cur->name.ro,
+					&a_subpath_length, '/');
+			}
+		}
+		else {
+			a_name = a_cur->name.ro;
+			a_name_length = a_cur->name_length;
+			a_cur = a_cur->parent;
+		}
+		sys_log_trace("    name_length: %" PRIuz, PRAuz(a_name_length));
+		sys_log_trace("    name: \"%" PRIbs "\"",
+			PRAbs(a_name_length, a_name));
+
+		sys_log_trace("  B: %p", b_cur);
+		sys_log_trace("    parent: %p", b_cur->parent);
+		sys_log_trace("    depth: %" PRIuz, PRAuz(b_cur->depth));
+		if(b_subpath_depth) {
+			sys_log_trace("    subpath_depth: %" PRIuz,
+				PRAuz(b_subpath_depth));
+			sys_log_trace("    subpath_length: %" PRIuz,
+				PRAuz(b_subpath_length));
+			sys_log_trace("    subpath: \"%" PRIbs "\"",
+				PRAbs(b_subpath_length, b_cur->name.ro));
+
+			/* Skip any trailing '/':es. */
+			b_name_length = b_subpath_length;
+			refs_util_reverse_trim_string(b_cur->name.ro,
+				&b_subpath_length, '/');
+
+			if(!b_subpath_length) {
+				b_cur = b_cur->parent;
+				continue;
+			}
+
+			/* Iterate backwards until we find the next '/'. */
+			b_name_length = b_subpath_length;
+			refs_util_reverse_search_string(b_cur->name.ro,
+				&b_subpath_length, '/');
+
+			/* Set the name at the current subpath length. */
+			b_name = &b_cur->name.ro[b_subpath_length];
+			b_name_length -= b_subpath_length;
+			b_subpath_depth--;
+			if(!b_subpath_depth) {
+				b_cur = b_cur->parent;
+			}
+			else {
+				/* Trim any trailing '/' from the new subpath
+				 * after extracting the current component's
+				 * name. */
+				refs_util_reverse_trim_string(b_cur->name.ro,
+					&b_subpath_length, '/');
+			}
+		}
+		else {
+			b_name = b_cur->name.ro;
+			b_name_length = b_cur->name_length;
+			b_cur = b_cur->parent;
+		}
+		sys_log_trace("    name_length: %" PRIuz, PRAuz(b_name_length));
+		sys_log_trace("    name: \"%" PRIbs "\"",
+			PRAbs(b_name_length, b_name));
+
+		cur_res = strncmp(a_name, b_name,
+			sys_min(a_name_length, b_name_length));
+		if(cur_res) {
+			res = cur_res;
+		}
+		else if(a_name_length < b_name_length) {
+			res = -1;
+		}
+		else if(a_name_length > b_name_length) {
+			res = 1;
+		}
+
+		if(a_cur == b_cur && !a_subpath_depth && !b_subpath_depth) {
+			/* The paths are identical from here on, no need to
+			 * compare further. */
+			sys_log_trace("Breaking because paths are identical "
+				"below this level.");
+			break;
+		}
+	}
+
+	if((a_cur || b_cur) && a_cur != b_cur) {
+		sys_log_critical("Unexpected: %s is not at the root after "
+			"descending from the smallest common depth!",
+			a_cur ? "A" : "B");
+	}
+
+	/* If there is no difference in the common prefix, then sort the one
+	 * with the smaller depth before the one with the greater depth. */
+	if(res);
+	else if(a_true_depth < b_true_depth) {
+		res = -1;
+	}
+	else if(a_true_depth > b_true_depth) {
+		res = 1;
+	}
+out:
+	sys_log_trace("Compare result: %d", res);
+
+	return res;
+}
 
 static void fsapi_node_init(
 		fsapi_node *const node,
-		char *const path,
-		const size_t path_length,
+		fsapi_node_path_element *const path,
 		const u64 parent_directory_object_id,
 		const u64 directory_object_id,
 		const sys_bool is_short_entry,
@@ -92,19 +451,17 @@ static void fsapi_node_init(
 		fsapi_node *const prev,
 		fsapi_node *const next)
 {
-	sys_log_trace("%s(node=%p, path=%" PRIbs ", path_length=%" PRIuz ", "
+	sys_log_trace("%s(node=%p, path=%p, "
 		"parent_directory_object_id=0x%" PRIX64 ", "
 		"directory_object_id=0x%" PRIX64 ", is_short_entry=%d, key=%p, "
 		"key_size=%" PRIuz ", record=%p, record_size=%" PRIuz ", "
 		"prev=%p, next=%p): Entering...",
-		__FUNCTION__, node, PRAbs(path_length, path),
-		PRAuz(path_length), PRAX64(parent_directory_object_id),
+		__FUNCTION__, node, path, PRAX64(parent_directory_object_id),
 		PRAX64(directory_object_id), is_short_entry, key,
 		PRAuz(key_size), record, PRAuz(record_size), prev, next);
 
 	node->refcount = 0;
 	node->path = path;
-	node->path_length = path_length;
 	node->parent_directory_object_id = parent_directory_object_id;
 	node->directory_object_id = directory_object_id;
 	node->is_short_entry = is_short_entry;
@@ -134,7 +491,7 @@ static int fsapi_node_deinit(
 
 	if(node->path) {
 		sys_log_debug("Freeing path %p.", node->path);
-		sys_free(&node->path);
+		fsapi_node_path_element_release(&node->path);
 	}
 
 	return 0;
@@ -304,9 +661,8 @@ static int fsapi_node_cache_evict(
 
 	/* Remove node from path cache tree. */
 	if(!rb_tree_remove(vol->cache_tree, lru_node)) {
-		sys_log_warning("Failed to remove node %p (path: "
-			"\"%" PRIbs "\") from tree!",
-			lru_node, PRAbs(lru_node->path_length, lru_node->path));
+		sys_log_warning("Failed to remove node %p from tree!",
+			lru_node);
 	}
 
 	fsapi_remove_cached_node_from_list(
@@ -375,35 +731,41 @@ out:
 	return err;
 }
 
-static int fsapi_lookup_by_posix_path_compare(
-		struct rb_tree *tree, struct rb_node *a, struct rb_node *b)
+static void fsapi_node_cache_get(
+		fsapi_volume *const vol,
+		fsapi_node *const node)
 {
-	const fsapi_node *const a_node = (fsapi_node*) a->value;
-	const fsapi_node *const b_node = (fsapi_node*) b->value;
+	/* Remove cached node from MRU list. */
+	fsapi_remove_cached_node_from_list(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *cached_node */
+		node);
+
+	sys_log_debug("Decrementing cached nodes on get: %" PRIu64 " -> "
+		"%" PRIu64,
+		PRAu64(vol->cached_nodes_count),
+		PRAu64(vol->cached_nodes_count - 1));
+	--vol->cached_nodes_count;
+}
+
+static int fsapi_lookup_by_posix_path_compare(
+		struct rb_tree *const tree,
+		struct rb_node *const a,
+		struct rb_node *const b)
+{
+	const fsapi_node *const a_node = (const fsapi_node*) a->value;
+	const fsapi_node *const b_node = (const fsapi_node*) b->value;
 
 	int res;
 
 	(void) tree;
 
-	sys_log_trace("Comparing strings \"%.*s\" and \"%.*s\"",
-		(int) a_node->path_length, a_node->path,
-		(int) b_node->path_length, b_node->path);
-	res = strncmp(a_node->path, b_node->path,
-		sys_min(a_node->path_length, b_node->path_length));
-	if(res) {
-		/* A difference was found in the common prefix. Just return
-		 * res. */
-	}
-	else if(a_node->path_length < b_node->path_length) {
-		res = -1;
-	}
-	else if(a_node->path_length > b_node->path_length) {
-		res = 1;
-	}
-
-	sys_log_trace("Compared strings \"%.*s\" and \"%.*s\": %d",
-		(int) a_node->path_length, a_node->path,
-		(int) b_node->path_length, b_node->path, res);
+	res = fsapi_node_path_element_compare(
+		/* const fsapi_node_path_element *a */
+		a_node->path,
+		/* const fsapi_node_path_element *b */
+		b_node->path);
 
 	return res;
 }
@@ -416,62 +778,51 @@ static int fsapi_lookup_by_posix_path(
 		fsapi_node **out_node)
 {
 	int err = 0;
-	const char *full_child_path = NULL;
-	size_t full_child_path_length = 0;
-	char *full_child_path_alloc = NULL;
-	fsapi_node *cached_node = NULL;
-	fsapi_node *new_node = NULL;
+	size_t i;
 	u64 start_object_id = 0;
-	const char *lookup_path = NULL;
-	size_t lookup_path_length = 0;
+	size_t subpath_depth = 0;
+	sys_bool name_is_subpath = SYS_FALSE;
+	fsapi_node *cached_node = NULL;
+	fsapi_node *cached_parent_node = NULL;
+	fsapi_node *new_node = NULL;
+	fsapi_node_path_element *new_path_element = NULL;
 
-	if(path_length == 1 && path[0] == '/') {
+	if(!root_node && path_length == 1 && path[0] == '/') {
 		*out_node = vol->root_node;
 		goto out;
 	}
 
-	if(root_node && root_node->directory_object_id != 0x600) {
-		size_t i = 0;
+	if(!root_node) {
+		root_node = vol->root_node;
+	}
 
+	if(root_node->directory_object_id != 0x600) {
 		start_object_id = root_node->directory_object_id;
-
-		err = sys_malloc(root_node->path_length +
-			((path[0] == '/') ? 0 : 1) + path_length + 1,
-			&full_child_path_alloc);
-		if(err) {
-			goto out;
-		}
-
-		memcpy(&full_child_path_alloc[i], root_node->path,
-			root_node->path_length);
-		i += root_node->path_length;
-		if(path[0] != '/') {
-			full_child_path_alloc[i++] = '/';
-		}
-		memcpy(&full_child_path_alloc[i], path, path_length);
-		i += path_length;
-		full_child_path_alloc[i] = '\0';
-
-		full_child_path = full_child_path_alloc;
-		full_child_path_length = i;
-
-		lookup_path = path;
-		lookup_path_length = path_length;
 
 		sys_log_debug("Starting from non-root:");
 		sys_log_debug("    start_object_id: %" PRIu64,
 			PRAu64(start_object_id));
-		sys_log_debug("    full_child_path_length: %" PRIuz,
-			PRAuz(full_child_path_length));
-		sys_log_debug("    full_child_path: \"%" PRIbs "\"",
-			PRAbs(full_child_path_length, full_child_path));
 	}
-	else {
-		full_child_path = path;
-		full_child_path_length = path_length;
 
-		lookup_path = path;
-		lookup_path_length = path_length;
+	for(i = 0; i < path_length; ++i) {
+		if(path[i] == '/') {
+			const sys_bool old_is_subpath = name_is_subpath;
+
+			name_is_subpath = SYS_TRUE;
+			++subpath_depth;
+
+			/* Swallow repeated '/' separators. */
+			while(i + 1 < path_length && path[i + 1] == '/') {
+				++i;
+			}
+
+			/* Revert if we reach the of the path without finding a
+			 * new element. */
+			if(i + 1 == path_length) {
+				--subpath_depth;
+				name_is_subpath = old_is_subpath;
+			}
+		}
 	}
 
 	if(!vol->cache_tree) {
@@ -484,11 +835,46 @@ static int fsapi_lookup_by_posix_path(
 		}
 	}
 	else {
+		fsapi_node_path_element search_path_element;
 		fsapi_node search_node;
 
+		memset(&search_path_element, 0, sizeof(search_path_element));
 		memset(&search_node, 0, sizeof(search_node));
-		search_node.path = (char*) full_child_path;
-		search_node.path_length = full_child_path_length;
+
+		search_path_element.parent = root_node->path;
+		search_path_element.depth =
+			(root_node->path ? root_node->path->depth : 0) + 1;
+		search_path_element.u.subpath_depth = subpath_depth;
+		search_path_element.name_is_subpath = name_is_subpath;
+		search_path_element.name_length = path_length;
+		search_path_element.name.ro = path;
+
+		search_node.path = &search_path_element;
+
+		/* Strip any leading '/' characters in the search path. */
+		refs_util_trim_string(
+			&search_path_element.name.ro,
+			&search_path_element.name_length,
+			'/');
+
+		/* Skip past any trailing '/' characters in the search path. */
+		refs_util_reverse_trim_string(
+			search_path_element.name.ro,
+			&search_path_element.name_length,
+			'/');
+
+		sys_log_debug("Searching for path:");
+		sys_log_debug("  depth: %" PRIuz,
+			PRAuz(search_path_element.depth));
+		sys_log_debug("  name_is_subpath: %" PRIu8,
+			PRAu8(search_path_element.name_is_subpath));
+		sys_log_debug("  subpath_depth: %" PRIuz,
+			PRAuz(search_path_element.u.subpath_depth));
+		sys_log_debug("  name_length: %" PRIuz,
+			PRAuz(search_path_element.name_length));
+		sys_log_debug("  name: \"%" PRIbs "\"",
+			PRAbs(search_path_element.name_length,
+			search_path_element.name.ro));
 
 		cached_node = rb_tree_find(
 			/* struct rb_tree *self */
@@ -496,56 +882,95 @@ static int fsapi_lookup_by_posix_path(
 			/* void *value */
 			&search_node);
 		if(cached_node) {
-			sys_log_debug("Cache hit for path \"%" PRIbs "\": %p%s",
-				PRAbs(full_child_path_length, full_child_path),
+			sys_log_debug("Cache hit for path \"%" PRIbs "\" in "
+				"parent node %p: %p%s",
+				PRAbs(path_length, path), root_node,
 				cached_node,
 				cached_node->parent_directory_object_id ? "" :
 				" (negative)");
 
 			if(cached_node->next) {
+				/* The node is part of the inactive list (the
+				 * node cache) and is not currently in use. It
+				 * must be removed from that list before being
+				 * returned as an active node. */
 				fsapi_remove_cached_node_from_list(
 					/* fsapi_volume *vol */
 					vol,
 					/* fsapi_node *cached_node */
 					cached_node);
-				sys_log_debug("Decrementing cached nodes on "
-					"cache hit: %" PRIu64 " -> %" PRIu64,
-					PRAu64(vol->cached_nodes_count),
-					PRAu64(vol->cached_nodes_count - 1));
-				--vol->cached_nodes_count;
 			}
+
+			sys_log_debug("Decrementing cached nodes on cache hit: "
+				"%" PRIu64 " -> %" PRIu64,
+				PRAu64(vol->cached_nodes_count),
+				PRAu64(vol->cached_nodes_count - 1));
+			--vol->cached_nodes_count;
 		}
-		else if(!(root_node &&
-			root_node->directory_object_id != 0x600) &&
-			search_node.path_length > 1)
+		else if(search_path_element.name_is_subpath &&
+			search_path_element.u.subpath_depth > 1 &&
+			search_path_element.name_length > 1)
 		{
 			/* Check if there's a cache hit for its parent. */
-			size_t i;
-			fsapi_node *cached_parent_node = NULL;
+			size_t child_name_length =
+				search_path_element.name_length;
+			const char *child_name = NULL;
 
-			for(i = search_node.path_length; i > 0;) {
-				if(search_node.path[--i] == '/') {
-					break;
-				}
+			/* Search backwards for the next '/' from the end of the
+			 * element. */
+			refs_util_reverse_search_string(
+				search_path_element.name.ro,
+				&search_path_element.name_length, '/');
+
+			child_name = &search_path_element.name.ro[
+				search_path_element.name_length];
+			child_name_length -=
+				search_path_element.name_length;
+
+			/* Trim any trailing '/' characters from the end of the
+			 * string. */
+			refs_util_reverse_trim_string(
+				search_path_element.name.ro,
+				&search_path_element.name_length, '/');
+
+			--search_path_element.u.subpath_depth;
+
+			sys_log_debug("Searching for parent path:");
+			sys_log_debug("  depth: %" PRIuz,
+				PRAuz(search_path_element.depth));
+			sys_log_debug("  name_is_subpath: %" PRIu8,
+				PRAu8(search_path_element.name_is_subpath));
+			sys_log_debug("  subpath_depth: %" PRIuz,
+				PRAuz(search_path_element.u.subpath_depth));
+			sys_log_debug("  name_length: %" PRIuz,
+				PRAuz(search_path_element.name_length));
+			sys_log_debug("  name: \"%" PRIbs "\"",
+				PRAbs(search_path_element.name_length,
+				search_path_element.name.ro));
+
+			if(search_path_element.name_length) {
+				sys_log_debug("Cache miss for path "
+					"\"%" PRIbs "\" in parent node %p. "
+					"Attempting to find parent directory "
+					"\"%" PRIbs "\" in cache...",
+					PRAbs(path_length, path), root_node,
+					PRAbs(search_path_element.name_length,
+					search_path_element.name.ro));
+
+				cached_parent_node = rb_tree_find(
+					/* struct rb_tree *self */
+					vol->cache_tree,
+					/* void *value */
+					&search_node);
 			}
 
-			search_node.path_length = i ? i : 1;
-
-			sys_log_debug("Cache miss for path \"%" PRIbs "\". "
-				"Attempting to find parent directory "
-				"\"%" PRIbs "\" in cache...",
-				PRAbs(full_child_path_length, full_child_path),
-				PRAbs(search_node.path_length,
-				search_node.path));
-
-			cached_parent_node = rb_tree_find(
-				/* struct rb_tree *self */
-				vol->cache_tree,
-				/* void *value */
-				&search_node);
 			if(cached_parent_node) {
-				lookup_path = &full_child_path[i];
-				lookup_path_length = path_length - i;
+				const char *const child_path = path;
+				const size_t child_path_length = path_length;
+
+				path = child_name;
+				path_length = child_name_length;
+
 				start_object_id =
 					cached_parent_node->directory_object_id;
 				sys_log_debug("Cache miss for path "
@@ -553,10 +978,9 @@ static int fsapi_lookup_by_posix_path(
 					"directory in cache. Starting lookup "
 					"at object ID 0x%" PRIX64 " with "
 					"subpath \"%" PRIbs "\"...",
-					PRAbs(full_child_path_length,
-					full_child_path),
+					PRAbs(child_path_length, child_path),
 					PRAu64(start_object_id),
-					PRAbs(lookup_path_length, lookup_path));
+					PRAbs(path_length, path));
 
 				if(cached_parent_node->next) {
 					/* Put the looked up cached parent node
@@ -577,18 +1001,28 @@ static int fsapi_lookup_by_posix_path(
 			else {
 				sys_log_debug("Cache miss for path "
 					"\"%" PRIbs "\" and its parent.",
-					PRAbs(full_child_path_length,
-					full_child_path));
+					PRAbs(path_length, path));
 			}
 		}
 		else {
 			sys_log_debug("Cache miss for path \"%" PRIbs "\".",
-				PRAbs(full_child_path_length, full_child_path));
+				PRAbs(path_length, path));
 		}
 	}
 
-	if(!cached_node) {
-		char *dup_path = NULL;
+	if(cached_node) {
+		/* We are done, nothing more to do. */
+	}
+	else {
+		const size_t final_depth =
+			(root_node->path ? root_node->path->depth : 0) +
+			(name_is_subpath ? subpath_depth - 1 : 0) + 1;
+
+		fsapi_node *cur_node = NULL;
+		size_t cur_node_depth = 0;
+		const char *cur_path = NULL;
+		size_t cur_path_length = 0;
+		char *dup_element = NULL;
 		u64 parent_directory_object_id = 0;
 		u64 directory_object_id = 0;
 		sys_bool is_short_entry = 0;
@@ -598,163 +1032,305 @@ static int fsapi_lookup_by_posix_path(
 		u8 *record = NULL;
 		size_t record_size = 0;
 
-		if(vol->cached_nodes_count >= cached_nodes_max) {
-			/* Reuse the existing node at the tail of the list, i.e.
-			 * the one that was used least recently. */
+		if(cached_parent_node) {
+			size_t cur_element_start;
 
-			err = fsapi_node_cache_evict(
-				/* fsapi_volume *vol */
-				vol,
-				/* fsapi_node **out_evicted_node */
-				&new_node);
-			if(err) {
-				goto out;
-			}
-
-			sys_log_debug("Reusing node %p for \"%" PRIbs "\" "
-				"since we reached the maximum number of cached "
-				"nodes (%" PRIuz " >= %" PRIuz ").",
-				new_node,
-				PRAbs(full_child_path_length, full_child_path),
-				PRAuz(vol->cached_nodes_count + 1),
-				PRAuz(cached_nodes_max));
-
-			/* Free resources of existing node and zero the
-			 * allocation. */
-			fsapi_node_recycle(
-				/* fsapi_node *node */
-				new_node);
+			sys_log_debug("Found parent node in cache.");
+			cur_node_depth = final_depth - 1;
+			cur_node = cached_parent_node;
+			cur_path = path;
+			cur_path_length = path_length;
+			/* Trim any trailing '/' characters. */
+			refs_util_reverse_trim_string(cur_path,
+				&cur_path_length, '/');
+			/* Seek backwards to the next '/'. */
+			cur_element_start = cur_path_length;
+			refs_util_reverse_search_string(cur_path,
+				&cur_element_start, '/');
+			/* Adjust 'cur_path' to the last path element bounds. */
+			cur_path = &cur_path[cur_element_start];
+			cur_path_length -= cur_element_start;
 		}
 		else {
-			sys_log_debug("Allocating new node for \"%" PRIbs "\" "
-				"since we are below the maximum number of "
-				"cached nodes (%" PRIuz " < %" PRIuz ").",
-				PRAbs(full_child_path_length, full_child_path),
-				PRAuz(vol->cached_nodes_count),
-				PRAuz(cached_nodes_max));
+			sys_log_debug("Searching from root.");
+			cur_node_depth =
+				root_node->path ? root_node->path->depth : 0;
+			cur_node = root_node;
+			cur_path = path;
+			cur_path_length = path_length;
+		}
 
-			err = sys_calloc(sizeof(fsapi_node), &new_node);
+		sys_log_debug("cur_node_depth: %" PRIuz, PRAuz(cur_node_depth));
+		sys_log_debug("cur_node: %p", cur_node);
+		sys_log_debug("cur_path_length: %" PRIuz,
+			PRAuz(cur_path_length));
+		sys_log_debug("cur_path: \"%" PRIbs "\"",
+			PRAbs(cur_path_length, cur_path));
+		sys_log_debug("final_depth: %" PRIuz, PRAuz(final_depth));
+
+		for(; cur_node_depth < final_depth; ++cur_node_depth) {
+			const char *cur_element;
+			size_t cur_element_length;
+			fsapi_node_path_element search_path_element;
+			fsapi_node search_node;
+
+			memset(&search_path_element, 0,
+				sizeof(search_path_element));
+			memset(&search_node, 0, sizeof(search_node));
+
+			/* Find the current path element. */
+
+			/* Skip past any leading '/' characters. */
+			refs_util_trim_string(&cur_path, &cur_path_length,
+				'/');
+
+			/* Search for the next '/' from the start of the
+			 * element. */
+			cur_element = cur_path;
+			cur_element_length = cur_path_length;
+
+			refs_util_search_string(cur_element,
+				&cur_element_length, '/');
+			cur_path = &cur_path[cur_element_length];
+			cur_path_length -= cur_element_length;
+
+			if(new_node) {
+				fsapi_node_cache_put(
+					/* fsapi_volume *vol */
+					vol,
+					/* fsapi_node *node */
+					new_node);
+				new_node = NULL;
+			}
+
+			sys_log_debug("Depth %" PRIuz "/%" PRIuz ":",
+				PRAuz(cur_node_depth), PRAuz(final_depth));
+			sys_log_debug("  cur_element_length: %" PRIuz,
+				PRAuz(cur_element_length));
+			sys_log_debug("  cur_element: \"%" PRIbs "\"",
+				PRAbs(cur_element_length, cur_element));
+
+			search_path_element.parent = cur_node->path;
+			search_path_element.depth =
+				(cur_node->path ? cur_node->path->depth : 0) +
+				1;
+			search_path_element.name_is_subpath = SYS_FALSE;
+			search_path_element.name_length = cur_element_length;
+			search_path_element.name.ro = cur_element;
+
+			search_node.path = &search_path_element;
+
+			cached_node = rb_tree_find(
+				/* struct rb_tree *self */
+				vol->cache_tree,
+				/* void *value */
+				&search_node);
+			if(cached_node) {
+				sys_log_debug("  Found element in cache. "
+					"Continuing...");
+				cur_node = cached_node;
+				continue;
+			}
+
+			sys_log_debug("  Cache miss.");
+
+			sys_log_debug("Looking up path \"%" PRIbs "\" starting "
+				"at directory %" PRIu64 "...",
+				PRAbs(cur_element_length, cur_element),
+				PRAu64(cur_node->directory_object_id));
+
+			err = refs_volume_lookup_by_posix_path(
+				/* refs_volume *vol */
+				vol->vol,
+				/* const char *path */
+				cur_element,
+				/* size_t path_length */
+				cur_element_length,
+				/* const u64 *start_object_id */
+				&cur_node->directory_object_id,
+				/* u64 *out_parent_directory_object_id */
+				&parent_directory_object_id,
+				/* u64 *out_directory_object_id */
+				&directory_object_id,
+				/* sys_bool *out_is_short_entry */
+				&is_short_entry,
+				/* u16 *out_entry_offset */
+				&entry_offset,
+				/* u8 **out_key */
+				&key,
+				/* size_t *out_key_size */
+				&key_size,
+				/* u8 **out_record */
+				&record,
+				/* size_t *out_record_size */
+				&record_size);
+			if(err) {
+				sys_log_perror(errno, "lookup error");
+				goto out;
+			}
+			else if(!parent_directory_object_id) {
+				/* Not found. */
+				if(out_node) {
+					*out_node = NULL;
+				}
+
+				goto out;
+			}
+
+			if(vol->cached_nodes_count >= cached_nodes_max) {
+				/* Reuse the existing node at the tail of the
+				 * list, i.e. the one that was used least
+				 * recently. */
+
+				err = fsapi_node_cache_evict(
+					/* fsapi_volume *vol */
+					vol,
+					/* fsapi_node **out_evicted_node */
+					&new_node);
+				if(err) {
+					goto out;
+				}
+
+				sys_log_debug("Reusing node %p for "
+					"\"%" PRIbs "\" since we reached the "
+					"maximum number of cached nodes "
+					"(%" PRIuz " >= %" PRIuz ").",
+					new_node,
+					PRAbs(path_length, path),
+					PRAuz(vol->cached_nodes_count + 1),
+					PRAuz(cached_nodes_max));
+
+				/* Free resources of existing node and zero the
+				 * allocation. */
+				fsapi_node_recycle(
+					/* fsapi_node *node */
+					new_node);
+			}
+			else {
+				err = sys_calloc(sizeof(fsapi_node), &new_node);
+				if(err) {
+					goto out;
+				}
+
+				sys_log_debug("Allocated new node %p for "
+					"\"%" PRIbs "\" since we are below the "
+					"maximum number of cached nodes "
+					"(%" PRIuz " < %" PRIuz ").",
+					new_node,
+					PRAbs(path_length, path),
+					PRAuz(vol->cached_nodes_count),
+					PRAuz(cached_nodes_max));
+			}
+
+			err = sys_calloc(sizeof(fsapi_node_path_element),
+				&new_path_element);
 			if(err) {
 				goto out;
 			}
-		}
 
-		sys_log_debug("Looking up path \"%" PRIbs "\" starting at "
-			"directory %" PRIu64 "...",
-			PRAbs(lookup_path_length, lookup_path),
-			PRAu64(start_object_id));
-
-		err = refs_volume_lookup_by_posix_path(
-			/* refs_volume *vol */
-			vol->vol,
-			/* const char *path */
-			lookup_path,
-			/* size_t path_length */
-			lookup_path_length,
-			/* const u64 *start_object_id */
-			start_object_id ? &start_object_id : NULL,
-			/* u64 *out_parent_directory_object_id */
-			&parent_directory_object_id,
-			/* u64 *out_directory_object_id */
-			&directory_object_id,
-			/* sys_bool *out_is_short_entry */
-			&is_short_entry,
-			/* u16 *out_entry_offset */
-			&entry_offset,
-			/* u8 **out_key */
-			&key,
-			/* size_t *out_key_size */
-			&key_size,
-			/* u8 **out_record */
-			&record,
-			/* size_t *out_record_size */
-			&record_size);
-		if(err) {
-			sys_log_perror(errno, "lookup error");
-			goto out;
-		}
-		else if(!parent_directory_object_id) {
-			/* Not found. */
-			if(out_node) {
-				*out_node = NULL;
+			err = sys_strndup(
+				/* const char *str */
+				cur_element,
+				/* size_t len */
+				cur_element_length,
+				/* char **dupstr */
+				&dup_element);
+			if(err) {
+				sys_log_pdebug(err, "strndup error");
+				goto out;
 			}
 
-			goto out;
+			if(cur_node->path) {
+				cur_node->path->u.refcount++;
+			}
+
+			new_path_element->parent = cur_node->path;
+			new_path_element->depth =
+				(cur_node->path ? cur_node->path->depth : 0) +
+				1;
+			new_path_element->name_is_subpath = SYS_FALSE;
+			new_path_element->u.refcount = 1;
+			new_path_element->name.rw = dup_element;
+			new_path_element->name_length = cur_element_length;
+
+			fsapi_node_init(
+				/* fsapi_node *node */
+				new_node,
+				/* fsapi_node_path_element *path */
+				new_path_element,
+				/* u64 parent_directory_object_id */
+				parent_directory_object_id,
+				/* u64 directory_object_id */
+				directory_object_id,
+				/* sys_bool is_short_entry */
+				is_short_entry,
+				/* u16 entry_offset */
+				entry_offset,
+				/* u8 *key */
+				key,
+				/* size_t key_size */
+				key_size,
+				/* u8 *record */
+				record,
+				/* size_t record_size */
+				record_size,
+				/* fsapi_node *prev */
+				NULL,
+				/* fsapi_node *next */
+				NULL);
+
+			/* Ownership of the element passed to the node. */
+			new_path_element = NULL;
+
+			sys_log_debug("Lookup result:");
+			sys_log_debug("    parent_directory_object_id: "
+				"%" PRIu64,
+				PRAu64(new_node->parent_directory_object_id));
+			sys_log_debug("    directory_object_id: %" PRIu64,
+				PRAu64(new_node->directory_object_id));
+			sys_log_debug("    key: %p", new_node->key);
+			sys_log_debug("    key_size: %" PRIuz,
+				PRAuz(new_node->key_size));
+			sys_log_debug("    record: %p", new_node->record);
+			sys_log_debug("    record_size: %" PRIuz,
+				PRAuz(new_node->record_size));
+
+			if(!rb_tree_insert(
+				/* struct rb_tree *self */
+				vol->cache_tree,
+				/* void *value */
+				new_node))
+			{
+				sys_log_error("Error inserting looked up entry "
+					"in cache.");
+				err = ENOMEM;
+				goto out;
+			}
+
+			cached_node = cur_node = new_node;
 		}
 
-		err = sys_strndup(
-			/* cons char *str */
-			full_child_path,
-			/* size_t len */
-			full_child_path_length,
-			/* char **dupstr */
-			&dup_path);
-		if(err) {
-			sys_log_pdebug(err, "strndup error");
-			goto out;
-		}
-
-		fsapi_node_init(
-			/* fsapi_node *node */
-			new_node,
-			/* char *path */
-			dup_path,
-			/* size_t path_length */
-			full_child_path_length,
-			/* u64 parent_directory_object_id */
-			parent_directory_object_id,
-			/* u64 directory_object_id */
-			directory_object_id,
-			/* sys_bool is_short_entry */
-			is_short_entry,
-			/* u16 entry_offset */
-			entry_offset,
-			/* u8 *key */
-			key,
-			/* size_t key_size */
-			key_size,
-			/* u8 *record */
-			record,
-			/* size_t record_size */
-			record_size,
-			/* fsapi_node *prev */
-			NULL,
-			/* fsapi_node *next */
-			NULL);
-
-		sys_log_debug("Lookup result:");
-		sys_log_debug("    parent_directory_object_id: %" PRIu64,
-			PRAu64(new_node->parent_directory_object_id));
-		sys_log_debug("    directory_object_id: %" PRIu64,
-			PRAu64(new_node->directory_object_id));
-		sys_log_debug("    key: %p", new_node->key);
-		sys_log_debug("    key_size: %" PRIuz,
-			PRAuz(new_node->key_size));
-		sys_log_debug("    record: %p", new_node->record);
-		sys_log_debug("    record_size: %" PRIuz,
-			PRAuz(new_node->record_size));
-
-		if(!rb_tree_insert(
-			/* struct rb_tree *self */
-			vol->cache_tree,
-			/* void *value */
-			new_node))
-		{
-			sys_log_error("Error inserting looked up entry in "
-				"cache");
-			err = ENOMEM;
-			goto out;
-		}
-
-		cached_node = new_node;
 		new_node = NULL;
 	}
 
 	if(out_node) {
+		if(cached_node->next) {
+			/* The node came from the node cache and needs to be
+			 * detached first. */
+			fsapi_node_cache_get(
+				/* fsapi_volume *vol */
+				vol,
+				/* fsapi_node *node */
+				cached_node);
+		}
+
 		cached_node->refcount++;
+		sys_log_debug("Returning node %p with refcount %" PRIuz "...",
+			cached_node, PRAuz(cached_node->refcount));
 		*out_node = cached_node;
 	}
-	else {
+	else if(!cached_node->refcount && !cached_node->next) {
+		sys_log_debug("Putting node %p in the cache...", cached_node);
 		fsapi_node_cache_put(
 			/* fsapi_volume *vol */
 			vol,
@@ -762,14 +1338,14 @@ static int fsapi_lookup_by_posix_path(
 			cached_node);
 	}
 out:
+	if(new_path_element) {
+		sys_free(&new_path_element);
+	}
+
 	if(new_node) {
 		fsapi_node_destroy(
 			/* fsapi_node **node */
 			&new_node);
-	}
-
-	if(full_child_path_alloc) {
-		sys_free(&full_child_path_alloc);
 	}
 
 	return err;
@@ -983,8 +1559,6 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		memset(&visitor, 0, sizeof(visitor));
 
 		visitor.context = context;
-		visitor.version_major = context->vol->bs->version_major;
-		visitor.version_minor = context->vol->bs->version_minor;
 		visitor.node_symlink = fsapi_node_get_attributes_visit_symlink;
 
 		err = refs_node_walk(
@@ -1449,10 +2023,8 @@ int fsapi_volume_mount(
 	fsapi_node_init(
 		/* fsapi_node *node */
 		root_node,
-		/* char *path */
+		/* fsapi_node_path_element *path */
 		NULL,
-		/* size_t path_length */
-		0,
 		/* u64 parent_directory_object_id */
 		0x500, /* ? */
 		/* u64 directory_object_id */
@@ -1539,10 +2111,9 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 
 	(void) self;
 
-	sys_log_warning("Destroying node %p (\"%" PRIbs "\") with %" PRIu64 " "
-		"remaining references...",
-		node, PRAbs(node->path_length, node->path),
-		PRAu64(node->refcount));
+	sys_log_warning("Destroying node %p with %" PRIu64 " remaining "
+		"references...",
+		node, PRAu64(node->refcount));
 
 	fsapi_node_destroy(
 		/* fsapi_node *cached_node */
@@ -1553,12 +2124,20 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 int fsapi_volume_unmount(
 		fsapi_volume **vol)
 {
+	sys_log_debug("Iterating over cached nodes list %p...",
+		(*vol)->cached_nodes_list);
+
 	if((*vol)->cached_nodes_list) {
 		/* Iterate over cached nodes and free all resources. */
 		fsapi_node *cur_node = (*vol)->cached_nodes_list;
 		do {
 			fsapi_node *next_node = cur_node->next;
 
+			sys_log_debug("Cleaning up cached node %p (cached "
+				"nodes: %" PRIuz " -> %" PRIuz ")...",
+				cur_node, PRAuz((*vol)->cached_nodes_count),
+				PRAuz((*vol)->cached_nodes_count - 1));
+			--(*vol)->cached_nodes_count;
 			rb_tree_remove((*vol)->cache_tree, cur_node);
 
 			fsapi_node_destroy(
@@ -1567,6 +2146,12 @@ int fsapi_volume_unmount(
 
 			cur_node = next_node;
 		} while(cur_node != (*vol)->cached_nodes_list);
+
+		if((*vol)->cached_nodes_count) {
+			sys_log_critical("Cached nodes count is non-0 after "
+				"iterating over cached nodes list: %" PRIuz,
+				PRAuz((*vol)->cached_nodes_count));
+		}
 
 		(*vol)->cached_nodes_count = 0;
 		(*vol)->cached_nodes_list = NULL;
@@ -1684,6 +2269,9 @@ int fsapi_node_release(
 		goto out;
 	}
 
+	sys_log_debug("Releasing node %p. Refcount: %" PRIu64 " -> %" PRIu64,
+		*node, PRAu64((*node)->refcount),
+		PRAu64((*node)->refcount - release_count));
 	(*node)->refcount -= release_count;
 	if(!(*node)->refcount) {
 		fsapi_node_cache_put(
@@ -1885,8 +2473,6 @@ static int fsapi_node_list_visit_short_entry(
 		memset(&visitor, 0, sizeof(visitor));
 
 		visitor.context = context;
-		visitor.version_major = context->vol->bs->version_major;
-		visitor.version_minor = context->vol->bs->version_minor;
 		visitor.node_symlink = fsapi_node_list_visit_symlink;
 
 		err = refs_node_walk(
@@ -2736,10 +3322,7 @@ int fsapi_node_list_extended_attributes(
 		node->record_size,
 		/* void *context */
 		NULL);
-	if(err == -1) {
-		err = 0;
-	}
-	else if(err) {
+	if(err && err != -1) {
 		sys_log_perror(err, "Error while parsing node for listing "
 			"extended attributes");
 	}

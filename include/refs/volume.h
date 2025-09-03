@@ -89,11 +89,7 @@ static inline refs_node_crawl_context refs_volume_init_node_crawl_context(
 		/* u32 block_size */
 		vol->metadata_block_size,
 		/* u32 block_index_unit */
-		(vol->bs->version_major == 1) ? 16384 : vol->cluster_size,
-		/* u8 version_major */
-		vol->bs->version_major,
-		/* u8 version_minor */
-		vol->bs->version_minor);
+		(vol->bs->version_major == 1) ? 16384 : vol->cluster_size);
 }
 
 #endif /* !defined(_REFS_VOLUME_H) */

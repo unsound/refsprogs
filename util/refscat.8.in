@@ -1,6 +1,6 @@
 .\" Copyright (c) 2022-2025 Erik Larsson
 .\"
-.TH REFSCAT 8 "June 2025" "refsprogs @VERSION@"
+.TH REFSCAT 8 "August 2025" "refsprogs @VERSION@"
 .SH NAME
 refscat \- Print the data of a file to standard output
 .SH SYNOPSIS
@@ -35,10 +35,6 @@ Extract the data of the alternate data stream (ADS) named
 .B NAME
 attached to the specified file.
 .SH BUGS
-This utility is currently unable to look up all the extents of a file.
-Exploration of the metadata related to file extents is still ongoing, and this
-utility will improve as we learn more.
-
 If you find a bug, then please report it to the refsprogs bug tracker on github:
 https://github.com/unsound/refsprogs/issues
 .hy
