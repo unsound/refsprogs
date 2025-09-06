@@ -176,7 +176,8 @@ static int read_and_print_boot_sector(sys_device *const dev,
 		goto out;
 	}
 
-	emitln("%s sector:", "Boot");
+	emitln("%s sector (physical sector %" PRIu64 " / 0x%" PRIX64 "):",
+		"Boot", PRAu64(0), PRAX64(0));
 
 	print_boot_sector(&bs);
 
