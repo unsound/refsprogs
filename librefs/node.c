@@ -25,6 +25,7 @@
 
 #include "node.h"
 
+#include "rb_tree.h"
 #include "layout.h"
 #include "util.h"
 #include "sys.h"
@@ -69,6 +70,24 @@ typedef struct {
 	u8 elements_per_entry;
 } block_queue;
 
+typedef struct refs_node_cache_item refs_node_cache_item;
+
+struct refs_node_cache_item {
+	refs_node_cache *cache;
+	u64 start_block;
+	void *data;
+	refs_node_cache_item *lru_list_prev;
+	refs_node_cache_item *lru_list_next;
+};
+
+struct refs_node_cache {
+	size_t node_size;
+	struct rb_tree *node_tree;
+	refs_node_cache_item *lru_list;
+	size_t cur_node_count;
+	size_t max_node_count;
+};
+
 
 /* Forward declarations. */
 
@@ -106,6 +125,275 @@ static int parse_level3_leaf_value(
 
 
 /* Function defintions. */
+
+static int refs_node_cache_item_compare(
+		struct rb_tree *const self,
+		struct rb_node *const a_node,
+		struct rb_node *const b_node)
+{
+	const refs_node_cache_item *const a =
+		(const refs_node_cache_item*) a_node->value;
+	const refs_node_cache_item *const b =
+		(const refs_node_cache_item*) b_node->value;
+
+	(void) self;
+
+	if(a->start_block < b->start_block) {
+		return -1;
+	}
+	else if(a->start_block > b->start_block) {
+		return 1;
+	}
+
+	return 0;
+}
+
+int refs_node_cache_create(
+		const size_t max_node_count,
+		refs_node_cache **const out_cache)
+{
+	int err = 0;
+	struct rb_tree *node_tree = NULL;
+
+	node_tree = rb_tree_create(
+		/* rb_tree_node_cmp_f cmp */
+		refs_node_cache_item_compare);
+	if(!node_tree) {
+		err = ENOMEM;
+		goto out;
+	}
+
+	err = sys_calloc(sizeof(refs_node_cache), out_cache);
+	if(err) {
+		goto out;
+	}
+
+	(*out_cache)->node_tree = node_tree;
+	(*out_cache)->max_node_count = max_node_count;
+out:
+	return err;
+}
+
+static void refs_node_cache_item_add_to_lru(
+		refs_node_cache_item *const item)
+{
+	if(!item->cache->lru_list) {
+		item->lru_list_next = item;
+		item->lru_list_prev = item;
+		item->cache->lru_list = item;
+	}
+	else {
+		/* We insert the new item at the previous location from
+		 * the head, i.e. at the tail of the list. Then we pop
+		 * off the least recently used item from the head. */
+		item->lru_list_prev = item->cache->lru_list->lru_list_prev;
+		item->cache->lru_list->lru_list_prev->lru_list_next = item;
+		item->cache->lru_list->lru_list_prev = item;
+		item->lru_list_next = item->cache->lru_list;
+	}
+
+	sys_log_debug("Add to LRU: %p (next: %p, prev: %p)",
+		item, item->lru_list_next, item->lru_list_prev);
+
+	++item->cache->cur_node_count;
+}
+
+static void refs_node_cache_item_remove_from_lru(
+		refs_node_cache_item *const item)
+{
+	sys_log_debug("Remove from LRU: %p", item);
+
+	if(item->lru_list_next != item) {
+		/* Connect the next and previous item bypassing the item that is
+		 * being removed. */
+		refs_node_cache_item *const next =
+			item->lru_list_next;
+		refs_node_cache_item *const prev =
+			item->lru_list_prev;
+		next->lru_list_prev = item->lru_list_prev;
+		prev->lru_list_next = item->lru_list_next;
+	}
+
+	if(item->cache->lru_list == item) {
+		/* If this is the head of the list, replace the head if there
+		 * are more items or set it to NULL if there aren't. */
+		item->cache->lru_list =
+			(item->lru_list_next != item) ? item->lru_list_next :
+			NULL;
+	}
+
+	item->lru_list_next = NULL;
+	item->lru_list_prev = NULL;
+}
+
+static void refs_node_cache_remove_rb_tree_callback(
+		struct rb_tree *const self,
+		struct rb_node *const node)
+{
+	refs_node_cache_item *const item = (refs_node_cache_item*) node->value;
+
+	(void) self;
+
+	refs_node_cache_item_remove_from_lru(
+		/* refs_node_cache_item *item */
+		item);
+}
+
+static sys_bool refs_node_cache_remove(
+		refs_node_cache *const cache,
+		const u64 start_block)
+{
+	sys_bool res;
+	refs_node_cache_item search_item;
+
+	memset(&search_item, 0, sizeof(search_item));
+	search_item.start_block = start_block;
+
+	if(rb_tree_remove_with_cb(
+		/* struct rb_tree *self */
+		cache->node_tree,
+		/* void *value */
+		&search_item,
+		/* rb_tree_node_f node_cb) */
+		refs_node_cache_remove_rb_tree_callback))
+	{
+		--cache->cur_node_count;
+		res = SYS_TRUE;
+	}
+	else {
+		res = SYS_FALSE;
+	}
+
+	return res;
+}
+
+void refs_node_cache_destroy(
+		refs_node_cache **const cachep)
+{
+	/* Iterate over cache items and free them. */
+	while((*cachep)->lru_list) {
+		refs_node_cache_item *item = (*cachep)->lru_list;
+
+		if(!refs_node_cache_remove(
+			/* refs_node_cache *cache */
+			*cachep,
+			/* u64 start_block */
+			item->start_block))
+		{
+			sys_log_critical("Couldn't find cache item in cache at "
+				"destroy time.");
+		}
+
+		if(item->data) {
+			sys_free(&item->data);
+		}
+
+		sys_free(&item);
+	}
+
+	sys_free(cachep);
+}
+
+static const u8* refs_node_cache_search(
+		refs_node_cache *const cache,
+		const u64 start_block)
+{
+	refs_node_cache_item search_item;
+	refs_node_cache_item *cache_item = NULL;
+
+	memset(&search_item, 0, sizeof(search_item));
+	search_item.start_block = start_block;
+
+	cache_item = (refs_node_cache_item*) rb_tree_find(
+		/* struct rb_tree *self */
+		cache->node_tree,
+		/* void *value */
+		&search_item);
+	if(cache_item) {
+		/* A cache hit means we should put the item at the end of the
+		 * LRU list to avoid it being evicted next time the cache is
+		 * full. */
+
+		refs_node_cache_item_remove_from_lru(
+			/* refs_node_cache_item *item */
+			cache_item);
+
+		refs_node_cache_item_add_to_lru(
+			/* refs_node_cache_item *item */
+			cache_item);
+	}
+
+	return cache_item ? cache_item->data : NULL;
+}
+
+static int refs_node_cache_insert(
+		refs_node_cache *const cache,
+		const u64 first_block,
+		const size_t node_size,
+		const u8 *const node_data)
+{
+	int err = 0;
+	refs_node_cache_item *insert_item = NULL;
+
+	if(cache->cur_node_count == cache->max_node_count) {
+		sys_log_debug("Evicting cache block %" PRIu64 " because the "
+			"cache is full.",
+			PRAu64(cache->lru_list->start_block));
+		if(!refs_node_cache_remove(
+			/* refs_node_cache *cache */
+			cache,
+			/* u64 start_block */
+			cache->lru_list->start_block))
+		{
+			sys_log_critical("Couldn't find the head to the list "
+				"in the cache tree: %" PRIu64,
+				PRAu64(cache->lru_list->start_block));
+			err = ENXIO;
+			goto out;
+		}
+	}
+
+	err = sys_calloc(sizeof(*insert_item), &insert_item);
+	if(err) {
+		goto out;
+	}
+
+	err = sys_malloc(node_size, &insert_item->data);
+	if(err) {
+		goto out;
+	}
+
+	memcpy(insert_item->data, node_data, node_size);
+	insert_item->cache = cache;
+	insert_item->start_block = first_block;
+
+	if(!rb_tree_insert(
+		/* struct rb_tree *self */
+		cache->node_tree,
+		/* void *value */
+		insert_item))
+	{
+		err = ENOMEM;
+	}
+	else {
+		refs_node_cache_item_add_to_lru(
+			/* refs_node_cache_item *item */
+			insert_item);
+
+		/* Ownership passed to the cache. */
+		insert_item = NULL;
+	}
+out:
+	if(insert_item) {
+		if(insert_item->data) {
+			sys_free(&insert_item->data);
+		}
+
+		sys_free(&insert_item);
+	}
+
+	return err;
+}
 
 static int block_queue_add(
 		block_queue *const block_queue,
@@ -317,6 +605,7 @@ static int refs_node_get_node_data(
 		sys_min(crawl_context->cluster_size, node_size);
 
 	int err = 0;
+	const u8 *cached_data = NULL;
 	u8 *data = NULL;
 	size_t bytes_read = 0;
 	u8 i = 0;
@@ -340,7 +629,20 @@ static int refs_node_get_node_data(
 		}
 	}
 
-	while(bytes_read < node_size) {
+	if(crawl_context->node_cache) {
+		cached_data = refs_node_cache_search(
+			/* refs_node_cache *cache */
+			crawl_context->node_cache,
+			/* u64 start_block */
+			logical_blocks[0]);
+		sys_log_debug("Cache %s for block %" PRIu64 ".",
+			cached_data ? "HIT" : "MISS",
+			PRAu64(logical_blocks[0]));
+	}
+	if(cached_data) {
+		memcpy(data, cached_data, node_size);
+	}
+	else while(bytes_read < node_size) {
 		if(!logical_blocks[i]) {
 			/* The next logical block is unknown so far. Check the
 			 * node header. Note that this only happens in v3+
@@ -371,6 +673,7 @@ static int refs_node_get_node_data(
 			PRAuz(crawl_context->block_size),
 			data,
 			PRAuz(bytes_read));
+
 		err = sys_device_pread(
 			/* sys_device *dev */
 			crawl_context->dev,
@@ -385,7 +688,7 @@ static int refs_node_get_node_data(
 				"bytes from metadata logical block %" PRIu64 " "
 				"/ physical block %" PRIu64 " (offset "
 				"%" PRIu64 ")",
-				PRAuz(crawl_context->block_size),
+				PRAuz(bytes_per_read),
 				PRAu64(logical_blocks[i]),
 				PRAu64(physical_blocks[i]),
 				PRAu64(physical_blocks[i] *
@@ -395,6 +698,24 @@ static int refs_node_get_node_data(
 
 		bytes_read += bytes_per_read;
 		++i;
+	}
+
+	if(crawl_context->node_cache && !cached_data) {
+		/* Add the data read from disk to the node cache. */
+		err = refs_node_cache_insert(
+			/* refs_node_cache *cache */
+			crawl_context->node_cache,
+			/* u64 first_block */
+			logical_blocks[0],
+			/* size_t node_size */
+			node_size,
+			/* const u8 *node_data */
+			data);
+		if(err) {
+			sys_log_pwarning(err, "Error while adding node data to "
+				"cache (ignoring)");
+			err = 0;
+		}
 	}
 
 	*out_data = data;
@@ -8407,6 +8728,7 @@ static int crawl_volume_metadata(
 		REFS_LEVEL1_NODE **const primary_level1_node,
 		REFS_LEVEL1_NODE **const secondary_level1_node,
 		refs_block_map **const block_map,
+		refs_node_cache **const node_cachep,
 		const u64 *const start_node,
 		const u64 *const object_id)
 {
@@ -8421,6 +8743,8 @@ static int crawl_volume_metadata(
 	u32 cluster_size = 0;
 	u32 block_size = 0;
 	u32 block_index_unit = 0;
+	refs_node_cache *node_cache = NULL;
+	refs_node_crawl_context crawl_context;
 	u8 *padding = NULL;
 	u8 *block = NULL;
 	refs_block_map *mappings = NULL;
@@ -8432,7 +8756,6 @@ static int crawl_volume_metadata(
 	size_t secondary_level2_blocks_count = 0;
 	block_queue level2_queue;
 	block_queue level3_queue;
-	refs_node_crawl_context crawl_context;
 	size_t i = 0;
 
 	memset(&level2_queue, 0, sizeof(level2_queue));
@@ -8458,6 +8781,26 @@ static int crawl_volume_metadata(
 
 	block_index_unit = is_v3 ? cluster_size : 16384;
 
+	if(node_cachep) {
+		if(!*node_cachep) {
+			err = refs_node_cache_create(
+				/* size_t max_node_count */
+				128,
+				/* refs_node_cache **const out_cache */
+				&node_cache);
+			if(err) {
+				sys_log_perror(err, "Error creating node "
+					"cache");
+				goto out;
+			}
+
+			*node_cachep = node_cache;
+		}
+		else {
+			node_cache = *node_cachep;
+		}
+	}
+
 	crawl_context = refs_node_crawl_context_init(
 		/* sys_device *dev */
 		dev,
@@ -8465,6 +8808,8 @@ static int crawl_volume_metadata(
 		bs,
 		/* refs_block_map *block_map */
 		NULL,
+		/* refs_node_cache *node_cache */
+		node_cache,
 		/* u32 cluster_size */
 		cluster_size,
 		/* u32 block_size */
@@ -9180,6 +9525,12 @@ out:
 			&mappings);
 	}
 
+	if(node_cache && !(node_cachep && *node_cachep == node_cache)) {
+		refs_node_cache_destroy(
+			/* refs_node_cache **node_cachep */
+			&node_cache);
+	}
+
 	if(padding) {
 		sys_free(&padding);
 	}
@@ -9194,6 +9545,7 @@ int refs_node_walk(
 		REFS_LEVEL1_NODE **const primary_level1_node,
 		REFS_LEVEL1_NODE **const secondary_level1_node,
 		refs_block_map **const block_map,
+		refs_node_cache **const node_cache,
 		const u64 *const start_node,
 		const u64 *const object_id,
 		refs_node_walk_visitor *const visitor)
@@ -9214,6 +9566,8 @@ int refs_node_walk(
 		secondary_level1_node,
 		/* refs_block_map **block_map */
 		block_map,
+		/* refs_node_cache **node_cache */
+		node_cache,
 		/* const u64 *start_node */
 		start_node,
 		/* const u64 *object_id */

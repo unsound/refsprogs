@@ -41,6 +41,7 @@ struct refs_volume {
 	REFS_LEVEL1_NODE *primary_level1_node;
 	REFS_LEVEL1_NODE *secondary_level1_node;
 	refs_block_map *block_map;
+	refs_node_cache *node_cache;
 };
 
 int refs_volume_create(
@@ -84,6 +85,8 @@ static inline refs_node_crawl_context refs_volume_init_node_crawl_context(
 		vol->bs,
 		/* refs_block_map *block_map */
 		vol->block_map,
+		/* refs_node_cache *node_cache */
+		vol->node_cache,
 		/* u32 cluster_size */
 		vol->cluster_size,
 		/* u32 block_size */

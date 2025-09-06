@@ -309,6 +309,7 @@ rb_tree_insert_node (struct rb_tree *self, struct rb_node *node) {
 // default callback to deallocate node created by rb_tree_insert(...).
 int
 rb_tree_remove_with_cb (struct rb_tree *self, void *value, rb_tree_node_f node_cb) {
+    int res = 0;
     if (self->root != NULL) {
         struct rb_node head = {0}; // False tree root
         struct rb_node node = { .value = value }; // Value wrapper node
@@ -380,6 +381,7 @@ rb_tree_remove_with_cb (struct rb_tree *self, void *value, rb_tree_node_f node_c
                 node_cb(self, q);
             }
             q = NULL;
+            res = 1;
         }
 
         // Update the root (it may be different)
@@ -392,7 +394,7 @@ rb_tree_remove_with_cb (struct rb_tree *self, void *value, rb_tree_node_f node_c
 
         --self->size;
     }
-    return 1;
+    return res;
 }
 
 int
