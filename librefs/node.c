@@ -260,6 +260,148 @@ u64 refs_node_logical_to_physical_block_number(
 	return physical_block_number;
 }
 
+/**
+ * Reads the data of a node and returns it as a @ref sys_malloc allocated buffer
+ * in @p out_data.
+ *
+ * The @p logical_blocks array must have at least one valid element while the
+ * @p physical_blocks array may be zeroed if the physical blocks have not yet
+ * been resolved by the caller, in which case this function will resolve the
+ * physical blocks and write them back into the @p physical_blocks array.
+ *
+ * If the cluster size is larger than or equal to the node size then it won't
+ * need more than one valid block but if the cluster size is less than the node
+ * size then either:
+ * - All logical and optionally blocks can be supplied by the caller, in which
+ *   case the function will simply read these blocks into memory (up to 4
+ *   blocks, for a 4k cluster size and 16k node size) or
+ * - One logical/physical block is supplied, the rest are zeroed, in which case
+ *   the rest of the blocks are resolved from the node header (needs at least 2
+ *   reads).
+ *   The blocks will be resolved into the @p logical_blocks and
+ *   @p physical_blocks array, so that the caller can reuse the results if it
+ *   wishes.
+ *
+ * @param[in] crawl_context
+ *      The crawl context of the current session.
+ * @param[in, out] logical_blocks
+ *      Array of logical blocks to read. At least one element must be valid, but
+ *      if all logical blocks are known then they should all be supplied or the
+ *      read will be less efficient. After this function returns successfully,
+ *      all logical blocks will be valid in this array as they are written back
+ *      after being resolved.
+ * @param[in, out] physical_blocks
+ *      Array of physical blocks to read. These can all be zeroed, in which case
+ *      they will be resolved using the node map, but if all physical blocks are
+ *      known then they should all be supplied or the read will be less
+ *      efficient. After this function returns successfully, all physical blocks
+ *      will be valid in this array as they are written back after being
+ *      resolved.
+ * @param[out] out_data
+ *      Pointer to a @p u8* field that will receive the data buffer of the node.
+ *      If @p *out_data is non-@p NULL at the start of the function, then no new
+ *      allocation will be done and the data will be read into the existing
+ *      buffer.
+ *
+ * @return
+ *      0 on success and otherwise a non-0 @p errno value.
+ */
+static int refs_node_get_node_data(
+		refs_node_crawl_context *const crawl_context,
+		const size_t node_size,
+		u64 *const logical_blocks,
+		u64 *const physical_blocks,
+		u8 **const out_data)
+{
+	const size_t bytes_per_read =
+		sys_min(crawl_context->cluster_size, node_size);
+
+	int err = 0;
+	u8 *data = NULL;
+	size_t bytes_read = 0;
+	u8 i = 0;
+
+	if(!logical_blocks[0]) {
+		sys_log_error("Can't get node data for logical block 0.");
+		err = EINVAL;
+		goto out;
+	}
+
+	if(*out_data) {
+		data = *out_data;
+	}
+	else {
+		err = sys_malloc(node_size, &data);
+		if(err) {
+			sys_log_perror(err, "Error while allocating "
+				"%" PRIu32 "-byte block",
+				PRAu32(node_size));
+			goto out;
+		}
+	}
+
+	while(bytes_read < node_size) {
+		if(!logical_blocks[i]) {
+			/* The next logical block is unknown so far. Check the
+			 * node header. Note that this only happens in v3+
+			 * volumes with a cluster size less than 16k. */
+			const REFS_V3_NODE_HEADER *const header =
+				(const REFS_V3_NODE_HEADER*) data;
+			u8 j;
+
+			for(j = i; j < 4; ++j) {
+				logical_blocks[j] =
+					le64_to_cpu(header->block_numbers[j]);
+			}
+		}
+
+		if(!physical_blocks[i]) {
+			physical_blocks[i] = logical_to_physical_block_number(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* u64 logical_block_number */
+				logical_blocks[i]);
+		}
+
+		sys_log_debug("Reading logical block %" PRIu64 " / physical "
+			"block %" PRIu64 " into %" PRIuz "-byte buffer %p at "
+			"buffer offset %" PRIuz,
+			PRAu64(logical_blocks[i]),
+			PRAu64(physical_blocks[i]),
+			PRAuz(crawl_context->block_size),
+			data,
+			PRAuz(bytes_read));
+		err = sys_device_pread(
+			/* sys_device *dev */
+			crawl_context->dev,
+			/* u64 pos */
+			physical_blocks[i] * crawl_context->block_index_unit,
+			/* size_t count */
+			bytes_per_read,
+			/* void *b */
+			&data[bytes_read]);
+		if(err) {
+			sys_log_perror(err, "Error while reading %" PRIuz " "
+				"bytes from metadata logical block %" PRIu64 " "
+				"/ physical block %" PRIu64 " (offset "
+				"%" PRIu64 ")",
+				PRAuz(crawl_context->block_size),
+				PRAu64(logical_blocks[i]),
+				PRAu64(physical_blocks[i]),
+				PRAu64(physical_blocks[i] *
+				crawl_context->block_index_unit));
+			goto out;
+		}
+
+		bytes_read += bytes_per_read;
+		++i;
+	}
+
+	*out_data = data;
+out:
+	return err;
+}
+
 static void print_file_flags(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6120,55 +6262,18 @@ static int parse_non_resident_attribute_list_value(
 			PRAX64(logical_blocks[0]));
 	}
 	else {
-		const size_t bytes_per_read =
-			sys_min(crawl_context->cluster_size,
-			crawl_context->block_size);
-
-		size_t bytes_read = 0;
-		u8 k = 0;
-
-		err = sys_malloc(crawl_context->block_size, &block);
+		err = refs_node_get_node_data(
+			/* refs_node_crawl_context *crawl_context */
+			crawl_context,
+			/* size_t node_size */
+			crawl_context->block_size,
+			/* u64 logical_blocks[4] */
+			logical_blocks,
+			/* u64 physical_blocks[4] */
+			physical_blocks,
+			/* u8 **out_data */
+			&block);
 		if(err) {
-			sys_log_perror(err, "Error while allocating "
-				"%" PRIu32 " byte block",
-				PRAu32(crawl_context->block_size));
-			goto out;
-		}
-
-		while(bytes_read < crawl_context->block_size) {
-			sys_log_debug("Reading logical block %" PRIu64 " / "
-				"physical block %" PRIu64 " into "
-				"%" PRIuz "-byte buffer %p at buffer offset "
-				"%" PRIuz,
-				PRAu64(logical_blocks[k]),
-				PRAu64(physical_blocks[k]),
-				PRAuz(crawl_context->block_size),
-				block,
-				PRAuz(bytes_read));
-			err = sys_device_pread(
-				/* sys_device *dev */
-				crawl_context->dev,
-				/* u64 pos */
-				physical_blocks[k] * block_index_unit,
-				/* size_t count */
-				bytes_per_read,
-				/* void *b */
-				&block[bytes_read]);
-			if(err) {
-				break;
-			}
-
-			bytes_read += bytes_per_read;
-			++k;
-		}
-
-		if(err) {
-			sys_log_perror(err, "Error while reading %" PRIuz " "
-				"bytes from attribute block %" PRIu64 " "
-				"(offset %" PRIu64 ")",
-				PRAuz(crawl_context->block_size),
-				PRAu64(physical_blocks[k]),
-				PRAu64(physical_blocks[k] * block_index_unit));
 			goto out;
 		}
 
@@ -8308,7 +8413,8 @@ static int crawl_volume_metadata(
 	const sys_bool is_v3 = (bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 
 	refs_node_print_visitor *const print_visitor =
-		visitor ? &visitor->print_visitor : NULL;
+		(visitor && visitor->print_visitor.print_message) ?
+		&visitor->print_visitor : NULL;
 
 	int err = 0;
 	u64 cluster_size_64 = 0;
@@ -8366,7 +8472,7 @@ static int crawl_volume_metadata(
 		/* u32 block_index_unit */
 		block_index_unit);
 
-	if(visitor && visitor->print_visitor.print_message) {
+	if(print_visitor && print_visitor->verbose) {
 		/* Print the data between the boot sector and the superblock. */
 		err = sys_malloc(30 * block_index_unit - sizeof(bs),
 			&padding);
@@ -8410,20 +8516,26 @@ static int crawl_volume_metadata(
 	}
 
 	if(!(sb && *sb)) {
-		err = sys_device_pread(
-			/* sys_device *dev */
-			dev,
-			/* u64 pos */
-			30 * block_index_unit,
-			/* size_t count */
+		u64 logical_block_numbers[4] = { 30, 31, 32, 33 };
+		u64 physical_block_numbers[4] = {
+			logical_block_numbers[0], 
+			logical_block_numbers[1], 
+			logical_block_numbers[2], 
+			logical_block_numbers[3] 
+		};
+
+		err = refs_node_get_node_data(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
+			/* size_t node_size */
 			block_size,
-			/* void *b */
-			block);
+			/* u64 logical_blocks[4] */
+			logical_block_numbers,
+			/* u64 physical_blocks[4] */
+			physical_block_numbers,
+			/* u8 **out_data */
+			&block);
 		if(err) {
-			sys_log_perror(err, "Error while reading %" PRIuz " "
-				"bytes from cluster 30 (offset %" PRIu64 ")",
-				PRAuz(block_size),
-				PRAu64(30 * block_index_unit));
 			goto out;
 		}
 	}
@@ -8466,23 +8578,31 @@ static int crawl_volume_metadata(
 
 	if(primary_level1_block) {
 		if(!(primary_level1_node && *primary_level1_node)) {
-			err = sys_device_pread(
-				/* sys_device *dev */
-				dev,
-				/* u64 pos */
-				primary_level1_block * block_index_unit,
-				/* size_t count */
+			u64 logical_block_numbers[4] = {
+				primary_level1_block,
+				primary_level1_block + 1,
+				primary_level1_block + 2,
+				primary_level1_block + 3
+			};
+			u64 physical_block_numbers[4] = {
+				logical_block_numbers[0], 
+				logical_block_numbers[1], 
+				logical_block_numbers[2], 
+				logical_block_numbers[3] 
+			};
+
+			err = refs_node_get_node_data(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
+				/* size_t node_size */
 				block_size,
-				/* void *b */
-				block);
+				/* u64 logical_blocks[4] */
+				logical_block_numbers,
+				/* u64 physical_blocks[4] */
+				physical_block_numbers,
+				/* u8 **out_data */
+				&block);
 			if(err) {
-				sys_log_perror(err, "Error while reading "
-					"%" PRIuz " bytes from metadata block "
-					"%" PRIu64 " (offset %" PRIu64 ")",
-					PRAuz(block_size),
-					PRAu64(primary_level1_block),
-					PRAu64(primary_level1_block *
-					block_index_unit));
 				goto out;
 			}
 		}
@@ -8514,24 +8634,31 @@ static int crawl_volume_metadata(
 
 	if(secondary_level1_block) {
 		if(!(secondary_level1_node && *secondary_level1_node)) {
-			err = sys_device_pread(
-				/* sys_device *dev */
-				dev,
-				/* u64 pos */
-				secondary_level1_block * block_index_unit,
-				/* size_t count */
+			u64 logical_block_numbers[4] = {
+				secondary_level1_block,
+				secondary_level1_block + 1,
+				secondary_level1_block + 2,
+				secondary_level1_block + 3
+			};
+			u64 physical_block_numbers[4] = {
+				logical_block_numbers[0], 
+				logical_block_numbers[1], 
+				logical_block_numbers[2], 
+				logical_block_numbers[3] 
+			};
+
+			err = refs_node_get_node_data(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
+				/* size_t node_size */
 				block_size,
-				/* void *b */
-				block);
+				/* u64 logical_blocks[4] */
+				logical_block_numbers,
+				/* u64 physical_blocks[4] */
+				physical_block_numbers,
+				/* u8 **out_data */
+				&block);
 			if(err) {
-				sys_log_perror(err, "Error while reading "
-					"%" PRIuz " bytes from metadata block "
-					"%" PRIu64 " "
-					"(offset %" PRIu64 ")",
-					PRAuz(block_size),
-					PRAu64(secondary_level1_block),
-					PRAu64(secondary_level1_block *
-					block_index_unit));
 				goto out;
 			}
 		}
@@ -8571,8 +8698,7 @@ static int crawl_volume_metadata(
 		goto out;
 	}
 
-	if(primary_level2_blocks_count != secondary_level2_blocks_count)
-	{
+	if(primary_level2_blocks_count != secondary_level2_blocks_count) {
 		sys_log_warning("Mismatching level 2 block count in "
 			"level 1 blocks: %" PRIu32 " != %" PRIu32 " "
 			"Proceeding with primary...",
@@ -8616,22 +8742,26 @@ static int crawl_volume_metadata(
 		 * find the block region mappings, located in the tree with
 		 * object ID 0xB. */
 		for(i = 0; is_v3 && i < level2_queue.block_queue_length; ++i) {
-			const u64 logical_block_number =
-				level2_queue.block_numbers[i * (is_v3 ? 6 : 3)];
+			u64 *const logical_block_numbers =
+				&level2_queue.block_numbers[i *
+				(is_v3 ? 6 : 3)];
 
-			u64 physical_block_number;
+			u64 physical_block_numbers[4];
 			const REFS_V3_BLOCK_HEADER *header = NULL;
 			size_t j = 0;
 			u64 tree_object_id = 0;
 
-			physical_block_number =
-				logical_to_physical_block_number(
-					/* refs_node_crawl_context
-					 * *crawl_context */
-					&crawl_context,
-					/* u64 logical_block_number */
-					logical_block_number);
-			if(!physical_block_number) {
+			for(j = 0; j < 4; ++j) {
+				physical_block_numbers[j] =
+					(!is_v3 && j) ? 0 :
+					logical_to_physical_block_number(
+						/* refs_node_crawl_context
+						 * *crawl_context */
+						&crawl_context,
+						/* u64 logical_block_number */
+						logical_block_numbers[j]);
+			}
+			if(!physical_block_numbers[0]) {
 				continue;
 			}
 
@@ -8639,26 +8769,21 @@ static int crawl_volume_metadata(
 				"%" PRIu64 " -> %" PRIu64,
 				PRAuz(i),
 				PRAuz(level2_queue.block_queue_length),
-				PRAu64(logical_block_number),
-				PRAu64(physical_block_number));
+				PRAu64(logical_block_numbers[0]),
+				PRAu64(physical_block_numbers[0]));
 
-			err = sys_device_pread(
-				/* sys_device *dev */
-				dev,
-				/* u64 pos */
-				physical_block_number * block_index_unit,
-				/* size_t count */
+			err = refs_node_get_node_data(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
+				/* size_t node_size */
 				block_size,
-				/* void *b */
-				block);
+				/* u64 logical_blocks[4] */
+				logical_block_numbers,
+				/* u64 physical_blocks[4] */
+				physical_block_numbers,
+				/* u8 **out_data */
+				&block);
 			if(err) {
-				sys_log_pwarning(err, "Error while reading "
-					"%" PRIuz " bytes from metadata block "
-					"%" PRIu64 " (offset %" PRIu64 ")",
-					PRAuz(block_size),
-					PRAu64(physical_block_number),
-					PRAu64(physical_block_number *
-					block_index_unit));
 				continue;
 			}
 
@@ -8666,11 +8791,11 @@ static int crawl_volume_metadata(
 
 			if(memcmp(header->signature, "MSB+", 4) ||
 				le64_to_cpu(header->block_number) !=
-				logical_block_number)
+				logical_block_numbers[0])
 			{
 				sys_log_warning("Invalid data while reading "
 					"block with identity mapping: %" PRIu64,
-					PRAu64(logical_block_number));
+					PRAu64(logical_block_numbers[0]));
 				continue;
 			}
 
@@ -8693,9 +8818,9 @@ static int crawl_volume_metadata(
 				/* size_t indent */
 				0,
 				/* u64 cluster_number */
-				physical_block_number,
+				physical_block_numbers[0],
 				/* u64 block_number */
-				logical_block_number,
+				logical_block_numbers[0],
 				/* u64 block_queue_index */
 				i,
 				/* u8 level */
@@ -8775,8 +8900,8 @@ static int crawl_volume_metadata(
 	/* At this point the mappings are set up and we can look up a node by
 	 * node number. */
 	if(start_node) {
-		const u64 logical_block_number = *start_node;
-		u64 physical_block_number;
+		u64 logical_block_numbers[4] = { *start_node, 0, 0, 0 };
+		u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 		u64 start_object_id = 0;
 		sys_bool is_valid = SYS_FALSE;
 
@@ -8786,37 +8911,32 @@ static int crawl_volume_metadata(
 		sys_free(&level2_queue.block_numbers);
 		level2_queue.block_queue_length = 0;
 
-		physical_block_number =
+		physical_block_numbers[0] =
 			logical_to_physical_block_number(
 				/* refs_node_crawl_context *crawl_context */
 				&crawl_context,
 				/* u64 logical_block_number */
-				*start_node);
+				logical_block_numbers[0]);
 
 		sys_log_debug("Reading block %" PRIuz " / %" PRIuz ": "
 			"%" PRIu64 " -> %" PRIu64,
 			PRAuz(i),
 			PRAuz(level2_queue.block_queue_length),
-			PRAu64(logical_block_number),
-			PRAu64(physical_block_number));
+			PRAu64(logical_block_numbers[0]),
+			PRAu64(physical_block_numbers[0]));
 
-		err = sys_device_pread(
-			/* sys_device *dev */
-			dev,
-			/* u64 pos */
-			physical_block_number * block_index_unit,
-			/* size_t count */
+		err = refs_node_get_node_data(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
+			/* size_t node_size */
 			block_size,
-			/* void *b */
-			block);
+			/* u64 logical_blocks[4] */
+			logical_block_numbers,
+			/* u64 physical_blocks[4] */
+			physical_block_numbers,
+			/* u8 **out_data */
+			&block);
 		if(err) {
-			sys_log_perror(err, "Error while reading "
-				"%" PRIuz " bytes from metadata block "
-				"%" PRIu64 " (offset %" PRIu64 ")",
-				PRAuz(block_size),
-				PRAu64(physical_block_number),
-				PRAu64(physical_block_number *
-				block_index_unit));
 			goto out;
 		}
 
@@ -8834,9 +8954,9 @@ static int crawl_volume_metadata(
 			/* u32 block_size */
 			block_size,
 			/* u64 cluster_number */
-			physical_block_number,
+			physical_block_numbers[0],
 			/* u64 block_number */
-			logical_block_number,
+			logical_block_numbers[0],
 			/* u64 block_queue_index */
 			0,
 			/* sys_bool *out_is_valid */
@@ -8856,7 +8976,7 @@ static int crawl_volume_metadata(
 				/* block_queue *block_queue */
 				&level2_queue,
 				/* u64 block_number */
-				logical_block_number);
+				logical_block_numbers[0]);
 			if(err) {
 				goto out;
 			}
@@ -8866,7 +8986,7 @@ static int crawl_volume_metadata(
 				/* block_queue *block_queue */
 				&level3_queue,
 				/* u64 block_number */
-				logical_block_number);
+				logical_block_numbers[0]);
 			if(err) {
 				goto out;
 			}
@@ -8875,44 +8995,41 @@ static int crawl_volume_metadata(
 
 	if(level2_queue.block_queue_length) {
 		for(i = 0; i < level2_queue.block_queue_length; ++i) {
-			const u64 logical_block_number =
-				level2_queue.block_numbers[i * (is_v3 ? 6 : 3)];
-			u64 physical_block_number;
+			u64 *const logical_block_numbers =
+				&level2_queue.block_numbers[i *
+				(is_v3 ? 6 : 3)];
+			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 			u64 object_id_mapping = 0;
 			sys_bool object_id_mapping_found = SYS_FALSE;
 
-			physical_block_number =
+			physical_block_numbers[0] =
 				logical_to_physical_block_number(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					&crawl_context,
 					/* u64 logical_block_number */
-					logical_block_number);
+					logical_block_numbers[0]);
 
-			sys_log_debug("Reading block %" PRIuz " / %" PRIuz ": "
-				"%" PRIu64 " -> %" PRIu64,
+			sys_log_debug("Reading level %d block %" PRIuz " / "
+				"%" PRIuz ": %" PRIu64 " -> %" PRIu64,
+				2,
 				PRAuz(i),
-				PRAuz(level2_queue.block_queue_length),
-				PRAu64(logical_block_number),
-				PRAu64(physical_block_number));
+				PRAuz(level3_queue.block_queue_length),
+				PRAu64(logical_block_numbers[0]),
+				PRAu64(physical_block_numbers[0]));
 
-			err = sys_device_pread(
-				/* sys_device *dev */
-				dev,
-				/* u64 pos */
-				physical_block_number * block_index_unit,
-				/* size_t count */
+			err = refs_node_get_node_data(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
+				/* size_t node_size */
 				block_size,
-				/* void *b */
-				block);
+				/* u64 logical_blocks[4] */
+				logical_block_numbers,
+				/* u64 physical_blocks[4] */
+				physical_block_numbers,
+				/* u8 **out_data */
+				&block);
 			if(err) {
-				sys_log_pwarning(err, "Error while reading "
-					"%" PRIuz " bytes from metadata block "
-					"%" PRIu64 " (offset %" PRIu64 ")",
-					PRAuz(block_size),
-					PRAu64(physical_block_number),
-					PRAu64(physical_block_number *
-					block_index_unit));
 				continue;
 			}
 
@@ -8926,9 +9043,9 @@ static int crawl_volume_metadata(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* u64 cluster_number */
-				physical_block_number,
+				physical_block_numbers[0],
 				/* u64 block_number */
-				logical_block_number,
+				logical_block_numbers[0],
 				/* u64 block_queue_index */
 				i,
 				/* const u8 *block */
@@ -8973,35 +9090,42 @@ static int crawl_volume_metadata(
 	}
 	if(level3_queue.block_queue_length) {
 		for(i = 0; i < level3_queue.block_queue_length; ++i) {
-			const u64 logical_block_number =
-				level3_queue.block_numbers[i];
-			u64 physical_block_number;
+			u64 logical_block_numbers[4] = {
+				level3_queue.block_numbers[i],
+				0,
+				0,
+				0
+			};
+			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 
-			physical_block_number =
+			physical_block_numbers[0] =
 				logical_to_physical_block_number(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					&crawl_context,
 					/* u64 logical_block_number */
-					logical_block_number);
+					logical_block_numbers[0]);
 
-			err = sys_device_pread(
-				/* sys_device *dev */
-				dev,
-				/* u64 pos */
-				physical_block_number * block_index_unit,
-				/* size_t count */
+			sys_log_debug("Reading level %d block %" PRIuz " / "
+				"%" PRIuz ": %" PRIu64 " -> %" PRIu64,
+				3,
+				PRAuz(i),
+				PRAuz(level3_queue.block_queue_length),
+				PRAu64(logical_block_numbers[0]),
+				PRAu64(physical_block_numbers[0]));
+
+			err = refs_node_get_node_data(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
+				/* size_t node_size */
 				block_size,
-				/* void *b */
-				block);
+				/* u64 logical_blocks[4] */
+				logical_block_numbers,
+				/* u64 physical_blocks[4] */
+				physical_block_numbers,
+				/* u8 **out_data */
+				&block);
 			if(err) {
-				sys_log_perror(err, "Error while reading "
-					"%" PRIuz " bytes from metadata block "
-					"%" PRIu64 " (offset %" PRIu64 ")",
-					PRAuz(block_size),
-					PRAu64(logical_block_number),
-					PRAu64(physical_block_number *
-					block_index_unit));
 				goto out;
 			}
 
@@ -9011,9 +9135,9 @@ static int crawl_volume_metadata(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* u64 cluster_number */
-				physical_block_number,
+				physical_block_numbers[0],
 				/* u64 block_number */
-				logical_block_number,
+				logical_block_numbers[0],
 				/* u64 block_queue_index */
 				i,
 				/* const u8 *block */
