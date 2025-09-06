@@ -372,7 +372,7 @@ static void print_file_flags(
 	}
 }
 
-static u32 parse_superblock_v1_level1_blocks_list(
+static u32 parse_superblock_level1_block_list(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -387,8 +387,8 @@ static u32 parse_superblock_v1_level1_blocks_list(
 
 	u32 i;
 
-	emit(prefix, indent, "Level 1 blocks (%" PRIu32 " bytes @ %" PRIu32 " / "
-		"0x%" PRIX32 "):",
+	emit(prefix, indent, "Level 1 blocks (%" PRIu32 " bytes @ %" PRIu32 " "
+		"/ 0x%" PRIX32 "):",
 		PRAu32(level_1_blocks_count * 8),
 		PRAu32(level_1_blocks_offset),
 		PRAX32(level_1_blocks_offset));
@@ -409,7 +409,7 @@ static u32 parse_superblock_v1_level1_blocks_list(
 	return i * 8;
 }
 
-static void parse_extent_v1(
+static void parse_node_reference_v1(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -419,7 +419,7 @@ static void parse_extent_v1(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
-	print_le64_dec("Start block", prefix, indent,
+	print_le64_dec("Block number", prefix, indent,
 		base,
 		&data[0]);
 	print_le64_hex("Flags(?)", prefix, indent,
@@ -430,7 +430,7 @@ static void parse_extent_v1(
 		&data[16]);
 }
 
-static void parse_extent_v3(
+static void parse_node_reference_v3(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -460,7 +460,7 @@ static void parse_extent_v3(
 		&data[40]);
 }
 
-static void parse_extent(
+static void parse_node_reference(
 		refs_node_walk_visitor *const visitor,
 		const sys_bool is_v3,
 		const char *const prefix,
@@ -469,7 +469,7 @@ static void parse_extent(
 		const u8 *const data)
 {
 	if(is_v3) {
-		parse_extent_v3(
+		parse_node_reference_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -482,7 +482,7 @@ static void parse_extent(
 			data);
 	}
 	else {
-		parse_extent_v1(
+		parse_node_reference_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -496,16 +496,16 @@ static void parse_extent(
 	}
 }
 
-static u32 parse_extents_list_v1(
+static u32 parse_node_reference_list_v1(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const char *const list_name,
 		const u8 *const block,
 		const size_t block_size,
-		const u32 *const self_extents_offsets,
-		u32 self_extents_size,
-		u64 *out_extents)
+		const u32 *const node_reference_offsets,
+		const u32 node_references_size,
+		u64 *const out_node_references)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -516,35 +516,33 @@ static u32 parse_extents_list_v1(
 	emit(prefix, indent - 1, "%s (%" PRIu32 " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
 		list_name,
-		PRAu32(self_extents_size),
-		PRAu32(self_extents_offsets[0]),
-		PRAX32(self_extents_offsets[0]));
-	for(i = 0; i + 24 <= self_extents_size; i += 24) {
-		const u32 extent_index = i / 24;
-		const u32 self_extents_offset =
-			self_extents_offsets[extent_index];
+		PRAu32(node_references_size),
+		PRAu32(node_reference_offsets[0]),
+		PRAX32(node_reference_offsets[0]));
+	for(i = 0; i + 24 <= node_references_size; i += 24) {
+		const u32 reference_index = i / 24;
+		const u32 reference_offset =
+			node_reference_offsets[reference_index];
 
-
-		if(i && self_extents_offset >
-			self_extents_offsets[extent_index - 1] + 24)
+		if(i && reference_offset >
+			node_reference_offsets[reference_index - 1] + 24)
 		{
-			const u32 prev_extent_end =
-				self_extents_offsets[extent_index - 1] + 24;
+			const u32 prev_reference_end =
+				node_reference_offsets[reference_index - 1] + 24;
 
-			/* Print padding / data in between extents. */
-			print_data_with_base(prefix, indent, prev_extent_end,
-				block_size,
-				&block[prev_extent_end],
-				self_extents_offset - prev_extent_end);
-			total_size += self_extents_offset - prev_extent_end;
+			/* Print padding / data in between node references. */
+			print_data_with_base(prefix, indent, prev_reference_end,
+				block_size, &block[prev_reference_end],
+				reference_offset - prev_reference_end);
+			total_size += reference_offset - prev_reference_end;
 		}
 
 		emit(prefix, indent, "[%" PRIu32 "] @ %" PRIu32 " / "
 			"0x%" PRIX32 ":",
-			PRAu32(extent_index),
-			PRAu32(self_extents_offset),
-			PRAX32(self_extents_offset));
-		parse_extent_v1(
+			PRAu32(reference_index),
+			PRAu32(reference_offset),
+			PRAX32(reference_offset));
+		parse_node_reference_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -552,16 +550,16 @@ static u32 parse_extents_list_v1(
 			/* size_t indent */
 			indent + 1,
 			/* const u8 *base */
-			&block[self_extents_offset],
+			&block[reference_offset],
 			/* const u8 *data */
-			&block[self_extents_offset]);
-		if(out_extents) {
-			out_extents[extent_index * 3 + 0] =
-				read_le64(&block[self_extents_offset + 0]);
-			out_extents[extent_index * 3 + 1] =
-				read_le64(&block[self_extents_offset + 8]);
-			out_extents[extent_index * 3 + 2] =
-				read_le64(&block[self_extents_offset + 16]);
+			&block[reference_offset]);
+		if(out_node_references) {
+			out_node_references[reference_index * 3 + 0] =
+				read_le64(&block[reference_offset + 0]);
+			out_node_references[reference_index * 3 + 1] =
+				read_le64(&block[reference_offset + 8]);
+			out_node_references[reference_index * 3 + 2] =
+				read_le64(&block[reference_offset + 16]);
 		}
 
 		total_size += 24;
@@ -570,16 +568,16 @@ static u32 parse_extents_list_v1(
 	return total_size;
 }
 
-static u32 parse_extents_list_v3(
+static u32 parse_node_reference_list_v3(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const char *const list_name,
 		const u8 *const block,
 		const size_t block_size,
-		const u32 *const self_extents_offsets,
-		u32 self_extents_size,
-		u64 *out_extents)
+		const u32 *const node_reference_offsets,
+		const u32 node_references_size,
+		u64 *const out_node_references)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -590,34 +588,35 @@ static u32 parse_extents_list_v3(
 	emit(prefix, indent - 1, "%s (%" PRIu32 " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
 		list_name,
-		PRAu32(self_extents_size),
-		PRAu32(self_extents_offsets[0]),
-		PRAX32(self_extents_offsets[0]));
-	for(i = 0; i + 48 <= self_extents_size; i += 48) {
-		const u32 extent_index = i / 48;
-		const u32 self_extents_offset =
-			self_extents_offsets[extent_index];
+		PRAu32(node_references_size),
+		PRAu32(node_reference_offsets[0]),
+		PRAX32(node_reference_offsets[0]));
+	for(i = 0; i + 48 <= node_references_size; i += 48) {
+		const u32 reference_index = i / 48;
+		const u32 reference_offset =
+			node_reference_offsets[reference_index];
 
-		if(i && self_extents_offset >
-			self_extents_offsets[extent_index - 1] + 48)
+		if(i && reference_offset >
+			node_reference_offsets[reference_index - 1] + 48)
 		{
-			const u32 prev_extent_end =
-				self_extents_offsets[extent_index - 1] + 48;
+			const u32 prev_reference_end =
+				node_reference_offsets[reference_index - 1] +
+				48;
 
-			/* Print padding / data in between extents. */
+			/* Print padding / data in between node references. */
 			print_data_with_base(prefix, indent - 1,
-				prev_extent_end, block_size,
-				&block[prev_extent_end],
-				self_extents_offset - prev_extent_end);
-			total_size += self_extents_offset - prev_extent_end;
+				prev_reference_end, block_size,
+				&block[prev_reference_end],
+				reference_offset - prev_reference_end);
+			total_size += reference_offset - prev_reference_end;
 		}
 
 		emit(prefix, indent, "[%" PRIu32 "] @ %" PRIu32 " / "
 			"0x%" PRIX32 ":",
-			PRAu32(extent_index),
-			PRAu32(self_extents_offset),
-			PRAX32(self_extents_offset));
-		parse_extent_v3(
+			PRAu32(reference_index),
+			PRAu32(reference_offset),
+			PRAX32(reference_offset));
+		parse_node_reference_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -625,22 +624,22 @@ static u32 parse_extents_list_v3(
 			/* size_t indent */
 			indent + 1,
 			/* const u8 *base */
-			&block[self_extents_offset],
+			&block[reference_offset],
 			/* const u8 *data */
-			&block[self_extents_offset]);
-		if(out_extents) {
-			out_extents[extent_index * 6 + 0] =
-				read_le64(&block[self_extents_offset + 0]);
-			out_extents[extent_index * 6 + 1] =
-				read_le64(&block[self_extents_offset + 8]);
-			out_extents[extent_index * 6 + 2] =
-				read_le64(&block[self_extents_offset + 16]);
-			out_extents[extent_index * 6 + 3] =
-				read_le64(&block[self_extents_offset + 24]);
-			out_extents[extent_index * 6 + 4] =
-				read_le64(&block[self_extents_offset + 32]);
-			out_extents[extent_index * 6 + 5] =
-				read_le64(&block[self_extents_offset + 40]);
+			&block[reference_offset]);
+		if(out_node_references) {
+			out_node_references[reference_index * 6 + 0] =
+				read_le64(&block[reference_offset + 0]);
+			out_node_references[reference_index * 6 + 1] =
+				read_le64(&block[reference_offset + 8]);
+			out_node_references[reference_index * 6 + 2] =
+				read_le64(&block[reference_offset + 16]);
+			out_node_references[reference_index * 6 + 3] =
+				read_le64(&block[reference_offset + 24]);
+			out_node_references[reference_index * 6 + 4] =
+				read_le64(&block[reference_offset + 32]);
+			out_node_references[reference_index * 6 + 5] =
+				read_le64(&block[reference_offset + 40]);
 		}
 
 		total_size += 48;
@@ -833,87 +832,73 @@ static void parse_superblock_v1(
 	const REFS_V1_SUPERBLOCK_HEADER *const header =
 		(const REFS_V1_SUPERBLOCK_HEADER*) block;
 
-	u32 level_1_blocks_offset = 0;
-	u32 level_1_blocks_count = 0;
-	u32 self_extents_offset = 0;
-	u32 self_extents_size = 0;
+	u32 level_1_block_list_offset = 0;
+	u32 level_1_block_list_count = 0;
+	u32 self_reference_offset = 0;
+	u32 self_reference_size = 0;
 	size_t i = 0;
 
-	emit(prefix, indent, "Self block index: %" PRIu64 " / 0x%" PRIX64,
-		PRAu64(le64_to_cpu(header->self_block_index)),
-		PRAX64(le64_to_cpu(header->self_block_index)));
+	print_le64_dechex("Self block index", prefix, indent, header,
+		&header->self_block_index);
 	print_unknown64(prefix, indent, block, &header->reserved8);
 	print_unknown64(prefix, indent, block, &header->reserved16);
 	print_unknown64(prefix, indent, block, &header->reserved24);
 	print_unknown64(prefix, indent, block, &header->reserved32);
 	print_unknown64(prefix, indent, block, &header->reserved40);
 	emit(prefix, indent, "GUID @ %" PRIuz " / 0x%" PRIXz ": %" PRIGUID,
-		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
-		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
+		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, block_guid)),
+		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, block_guid)),
 		PRAGUID(header->block_guid));
 	print_unknown64(prefix, indent, block, &header->reserved64);
 	print_unknown64(prefix, indent, block, &header->reserved72);
-	level_1_blocks_offset = le32_to_cpu(header->level1_blocks_offset);
-	emit(prefix, indent, "Offset of level 1 block references @ %" PRIuz " "
-		"/ 0x%" PRIXz ": "
-		"%" PRIu64,
-		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_offset)),
-		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_offset)),
-		PRAu64(level_1_blocks_offset));
-	level_1_blocks_count = le32_to_cpu(header->level1_blocks_count);
-	emit(prefix, indent, "Number of level 1 block references @ %" PRIuz " "
-		"/ 0x%" PRIXz ": "
-		"%" PRIu64,
-		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_count)),
-		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, level1_blocks_count)),
-		PRAu64(level_1_blocks_count));
-	self_extents_offset = le32_to_cpu(header->self_extents_offset);
-	emit(prefix, indent, "Offset of self reference @ %" PRIuz " / "
-		"0x%" PRIXz ": %" PRIu64,
-		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
-		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_offset)),
-		PRAu64(self_extents_offset));
-	self_extents_size = le32_to_cpu(header->self_extents_size);
-	emit(prefix, indent, "Size of self reference @ %" PRIuz " / "
-		"0x%" PRIXz ": %" PRIu64,
-		PRAuz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_size)),
-		PRAXz(offsetof(REFS_V1_SUPERBLOCK_HEADER, self_extents_size)),
-		PRAu64(self_extents_size));
+	level_1_block_list_offset = le32_to_cpu(header->level1_blocks_offset);
+	print_le32_dec("Offset of level 1 block list", prefix, indent,
+		header, &header->level1_blocks_offset);
+	level_1_block_list_count = le32_to_cpu(header->level1_blocks_count);
+	print_le32_dec("Number of level 1 block list", prefix, indent,
+		header, &header->level1_blocks_count);
+	self_reference_offset = le32_to_cpu(header->self_extents_offset);
+	print_le32_dec("Offset of self reference", prefix, indent, header,
+		&header->self_extents_offset);
+	self_reference_size = le32_to_cpu(header->self_extents_size);
+	print_le32_dec("Size of self reference", prefix, indent, header,
+		&header->self_extents_size);
 
-	if(sys_min(level_1_blocks_offset, self_extents_offset) > 96) {
+	if(sys_min(level_1_block_list_offset, self_reference_offset) > 96)
+	{
 		print_data_with_base(prefix, indent, 96, block_size, &block[96],
-			sys_min(level_1_blocks_offset, self_extents_offset) -
-			96);
+			sys_min(level_1_block_list_offset,
+			self_reference_offset) - 96);
 	}
 
-	/* TODO: Validate contents past first self extents element based on
+	/* TODO: Validate contents past first self reference element based on
 	 * prior observations and fail if it deviates. This may be a description
 	 * of a fragmented superblock, but we have not seen those yet so we
 	 * don't quite know what to expect. */
 
-	if(level_1_blocks_offset < self_extents_offset) {
-		i = level_1_blocks_offset;
-		i += parse_superblock_v1_level1_blocks_list(
+	if(level_1_block_list_offset < self_reference_offset) {
+		i = level_1_block_list_offset;
+		i += parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
-			indent + 1,
+			indent,
 			/* const u8 *const block */
 			block,
 			/* u32 level_1_blocks_offset */
-			level_1_blocks_offset,
+			level_1_block_list_offset,
 			/* u32 level_1_blocks_count */
-			level_1_blocks_count,
+			level_1_block_list_count,
 			/* u64 *out_primary_level1_block */
 			out_primary_level1_block,
 			/* u64 *out_secondary_level1_block */
 			out_secondary_level1_block);
 	}
 	else {
-		i = self_extents_offset;
-		i += parse_extents_list_v1(
+		i = self_reference_offset;
+		i += parse_node_reference_list_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -921,28 +906,29 @@ static void parse_superblock_v1(
 			/* size_t indent */
 			indent + 1,
 			/* const char *list_name */
-			"Self extents",
+			"Self reference",
 			/* const u8 *const block */
 			block,
 			/* const size_t block_size */
 			block_size,
-			/* u32 self_extents_offset */
-			&self_extents_offset,
-			/* u32 self_extents_size */
-			(self_extents_size > 24) ? 24 : self_extents_size,
-			/* u64 *out_extents */
+			/* const u32 *node_reference_offsets */
+			&self_reference_offset,
+			/* u32 node_references_size */
+			(self_reference_size > 24) ? 24 : self_reference_size,
+			/* u64 *out_node_references */
 			NULL);
 	}
 
-	if(sys_max(level_1_blocks_offset, self_extents_offset) > i) {
+	if(sys_max(level_1_block_list_offset, self_reference_offset) > i)
+	{
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
-			sys_min(level_1_blocks_offset, self_extents_offset) -
-			i);
+			sys_min(level_1_block_list_offset,
+			self_reference_offset) - i);
 	}
 
-	if(level_1_blocks_offset < self_extents_offset) {
-		i = self_extents_offset;
-		i += parse_extents_list_v1(
+	if(level_1_block_list_offset < self_reference_offset) {
+		i = self_reference_offset;
+		i += parse_node_reference_list_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -950,33 +936,33 @@ static void parse_superblock_v1(
 			/* size_t indent */
 			indent + 1,
 			/* const char *list_name */
-			"Self extents",
+			"Self reference",
 			/* const u8 *const block */
 			block,
 			/* const size_t block_size */
 			block_size,
-			/* const u32 *self_extents_offsets */
-			&self_extents_offset,
-			/* u32 self_extents_size */
-			(self_extents_size > 24) ? 24 : self_extents_size,
-			/* u64 *out_extents */
+			/* const u32 *node_reference_offsets */
+			&self_reference_offset,
+			/* u32 node_references_size */
+			(self_reference_size > 24) ? 24 : self_reference_size,
+			/* u64 *out_node_references */
 			NULL);
 	}
 	else {
-		i = level_1_blocks_offset;
-		i += parse_superblock_v1_level1_blocks_list(
+		i = level_1_block_list_offset;
+		i += parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
-			indent + 1,
+			indent,
 			/* const u8 *const block */
 			block,
 			/* u32 level_1_blocks_offset */
-			level_1_blocks_offset,
+			level_1_block_list_offset,
 			/* u32 level_1_blocks_count */
-			level_1_blocks_count,
+			level_1_block_list_count,
 			/* u64 *out_primary_level1_block */
 			out_primary_level1_block,
 			/* u64 *out_secondary_level1_block */
@@ -1002,80 +988,97 @@ static void parse_superblock_v3(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
-	u32 level_1_blocks_offset = 0;
-	u32 level_1_blocks_count = 0;
-	u32 self_extents_offset = 0;
-	u32 self_extents_size = 0;
-	u32 i;
+	u32 level_1_block_list_offset = 0;
+	u32 level_1_block_list_count = 0;
+	u32 self_reference_offset = 0;
+	u32 self_reference_size = 0;
+	u32 i = 0;
 
 	const REFS_V3_SUPERBLOCK_HEADER *const sb =
 		(const REFS_V3_SUPERBLOCK_HEADER*) block;
 
-	emit(prefix, indent, "Signature: \"%" PRIbs "\"",
-		PRAbs(4, sb->signature));
-	print_unknown32(prefix, indent, sb, &sb->reserved4);
-	print_unknown32(prefix, indent, sb, &sb->reserved8);
-	print_unknown32(prefix, indent, sb, &sb->reserved12);
-	emit(prefix, indent, "Unknown @ 16:");
+	emit(prefix, indent, "Signature @ %" PRIuz " / 0x%" PRIXz ": "
+		"\"%" PRIbs "\"",
+		PRAuz(i), PRAXz(i), PRAbs(4, sb->signature));
+	i += sizeof(sb->signature);
+
+	i += print_unknown32(prefix, indent, sb, &sb->reserved4);
+	i += print_unknown32(prefix, indent, sb, &sb->reserved8);
+	i += print_unknown32(prefix, indent, sb, &sb->reserved12);
+
+	emit(prefix, indent, "Unknown @ %" PRIuz " / 0x%" PRIXz ":",
+		PRAuz(i), PRAXz(i));
 	print_data(prefix, indent + 1, sb->reserved16,
 		sizeof(sb->reserved16));
-	emit(prefix, indent, "Self block index: %" PRIu64 " / 0x%" PRIX64,
-		PRAu64(le64_to_cpu(sb->self_block_index)),
-		PRAX64(le64_to_cpu(sb->self_block_index)));
-	emit(prefix, indent, "Unknown @ 40:");
+	i += sizeof(sb->reserved16);
+
+	i += print_le64_dechex("Self block index", prefix, indent, sb,
+		&sb->self_block_index);
+
+	emit(prefix, indent, "Unknown @ %" PRIuz " / 0x%" PRIXz ":",
+		PRAuz(i), PRAXz(i));
 	print_data(prefix, indent + 1, sb->reserved40,
 		sizeof(sb->reserved40));
-	emit(prefix, indent, "GUID: %" PRIGUID,
-		PRAGUID(sb->block_guid));
-	print_unknown64(prefix, indent, sb, &sb->reserved96);
-	print_unknown64(prefix, indent, sb, &sb->reserved104);
-	level_1_blocks_offset = le32_to_cpu(sb->reserved112);
-	emit(prefix, indent, "Offset of level 1 block references: %" PRIu64,
-		PRAu64(level_1_blocks_offset));
-	level_1_blocks_count = le32_to_cpu(sb->reserved116);
-	emit(prefix, indent, "Number of level 1 block references: %" PRIu64,
-		PRAu64(level_1_blocks_count));
-	self_extents_offset = le32_to_cpu(sb->reserved120);
-	emit(prefix, indent, "Offset of self reference: %" PRIu64,
-		PRAu64(self_extents_offset));
-	self_extents_size = le32_to_cpu(sb->reserved124);
-	emit(prefix, indent, "Size of self reference: %" PRIu64,
-		PRAu64(self_extents_size));
-	if(sys_min(level_1_blocks_offset, self_extents_offset) > 128) {
-		print_data_with_base(prefix, indent, 96, block_size,
-			&block[128],
-			sys_min(level_1_blocks_offset, self_extents_offset) -
-			128);
+	i += sizeof(sb->reserved40);
+
+	emit(prefix, indent, "GUID @ %" PRIuz " / 0x%" PRIXz ": %" PRIGUID,
+		PRAuz(i), PRAXz(i), PRAGUID(sb->block_guid));
+	i += sizeof(sb->block_guid);
+
+	i += print_unknown64(prefix, indent, sb, &sb->reserved96);
+	i += print_unknown64(prefix, indent, sb, &sb->reserved104);
+
+	level_1_block_list_offset = le32_to_cpu(sb->reserved112);
+	i += print_le32_dec("Offset of level 1 block list", prefix, indent, sb,
+		&sb->reserved112);
+
+	level_1_block_list_count = le32_to_cpu(sb->reserved116);
+	i += print_le32_dec("Number of level 1 blocks", prefix, indent, sb,
+		&sb->reserved116);
+
+	self_reference_offset = le32_to_cpu(sb->reserved120);
+	i += print_le32_dec("Offset of self reference", prefix, indent, sb,
+		&sb->reserved120);
+
+	self_reference_size = le32_to_cpu(sb->reserved124);
+	i += print_le32_dec("Size of self reference", prefix, indent, sb,
+		&sb->reserved124);
+
+	if(sys_min(level_1_block_list_offset, self_reference_offset) > i) {
+		print_data_with_base(prefix, indent, i, block_size,
+			&block[i],
+			sys_min(level_1_block_list_offset, self_reference_offset) -
+			i);
 	}
 
-	/* TODO: Validate contents past first self extents element based on
+	/* TODO: Validate contents past first self reference element based on
 	 * prior observations and fail if it deviates. This may be a description
 	 * of a fragmented superblock, but we have not seen those yet so we
 	 * don't quite know what to expect. */
 
-	if(level_1_blocks_offset < self_extents_offset) {
-		i = level_1_blocks_offset;
-		i += parse_superblock_v1_level1_blocks_list(
+	if(level_1_block_list_offset < self_reference_offset) {
+		i = level_1_block_list_offset;
+		i += parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
-			indent + 1,
+			indent,
 			/* const u8 *block */
 			block,
 			/* u32 level_1_blocks_offset */
-			level_1_blocks_offset,
+			level_1_block_list_offset,
 			/* u32 level_1_blocks_count */
-			level_1_blocks_count,
+			level_1_block_list_count,
 			/* u64 *out_primary_level1_block */
 			out_primary_level1_block,
 			/* u64 *out_secondary_level1_block */
 			out_secondary_level1_block);
 	}
 	else {
-		i = self_extents_offset;
-		i += parse_extents_list_v3(
+		i = self_reference_offset;
+		i += parse_node_reference_list_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1083,28 +1086,28 @@ static void parse_superblock_v3(
 			/* size_t indent */
 			indent + 1,
 			/* const char *list_name */
-			"Self extents",
+			"Self reference",
 			/* const u8 *block */
 			block,
 			/* size_t block_size */
 			block_size,
-			/* const u32 *self_extents_offsets */
-			&self_extents_offset,
-			/* u32 self_extents_size */
-			(self_extents_size > 48) ? 48 : self_extents_size,
-			/* u64 *out_extents */
+			/* const u32 *node_reference_offsets */
+			&self_reference_offset,
+			/* u32 node_references_size */
+			(self_reference_size > 48) ? 48 : self_reference_size,
+			/* u64 *out_node_references */
 			NULL);
 	}
 
-	if(sys_max(level_1_blocks_offset, self_extents_offset) > i) {
+	if(sys_max(level_1_block_list_offset, self_reference_offset) > i) {
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
-			sys_min(level_1_blocks_offset, self_extents_offset) -
+			sys_min(level_1_block_list_offset, self_reference_offset) -
 			i);
 	}
 
-	if(level_1_blocks_offset < self_extents_offset) {
-		i = self_extents_offset;
-		i += parse_extents_list_v3(
+	if(level_1_block_list_offset < self_reference_offset) {
+		i = self_reference_offset;
+		i += parse_node_reference_list_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1112,33 +1115,33 @@ static void parse_superblock_v3(
 			/* size_t indent */
 			indent + 1,
 			/* const char *list_name */
-			"Self extents",
+			"Self reference",
 			/* const u8 *block */
 			block,
 			/* size_t block_size */
 			block_size,
-			/* const u32 *self_extents_offsets */
-			&self_extents_offset,
-			/* u32 self_extents_size */
-			(self_extents_size > 48) ? 48 : self_extents_size,
-			/* u64 *out_extents */
+			/* const u32 *node_reference_offsets */
+			&self_reference_offset,
+			/* u32 node_references_size */
+			(self_reference_size > 48) ? 48 : self_reference_size,
+			/* u64 *out_node_references */
 			NULL);
 	}
 	else {
-		i = level_1_blocks_offset;
-		i += parse_superblock_v1_level1_blocks_list(
+		i = level_1_block_list_offset;
+		i += parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
 			prefix,
 			/* size_t indent */
-			indent + 1,
+			indent,
 			/* const u8 *const block */
 			block,
 			/* u32 level_1_blocks_offset */
-			level_1_blocks_offset,
+			level_1_block_list_offset,
 			/* u32 level_1_blocks_count */
-			level_1_blocks_count,
+			level_1_block_list_count,
 			/* u64 *out_primary_level1_block */
 			out_primary_level1_block,
 			/* u64 *out_secondary_level1_block */
@@ -1151,57 +1154,60 @@ static void parse_superblock_v3(
 	}
 }
 
-static int parse_level1_block_level2_blocks_list(
+static int parse_level1_block_level2_node_reference_list(
 		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u8 *const block,
-		u32 block_size,
-		u32 extents_list_offset,
-		u32 **const out_extents_list,
-		u32 *const out_extents_count,
+		const u32 block_size,
+		const u32 node_reference_list_offset,
+		u32 **const out_node_reference_list,
+		u32 *const out_node_reference_list_count,
 		u32 *const out_end_offset)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
 	int err = 0;
-	u32 offset = extents_list_offset;
-	u32 extents_count;
-	size_t extents_size = 0;
-	size_t extents_list_inset = 0;
-	u32 *extents_list = NULL;
+	u32 offset = node_reference_list_offset;
+	u32 node_reference_list_count;
+	u64 node_reference_list_size = 0;
+	u32 node_reference_list_inset = 0;
+	u32 *node_reference_list = NULL;
 	u32 i;
 
-	extents_count = read_le32(&block[offset]);
-	emit(prefix, indent, "Level 2 blocks count @ %" PRIuz " / "
+	node_reference_list_count = read_le32(&block[offset]);
+	emit(prefix, indent, "Number of level 2 node references @ %" PRIuz " / "
 		"0x%" PRIXz ": %" PRIu64 " / 0x%" PRIX64,
-		PRAuz(extents_list_offset),
-		PRAXz(extents_list_offset),
-		PRAu64(extents_count),
-		PRAX64(extents_count));
+		PRAuz(node_reference_list_offset),
+		PRAXz(node_reference_list_offset),
+		PRAu64(node_reference_list_count),
+		PRAX64(node_reference_list_count));
 	offset += sizeof(le32);
-	extents_size = extents_count * sizeof(le32);
-	if(extents_size > block_size - extents_list_offset) {
-		sys_log_warning("Invalid extents list: Overflows end of "
-			"block.");
-		*out_extents_list = NULL;
-		*out_extents_count = 0;
+	node_reference_list_size =
+		((u64) node_reference_list_count) * sizeof(le32);
+	if(node_reference_list_size > block_size - node_reference_list_offset) {
+		sys_log_warning("Invalid node references list: Overflows end "
+			"of block (%" PRIu64 " > %" PRIu32 ").",
+			PRAu64(node_reference_list_size),
+			PRAu32(block_size - node_reference_list_offset));
+		*out_node_reference_list = NULL;
+		*out_node_reference_list_count = 0;
 		goto out;
 	}
 
 	if(REFS_VERSION_MIN(context->bs->version_major,
 		context->bs->version_minor, 3, 14))
 	{
-		sys_log_debug("Insetting extents list by 5 elements on ReFS "
-			"3.14 and later.");
+		sys_log_debug("Insetting node references list by 5 elements on "
+			"ReFS 3.14 and later.");
 		/* Not sure what these 5 elements are in version 3.14,
 		 * investigating is TODO. */
-		extents_list_inset = 5 * sizeof(le32);
+		node_reference_list_inset = 5 * sizeof(le32);
 	}
 
-	if(extents_list_inset) {
+	if(node_reference_list_inset) {
 		/* Note: The offset (from the start of the node) of the level 2
 		 * block list appears to be stored at the first offset in ReFS
 		 * 3.14. Not sure what the other numbers are yet. */
@@ -1215,34 +1221,37 @@ static int parse_level1_block_level2_blocks_list(
 			PRAX32(level2_block_list_start));
 
 		print_data_with_base(prefix, indent,
-			extents_list_offset + sizeof(le32) * 2, block_size,
-			&block[extents_list_offset + sizeof(le32) * 2],
-			extents_list_inset - sizeof(le32));
-		offset += extents_list_inset;
+			node_reference_list_offset + sizeof(le32) * 2,
+			block_size,
+			&block[node_reference_list_offset + sizeof(le32) * 2],
+			node_reference_list_inset - sizeof(le32));
+		offset += node_reference_list_inset;
 	}
 
-	err = sys_malloc(extents_size, &extents_list);
+	err = sys_malloc((size_t) node_reference_list_size,
+		&node_reference_list);
 	if(err) {
-		sys_log_perror(err, "Error while allocating %" PRIuz " bytes "
-			"for extents list",
-			PRAuz(extents_size));
+		sys_log_perror(err, "Error while allocating %" PRIu64 " bytes "
+			"for node reference list",
+			PRAu64(node_reference_list_size));
 		goto out;
 	}
 
-	for(i = 0; i < extents_count; ++i) {
-		extents_list[i] = read_le32(&block[offset]);
-		emit(prefix, indent, "Level 2 blocks offset (%" PRIu32 ") @ "
-			"%" PRIu32 " / 0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
+	emit(prefix, indent, "Level 2 node reference list offsets:");
+	for(i = 0; i < node_reference_list_count; ++i) {
+		node_reference_list[i] = read_le32(&block[offset]);
+		emit(prefix, indent + 1, "[%" PRIu32 "] @ %" PRIu32 " / "
+			"0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
 			PRAu32(i),
 			PRAu32(offset),
 			PRAX32(offset),
-			PRAu32(extents_list[i]),
-			PRAX32(extents_list[i]));
+			PRAu32(node_reference_list[i]),
+			PRAX32(node_reference_list[i]));
 		offset += sizeof(le32);
 	}
 
-	*out_extents_list = extents_list;
-	*out_extents_count = extents_count;
+	*out_node_reference_list = node_reference_list;
+	*out_node_reference_list_count = node_reference_list_count;
 	*out_end_offset = offset;
 out:
 	return err;
@@ -1256,8 +1265,8 @@ static int parse_level1_block(
 		const u64 block_queue_index,
 		const u8 *const block,
 		const size_t block_size,
-		u64 **const out_level2_extents,
-		size_t *const out_level2_extents_count)
+		u64 **const out_level2_node_references,
+		size_t *const out_level2_node_references_count)
 {
 	static const char *const prefix = "\t";
 	static const size_t indent = 0;
@@ -1271,13 +1280,13 @@ static int parse_level1_block(
 	const u8 *header = NULL;
 	u32 i = 0;
 	u64 object_id = 0;
-	u32 self_extents_offset = 0 ;
-	u32 self_extents_size = 0;
-	u32 level2_extents_count = 0;
-	u32 *level2_extents_offsets = NULL;
-	u64 level2_extents_size = 0;
-	u32 level2_extents_end_offset = 0;
-	u64 *level2_extents = NULL;
+	u32 self_reference_offset = 0 ;
+	u32 self_reference_size = 0;
+	u32 level2_node_reference_count = 0;
+	u32 *level2_node_reference_offsets = NULL;
+	u64 level2_node_reference_list_size = 0;
+	u32 level2_node_reference_offsets_end_offset = 0;
+	u64 *level2_node_references = NULL;
 
 	err = parse_block_header(
 		/* refs_node_walk_visitor *visitor */
@@ -1316,12 +1325,12 @@ static int parse_level1_block(
 	print_unknown32(prefix, indent, block, &header[0x30]);
 	print_unknown16(prefix, indent, block, &header[0x34]);
 	print_unknown16(prefix, indent, block, &header[0x36]);
-	self_extents_offset = read_le32(&header[0x38]);
+	self_reference_offset = read_le32(&header[0x38]);
 	emit(prefix, indent, "Offset of self reference: %" PRIu64,
-		PRAu64(self_extents_offset));
-	self_extents_size = read_le32(&header[0x3C]);
+		PRAu64(self_reference_offset));
+	self_reference_size = read_le32(&header[0x3C]);
 	emit(prefix, indent, "Size of self reference: %" PRIu64,
-		PRAu64(self_extents_size));
+		PRAu64(self_reference_size));
 	print_le64_dechex("Checkpoint number", prefix, indent, block,
 		&header[0x40]);
 	print_le64_dechex("First checkpoint number (?)", prefix, indent, block,
@@ -1340,7 +1349,7 @@ static int parse_level1_block(
 		i += 0x18;
 	}
 
-	err = parse_level1_block_level2_blocks_list(
+	err = parse_level1_block_level2_node_reference_list(
 		/* refs_node_crawl_context *context */
 		context,
 		/* refs_node_walk_visitor *visitor */
@@ -1353,39 +1362,40 @@ static int parse_level1_block(
 		block,
 		/* u32 block_size */
 		block_size,
-		/* u32 extents_list_offset */
+		/* u32 out_node_reference_list_offset */
 		i,
-		/* u32 **out_extents_list */
-		&level2_extents_offsets,
-		/* u32 *out_extents_count */
-		&level2_extents_count,
+		/* u32 **out_node_reference_list */
+		&level2_node_reference_offsets,
+		/* u32 *out_out_node_reference_list_count */
+		&level2_node_reference_count,
 		/* u32 *out_end_offset */
-		&level2_extents_end_offset);
+		&level2_node_reference_offsets_end_offset);
 	if(err) {
-		sys_log_perror(err, "Error while parsing level 2 blocks list");
+		sys_log_perror(err, "Error while parsing level 2 node "
+			"reference list");
 		goto out;
 	}
 
-	i = level2_extents_end_offset;
+	i = level2_node_reference_offsets_end_offset;
 
-	if(self_extents_offset > i) {
+	if(self_reference_offset > i) {
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
-			sys_min(self_extents_offset, block_size) - i);
+			sys_min(self_reference_offset, block_size) - i);
 	}
 
-	i = self_extents_offset;
+	i = self_reference_offset;
 
-	/* TODO: Validate contents past first self extents element based on
+	/* TODO: Validate contents past first self reference element based on
 	 * prior observations and fail if it deviates. This may be a description
 	 * of a fragmented level 1 node, but we have not seen those yet so we
 	 * don't quite know what to expect. */
-	if(self_extents_offset >= block_size) {
-		sys_log_warning("Self extents offset exceeds block size: "
+	if(self_reference_offset >= block_size) {
+		sys_log_warning("Self reference offset exceeds block size: "
 			"%" PRIu32 " != %" PRIuz,
-			PRAu32(self_extents_offset), PRAuz(block_size));
+			PRAu32(self_reference_offset), PRAuz(block_size));
 	}
 	else if(is_v3) {
-		i += parse_extents_list_v3(
+		i += parse_node_reference_list_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1393,20 +1403,20 @@ static int parse_level1_block(
 			/* size_t indent */
 			indent + 1,
 			/* const char *list_name */
-			"Self extents",
+			"Self reference",
 			/* const u8 *const block */
 			block,
 			/* size_t block_size */
 			block_size,
-			/* const u32 *self_extents_offsets */
-			&self_extents_offset,
-			/* u32 self_extents_size */
-			(self_extents_size > 48) ? 48 : self_extents_size,
-			/* u64 *out_extents */
+			/* const u32 *node_reference_offsets */
+			&self_reference_offset,
+			/* u32 node_references_size */
+			(self_reference_size > 48) ? 48 : self_reference_size,
+			/* u64 *out_node_references */
 			NULL);
 	}
 	else {
-		i += parse_extents_list_v1(
+		i += parse_node_reference_list_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1414,48 +1424,51 @@ static int parse_level1_block(
 			/* size_t indent */
 			indent + 1,
 			/* const char *list_name */
-			"Self extents",
+			"Self reference",
 			/* const u8 *const block */
 			block,
 			/* size_t block_size */
 			block_size,
-			/* const u32 *self_extents_offsets */
-			&self_extents_offset,
-			/* u32 self_extents_size */
-			(self_extents_size > 24) ? 24 : self_extents_size,
-			/* u64 *out_extents */
+			/* const u32 *node_reference_offsets */
+			&self_reference_offset,
+			/* u32 node_references_size */
+			(self_reference_size > 24) ? 24 : self_reference_size,
+			/* u64 *out_node_references */
 			NULL);
 	}
 
-	if(!level2_extents_offsets) {
-		sys_log_warning("No level 2 extents offsets!");
+	if(!level2_node_reference_offsets) {
+		sys_log_warning("No level 2 node references!");
 	}
-	else if(level2_extents_offsets[0] < i) {
-		sys_log_warning("First level 2 extent offset precedes end of "
-			"extent list: %" PRIu32 " < %" PRIu32,
-			PRAu32(level2_extents_offsets[0]), PRAu32(i));
+	else if(level2_node_reference_offsets[0] < i) {
+		sys_log_warning("First level 2 node reference offset precedes "
+			"end of node reference offsets list: %" PRIu32 " < "
+			"%" PRIu32,
+			PRAu32(level2_node_reference_offsets[0]), PRAu32(i));
 	}
 	else {
-		if(level2_extents_offsets[0] > i) {
+		if(level2_node_reference_offsets[0] > i) {
 			print_data_with_base(prefix, 0, i, block_size,
 				&block[i],
-				sys_min(level2_extents_offsets[0], block_size) -
-				i);
+				sys_min(level2_node_reference_offsets[0],
+				block_size) - i);
 		}
 
-		level2_extents_size =
-			level2_extents_count * (size_t) (is_v3 ? 48 : 24);
-		err = sys_malloc(level2_extents_size, &level2_extents);
+		level2_node_reference_list_size =
+			level2_node_reference_count *
+			(size_t) (is_v3 ? 48 : 24);
+		err = sys_malloc(level2_node_reference_list_size,
+			&level2_node_references);
 		if(err) {
 			sys_log_perror(err, "Error while allocating "
-				"%" PRIuz "-byte extents array",
-				PRAuz(level2_extents_size));
+				"%" PRIuz "-byte node reference array",
+				PRAuz(level2_node_reference_list_size));
 			goto out;
 		}
 
-		i = level2_extents_offsets[0];
+		i = level2_node_reference_offsets[0];
 		if(is_v3) {
-			i += parse_extents_list_v3(
+			i += parse_node_reference_list_v3(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* const char *prefix */
@@ -1463,20 +1476,20 @@ static int parse_level1_block(
 				/* size_t indent */
 				indent + 1,
 				/* const char *list_name */
-				"Level 2 blocks",
+				"Level 2 node references",
 				/* const u8 *const block */
 				block,
 				/* size_t block_size */
 				block_size,
-				/* const u32 *self_extents_offsets */
-				level2_extents_offsets,
-				/* u32 self_extents_size */
-				level2_extents_size,
-				/* u64 *out_extents */
-				level2_extents);
+				/* const u32 *node_reference_offsets */
+				level2_node_reference_offsets,
+				/* u32 node_references_size */
+				level2_node_reference_list_size,
+				/* u64 *out_node_references */
+				level2_node_references);
 		}
 		else {
-			i += parse_extents_list_v1(
+			i += parse_node_reference_list_v1(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* const char *prefix */
@@ -1484,17 +1497,17 @@ static int parse_level1_block(
 				/* size_t indent */
 				indent + 1,
 				/* const char *list_name */
-				"Level 2 blocks",
+				"Level 2 node references",
 				/* const u8 *const block */
 				block,
 				/* size_t block_size */
 				block_size,
-				/* const u32 *self_extents_offsets */
-				level2_extents_offsets,
-				/* u32 self_extents_size */
-				level2_extents_size,
-				/* u64 *out_extents */
-				level2_extents);
+				/* const u32 *node_reference_offsets */
+				level2_node_reference_offsets,
+				/* u32 node_references_size */
+				level2_node_reference_list_size,
+				/* u64 *out_node_references */
+				level2_node_references);
 		}
 	}
 
@@ -1503,11 +1516,11 @@ static int parse_level1_block(
 			block_size - i);
 	}
 
-	*out_level2_extents_count = level2_extents_count;
-	*out_level2_extents = level2_extents;
+	*out_level2_node_references_count = level2_node_reference_count;
+	*out_level2_node_references = level2_node_references;
 out:
-	if(level2_extents_offsets) {
-		sys_free(&level2_extents_offsets);
+	if(level2_node_reference_offsets) {
+		sys_free(&level2_node_reference_offsets);
 	}
 
 	return err;
@@ -1709,7 +1722,7 @@ static void parse_index_value(
 		 * indicating that a block could in theory be fragmented when 4k
 		 * clusters are used. Right now we ignore this and assume that a
 		 * block is always contiguous on disk. */
-		parse_extent(
+		parse_node_reference(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* sys_bool is_v3 */
@@ -2707,7 +2720,7 @@ static int parse_level2_0x2_leaf_value(
 
 	if(value_size >= i + (is_v3 ? 0x30 : 0x18)) {
 		block_number = read_le64(&value[i]);
-		parse_extent(
+		parse_node_reference(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* sys_bool is_v3 */
