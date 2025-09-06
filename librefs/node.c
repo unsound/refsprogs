@@ -196,11 +196,6 @@ u64 refs_node_logical_to_physical_block_number(
 
 	u64 physical_block_number = 0;
 
-	/* This is a temporary placeholder in order to map blocks in a test
-	 * image. It's likely based on an extent/run list stored somewhere
-	 * mapping logical to physical ranges, but I don't know where at this
-	 * point. */
-
 	if(bs->version_major < 3 || logical_block_number < linear_block_count) {
 		/* All blocks below number 4096 / 0x1000 are identity mapped.
 		 * The blocks with object ID 0xB, 0xC and (apparently) 0x22 must
