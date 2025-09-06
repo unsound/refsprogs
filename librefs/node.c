@@ -719,9 +719,10 @@ static int parse_block_header(
 	}
 
 	if(level == 1) {
-		emit(prefix, indent, "%s level 1 block (%" PRIu64 "):",
+		emit(prefix, indent, "%s level 1 block (physical block "
+			"%" PRIu64 " / 0x%" PRIX64 "):",
 			(block_queue_index == 0) ? "Primary" : "Secondary",
-			PRAu64(block_number));
+			PRAu64(block_number), PRAX64(block_number));
 	}
 	else {
 		emit(prefix, indent, "Level %" PRIu8 " block %" PRIu64 " "
@@ -8432,7 +8433,8 @@ static int crawl_volume_metadata(
 		}
 	}
 
-	emit("", 0, "Superblock:");
+	emit("", 0, "Superblock (physical block %" PRIu64 " / 0x%" PRIX64 "):",
+		PRAu64(30), PRAX64(30));
 
 	if(!is_v3) {
 		parse_superblock_v1(
