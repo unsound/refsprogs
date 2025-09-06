@@ -179,10 +179,20 @@ struct refs_node_walk_visitor {
 		size_t target_length);
 };
 
+typedef struct refs_node_cache refs_node_cache;
+
+int refs_node_cache_create(
+		size_t max_node_count,
+		refs_node_cache **out_cache);
+
+void refs_node_cache_destroy(
+		refs_node_cache **cachep);
+
 struct refs_node_crawl_context {
 	sys_device *dev;
 	REFS_BOOT_SECTOR *bs;
 	refs_block_map *block_map;
+	refs_node_cache *node_cache;
 	u32 cluster_size;
 	u32 block_size;
 	u32 block_index_unit;
@@ -192,6 +202,7 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 		sys_device *const dev,
 		REFS_BOOT_SECTOR *const bs,
 		refs_block_map *const block_map,
+		refs_node_cache *const node_cache,
 		const u32 cluster_size,
 		const u32 block_size,
 		const u32 block_index_unit)
@@ -203,6 +214,8 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 		bs,
 		/* refs_block_map *block_map */
 		block_map,
+		/* refs_node_cache *node_cache */
+		node_cache,
 		/* u32 cluster_size */
 		cluster_size,
 		/* u32 block_size */
@@ -215,6 +228,7 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 	sys_log_debug("    dev: %p", ctx.dev);
 	sys_log_debug("    bs: %p", ctx.bs);
 	sys_log_debug("    block_map: %p", ctx.block_map);
+	sys_log_debug("    node_cache: %p", ctx.node_cache);
 	sys_log_debug("    cluster_size: %" PRIu32, PRAu32(ctx.cluster_size));
 	sys_log_debug("    block_size: %" PRIu32, PRAu32(ctx.block_size));
 	sys_log_debug("    block_index_unit: %" PRIu32, PRAu32(ctx.block_index_unit));
@@ -305,6 +319,11 @@ u64 refs_node_logical_to_physical_block_number(
  *      If there is no target pointer, and the caller is not interested in
  *      caching the virtual to physical block map then this parameter should be
  *      set to @p NULL.
+ * @param node_cache
+ *      (in/out) (optional) If @p node_cache is non-@p NULL then it should point
+ *      to a pointer that stores or will store a cache of node data on the
+ *      volume. Maintaining a node cache makes repeated lookups and iterations
+ *      over a node faster.
  * @param visitor
  *      Struct containing callbacks relevant for obtaining data from the node
  *      walk.
@@ -319,6 +338,7 @@ int refs_node_walk(
 		REFS_LEVEL1_NODE **primary_level1_node,
 		REFS_LEVEL1_NODE **secondary_level1_node,
 		refs_block_map **block_map,
+		refs_node_cache **node_cache,
 		const u64 *start_node,
 		const u64 *object_id,
 		refs_node_walk_visitor *visitor);

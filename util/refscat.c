@@ -898,6 +898,8 @@ int main(int argc, char **argv)
 		&vol->secondary_level1_node,
 		/* refs_block_map **block_map */
 		&vol->block_map,
+		/* refs_node_cache **node_cache */
+		NULL,
 		/* const u64 *start_node */
 		NULL,
 		/* const u64 *object_id */
@@ -941,6 +943,8 @@ int main(int argc, char **argv)
 			&vol->secondary_level1_node,
 			/* refs_block_map **block_map */
 			&vol->block_map,
+			/* refs_node_cache **node_cache */
+			NULL,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */
@@ -989,6 +993,8 @@ int main(int argc, char **argv)
 			&vol->secondary_level1_node,
 			/* refs_block_map **block_map */
 			&vol->block_map,
+			/* refs_node_cache **node_cache */
+			NULL,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */

@@ -190,6 +190,12 @@ void refs_volume_destroy(
 {
 	refs_volume *const vol = *out_vol;
 
+	if(vol->node_cache) {
+		refs_node_cache_destroy(
+			/* refs_node_cache **node_cache */
+			&vol->node_cache);
+	}
+
 	if(vol->block_map) {
 		refs_block_map_destroy(
 			/* refs_block_map **block_map */
@@ -654,6 +660,9 @@ static int refs_volume_lookup(
 			}
 		}
 
+		sys_log_debug("Walking node %" PRIu64 " with node cache %p.",
+			PRAu64(cur_object_id), vol->node_cache);
+
 		err = refs_node_walk(
 			/* refs_device *dev */
 			vol->dev,
@@ -667,6 +676,8 @@ static int refs_volume_lookup(
 			&vol->secondary_level1_node,
 			/* refs_block_map **block_map */
 			&vol->block_map,
+			/* refs_node_cache **node_cache */
+			&vol->node_cache,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */
@@ -714,6 +725,8 @@ static int refs_volume_lookup(
 				&vol->secondary_level1_node,
 				/* refs_block_map **block_map */
 				&vol->block_map,
+				/* refs_node_cache **node_cache */
+				&vol->node_cache,
 				/* const u64 *start_node */
 				NULL,
 				/* const u64 *object_id */
@@ -903,6 +916,8 @@ int refs_volume_lookup_by_object_id(
 		&vol->secondary_level1_node,
 		/* refs_block_map **block_map */
 		&vol->block_map,
+		/* refs_node_cache **node_cache */
+		&vol->node_cache,
 		/* const u64 *start_node */
 		NULL,
 		/* const u64 *object_id */

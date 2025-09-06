@@ -589,7 +589,9 @@ static int fsapi_volume_get_attributes_common(
 			/* REFS_LEVEL1_NODE **secondary_level1_node */
 			NULL,
 			/* refs_block_map **block_map */
-			NULL,
+			&vol->block_map,
+			/* refs_node_cache **node_cache */
+			&vol->node_cache,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */
@@ -1574,6 +1576,8 @@ static int fsapi_node_get_attributes_visit_short_entry(
 			&context->vol->secondary_level1_node,
 			/* refs_block_map **block_map */
 			&context->vol->block_map,
+			/* refs_node_cache **node_cache */
+			&context->vol->node_cache,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */
@@ -2488,6 +2492,8 @@ static int fsapi_node_list_visit_short_entry(
 			&context->vol->secondary_level1_node,
 			/* refs_block_map **block_map */
 			&context->vol->block_map,
+			/* refs_node_cache **node_cache */
+			&context->vol->node_cache,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */
@@ -2668,6 +2674,8 @@ int fsapi_node_list(
 		&vol->vol->secondary_level1_node,
 		/* refs_block_map **block_map */
 		&vol->vol->block_map,
+		/* refs_node_cache **node_cache */
+		&vol->vol->node_cache,
 		/* const u64 *start_node */
 		NULL,
 		/* const u64 *object_id */

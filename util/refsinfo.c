@@ -478,6 +478,8 @@ static int print_node_number_info(
 		NULL,
 		/* refs_block_map **block_map */
 		NULL,
+		/* refs_node_cache **node_cache */
+		NULL,
 		/* const u64 *start_node */
 		&node_number,
 		/* const u64 *object_id */
@@ -588,6 +590,8 @@ static int print_object_id_info(
 		/* REFS_LEVEL1_NODE **secondary_level1_node */
 		NULL,
 		/* refs_block_map **block_map */
+		NULL,
+		/* refs_node_cache **node_cache */
 		NULL,
 		/* const u64 *start_node */
 		NULL,
