@@ -43,6 +43,9 @@ struct fsapi_volume {
 	fsapi_node *root_node;
 	fsapi_refs_xattr_mode xattr_mode;
 
+	char *volume_label_cstr;
+	size_t volume_label_cstr_length;
+
 	struct rb_tree *cache_tree;
 	size_t cached_nodes_count;
 	fsapi_node *cached_nodes_list;
@@ -519,46 +522,55 @@ static int fsapi_node_destroy(
 	return 0;
 }
 
-static int fsapi_node_volume_label_entry(
-		void *const context,
+typedef struct {
+	char *volume_label_cstr;
+	size_t volume_label_cstr_length;
+} fsapi_node_get_attributes_volume_label_context;
+
+static int fsapi_volume_get_attributes_volume_label_entry(
+		void *const _context,
 		const refschar *const volume_label,
 		const u16 volume_label_length)
 {
+	fsapi_node_get_attributes_volume_label_context *const context =
+		(fsapi_node_get_attributes_volume_label_context*) _context;
+
 	int err = 0;
 	char *volume_label_cstr = NULL;
 	size_t volume_label_cstr_length = 0;
 
-	(void) context;
-
 	err = sys_unistr_decode(
+		/* const refschar *ins */
 		volume_label,
+		/* size_t ins_len */
 		volume_label_length,
+		/* char **outs */
 		&volume_label_cstr,
+		/* size_t *outs_len */
 		&volume_label_cstr_length);
 	if(err) {
 		goto out;
 	}
 
-	fprintf(stdout, "%" PRIbs "\n",
-		PRAbs(volume_label_cstr_length, volume_label_cstr));
-	sys_free(&volume_label_cstr);
+	context->volume_label_cstr = volume_label_cstr;
+	context->volume_label_cstr_length = volume_label_cstr_length;
 	err = -1;
 out:
 	return err;
 }
 
 static int fsapi_volume_get_attributes_common(
-		refs_volume *const vol,
+		fsapi_volume *const vol,
 		fsapi_volume_attributes *const out_attrs)
 {
 	int err = 0;
 
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE) {
-		out_attrs->block_size = vol->cluster_size;
+		out_attrs->block_size = vol->vol->cluster_size;
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT) {
-		out_attrs->block_count = vol->cluster_count;
+		out_attrs->block_count = vol->vol->cluster_count;
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS) {
@@ -567,45 +579,59 @@ static int fsapi_volume_get_attributes_common(
 	}
 
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_VOLUME_NAME) {
-		refs_node_walk_visitor visitor;
-		u64 object_id = 0;
+		if(!vol->volume_label_cstr) {
+			refs_node_walk_visitor visitor;
+			fsapi_node_get_attributes_volume_label_context context;
+			u64 object_id = 0;
 
-		memset(&visitor, 0, sizeof(visitor));
+			memset(&visitor, 0, sizeof(visitor));
+			memset(&context, 0, sizeof(context));
 
-		visitor.node_volume_label_entry = fsapi_node_volume_label_entry;
+			visitor.context = &context;
+			visitor.node_volume_label_entry =
+				fsapi_volume_get_attributes_volume_label_entry;
 
-		/* Look up node 0x500 where the volume label resides. */
-		object_id = 0x500;
+			/* Look up node 0x500 where the volume label resides. */
+			object_id = 0x500;
 
-		err = refs_node_walk(
-			/* sys_device *dev */
-			vol->dev,
-			/* REFS_BOOT_SECTOR *bs */
-			vol->bs,
-			/* REFS_SUPERBLOCK_HEADER **sb */
-			NULL,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			NULL,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			NULL,
-			/* refs_block_map **block_map */
-			&vol->block_map,
-			/* refs_node_cache **node_cache */
-			&vol->node_cache,
-			/* const u64 *start_node */
-			NULL,
-			/* const u64 *object_id */
-			&object_id,
-			/* refs_node_walk_visitor *visitor */
-			&visitor);
-		if(err == -1) {
-			/* Manual break. */
-			err = 0;
+			err = refs_node_walk(
+				/* sys_device *dev */
+				vol->vol->dev,
+				/* REFS_BOOT_SECTOR *bs */
+				vol->vol->bs,
+				/* REFS_SUPERBLOCK_HEADER **sb */
+				NULL,
+				/* REFS_LEVEL1_NODE **primary_level1_node */
+				NULL,
+				/* REFS_LEVEL1_NODE **secondary_level1_node */
+				NULL,
+				/* refs_block_map **block_map */
+				&vol->vol->block_map,
+				/* refs_node_cache **node_cache */
+				&vol->vol->node_cache,
+				/* const u64 *start_node */
+				NULL,
+				/* const u64 *object_id */
+				&object_id,
+				/* refs_node_walk_visitor *visitor */
+				&visitor);
+			if(err == -1) {
+				/* Manual break. */
+				err = 0;
+			}
+			else if(err) {
+				goto out;
+			}
+
+			/* Cache the string in the fsapi_volume struct until
+			 * unmount time. */
+			vol->volume_label_cstr = context.volume_label_cstr;
+			vol->volume_label_cstr_length =
+				context.volume_label_cstr_length;
 		}
-		else if(err) {
-			goto out;
-		}
 
+		out_attrs->volume_name = vol->volume_label_cstr;
+		out_attrs->volume_name_length = vol->volume_label_cstr_length;
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_VOLUME_NAME;
 	}
 out:
@@ -2013,8 +2039,8 @@ int fsapi_volume_mount(
 
 	if(out_attrs) {
 		err = fsapi_volume_get_attributes_common(
-			/* refs_volume *vol */
-			rvol,
+			/* fsapi_volume *vol */
+			vol,
 			/* fsapi_volume_attributes *out_attrs */
 			out_attrs);
 		if(err) {
@@ -2099,8 +2125,8 @@ int fsapi_volume_get_attributes(
 	int err = 0;
 
 	err = fsapi_volume_get_attributes_common(
-		/* refs_volume *vol */
-		vol->vol,
+		/* fsapi_volume *vol */
+		vol,
 		/* fsapi_volume_attributes *out_attrs */
 		out_attrs);
 
@@ -2164,6 +2190,10 @@ int fsapi_volume_unmount(
 	if((*vol)->cache_tree) {
 		rb_tree_dealloc((*vol)->cache_tree,
 			fsapi_volume_unmount_cache_tree_entry_destroy);
+	}
+
+	if((*vol)->volume_label_cstr) {
+		sys_free(&(*vol)->volume_label_cstr);
 	}
 
 	refs_volume_destroy(
