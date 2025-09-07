@@ -87,6 +87,7 @@ struct fsapi_node {
 	size_t key_size;
 	u8 *record;
 	size_t record_size;
+	fsapi_node_attributes attributes;
 
 	fsapi_node *prev;
 	fsapi_node *next;
@@ -480,6 +481,10 @@ static void fsapi_node_init(
 static int fsapi_node_deinit(
 		fsapi_node *node)
 {
+	if(node->attributes.symlink_target) {
+		sys_free(&node->attributes.symlink_target);
+	}
+
 	if(node->record) {
 		sys_log_debug("Freeing record %p.",
 			 node->record);
@@ -1780,109 +1785,171 @@ static int fsapi_node_get_attributes_common(
 	refs_node_crawl_context crawl_context;
 	fsapi_node_get_attributes_context context;
 	refs_node_walk_visitor visitor;
+	fsapi_node_attribute_types provided_mask;
 
 	memset(&visitor, 0, sizeof(visitor));
 	memset(&context, 0, sizeof(context));
 
-	crawl_context = refs_volume_init_node_crawl_context(
-		/* refs_volume *vol */
-		vol->vol);
-	context.vol = vol->vol;
-	context.attrs = attributes;
-	visitor.context = &context;
+	if(!node->attributes.valid) {
+		node->attributes.requested = FSAPI_NODE_ATTRIBUTE_TYPE_ALL;
 
-	if(node->directory_object_id == 0x600) {
-		/* Root directory. */
-		err = fsapi_fill_attributes(
-			/* fsapi_node_attributes *attrs */
-		        attributes,
-			/* sys_bool is_directory */
-			SYS_TRUE,
-			/* u16 child_entry_offset */
-			0,
-			/* u32 file_flags */
-			REFS_FILE_ATTRIBUTE_SYSTEM |
-			REFS_FILE_ATTRIBUTE_DIRECTORY |
-			REFS_FILE_ATTRIBUTE_ARCHIVE,
-			/* u64 parent_node_object_id */
-			0x600,
-			/* u64 create_time */
-			filetime_offset,
-			/* u64 last_access_time */
-			filetime_offset,
-			/* u64 last_write_time */
-			filetime_offset,
-			/* u64 last_mft_change_time */
-			filetime_offset,
-			/* u64 file_size */
-			0,
-			/* u64 allocated_size */
-			0);
-	}
-	else if(node->is_short_entry) {
-		visitor.node_short_entry =
-			fsapi_node_get_attributes_visit_short_entry;
-		err = parse_level3_short_value(
-			/* refs_node_crawl_context *crawl_context */
-			&crawl_context,
-			/* refs_node_walk_visitor *visitor */
-			&visitor,
-			/* const char *prefix */
-			"",
-			/* size_t indent */
-			1,
-			/* u64 parent_node_object_id */
-			node->parent_directory_object_id,
-			/* u16 entry_offset */
-			node->entry_offset,
-			/* const u8 *key */
-			node->key,
-			/* u16 key_size */
-			node->key_size,
-			/* const u8 *value */
-			node->record,
-			/* u16 value_offset */
-			0,
-			/* u16 value_size */
-			node->record_size,
-			/* void *context */
-			NULL);
-	}
-	else {
-		visitor.node_long_entry =
-			fsapi_node_get_attributes_visit_long_entry;
-		visitor.node_hardlink_entry =
-			fsapi_node_get_attributes_visit_hardlink_entry;
-		visitor.node_symlink =
-			fsapi_node_get_attributes_visit_symlink;
+		crawl_context = refs_volume_init_node_crawl_context(
+			/* refs_volume *vol */
+			vol->vol);
+		context.vol = vol->vol;
+		context.attrs = &node->attributes;
+		visitor.context = &context;
 
-		err = parse_level3_long_value(
-			/* refs_node_crawl_context *crawl_context */
-			&crawl_context,
-			/* refs_node_walk_visitor *visitor */
-			&visitor,
-			/* const char *prefix */
-			"",
-			/* size_t indent */
-			1,
-			/* u64 parent_node_object_id */
-			node->parent_directory_object_id,
-			/* u16 entry_offset */
-			node->entry_offset,
-			/* const u8 *key */
-			node->key,
-			/* u16 key_size */
-			node->key_size,
-			/* const u8 *value */
-			node->record,
-			/* u16 value_offset */
-			0,
-			/* u16 value_size */
-			node->record_size,
-			/* void *context */
-			NULL);
+		if(node->directory_object_id == 0x600) {
+			/* Root directory. */
+			err = fsapi_fill_attributes(
+				/* fsapi_node_attributes *attrs */
+				&node->attributes,
+				/* sys_bool is_directory */
+				SYS_TRUE,
+				/* u16 child_entry_offset */
+				0,
+				/* u32 file_flags */
+				REFS_FILE_ATTRIBUTE_SYSTEM |
+				REFS_FILE_ATTRIBUTE_DIRECTORY |
+				REFS_FILE_ATTRIBUTE_ARCHIVE,
+				/* u64 parent_node_object_id */
+				0x600,
+				/* u64 create_time */
+				filetime_offset,
+				/* u64 last_access_time */
+				filetime_offset,
+				/* u64 last_write_time */
+				filetime_offset,
+				/* u64 last_mft_change_time */
+				filetime_offset,
+				/* u64 file_size */
+				0,
+				/* u64 allocated_size */
+				0);
+		}
+		else if(node->is_short_entry) {
+			visitor.node_short_entry =
+				fsapi_node_get_attributes_visit_short_entry;
+			err = parse_level3_short_value(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				&visitor,
+				/* const char *prefix */
+				"",
+				/* size_t indent */
+				1,
+				/* u64 parent_node_object_id */
+				node->parent_directory_object_id,
+				/* u16 entry_offset */
+				node->entry_offset,
+				/* const u8 *key */
+				node->key,
+				/* u16 key_size */
+				node->key_size,
+				/* const u8 *value */
+				node->record,
+				/* u16 value_offset */
+				0,
+				/* u16 value_size */
+				node->record_size,
+				/* void *context */
+				NULL);
+		}
+		else {
+			visitor.node_long_entry =
+				fsapi_node_get_attributes_visit_long_entry;
+			visitor.node_hardlink_entry =
+				fsapi_node_get_attributes_visit_hardlink_entry;
+			visitor.node_symlink =
+				fsapi_node_get_attributes_visit_symlink;
+
+			err = parse_level3_long_value(
+				/* refs_node_crawl_context *crawl_context */
+				&crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				&visitor,
+				/* const char *prefix */
+				"",
+				/* size_t indent */
+				1,
+				/* u64 parent_node_object_id */
+				node->parent_directory_object_id,
+				/* u16 entry_offset */
+				node->entry_offset,
+				/* const u8 *key */
+				node->key,
+				/* u16 key_size */
+				node->key_size,
+				/* const u8 *value */
+				node->record,
+				/* u16 value_offset */
+				0,
+				/* u16 value_size */
+				node->record_size,
+				/* void *context */
+				NULL);
+		}
 	}
 
+	provided_mask = attributes->requested & node->attributes.valid;
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
+		attributes->size = node->attributes.size;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
+		attributes->allocated_size = node->attributes.allocated_size;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) {
+		attributes->link_count = node->attributes.link_count;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
+		attributes->inode_number = node->attributes.inode_number;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
+		attributes->mode = node->attributes.mode;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_UID) {
+		attributes->uid = node->attributes.uid;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_GID) {
+		attributes->gid = node->attributes.gid;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME) {
+		attributes->creation_time = node->attributes.creation_time;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME) {
+		attributes->last_status_change_time =
+			node->attributes.last_status_change_time;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME) {
+		attributes->last_data_change_time =
+			node->attributes.last_data_change_time;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME) {
+		attributes->last_data_access_time =
+			node->attributes.last_data_access_time;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_BSD_FLAGS) {
+		attributes->bsd_flags = node->attributes.bsd_flags;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_WINDOWS_FLAGS) {
+		attributes->windows_flags = node->attributes.windows_flags;
+	}
+	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) {
+		err = sys_strndup(node->attributes.symlink_target,
+			node->attributes.symlink_target_length,
+			&attributes->symlink_target);
+		if(err) {
+			goto out;
+		}
+
+		attributes->symlink_target_length =
+			node->attributes.symlink_target_length;
+	}
+
+	attributes->valid = provided_mask;
+out:
 	sys_log_debug("%s(node=%p, attributes=%p): %d (%s)",
 		__FUNCTION__, node, attributes, err, strerror(err));
 
