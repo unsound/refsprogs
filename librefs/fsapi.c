@@ -2103,19 +2103,6 @@ int fsapi_volume_mount(
 		goto out;
 	}
 
-	if(out_attrs) {
-		err = fsapi_volume_get_attributes_common(
-			/* fsapi_volume *vol */
-			vol,
-			/* fsapi_volume_attributes *out_attrs */
-			out_attrs);
-		if(err) {
-			sys_log_perror(err, "Error while getting attributes "
-				"for mounted volume");
-			goto out;
-		}
-	}
-
 	fsapi_node_init(
 		/* fsapi_node *node */
 		root_node,
@@ -2152,6 +2139,19 @@ int fsapi_volume_mount(
 	}
 	else {
 		vol->xattr_mode = FSAPI_REFS_XATTR_MODE_STREAMS;
+	}
+
+	if(out_attrs) {
+		err = fsapi_volume_get_attributes_common(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_volume_attributes *out_attrs */
+			out_attrs);
+		if(err) {
+			sys_log_perror(err, "Error while getting attributes "
+				"for mounted volume");
+			goto out;
+		}
 	}
 
 	*out_vol = vol;
