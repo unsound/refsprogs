@@ -361,7 +361,6 @@ static int fsapi_node_path_element_compare(
 				PRAbs(b_subpath_length, b_cur->name.ro));
 
 			/* Skip any trailing '/':es. */
-			b_name_length = b_subpath_length;
 			refs_util_reverse_trim_string(b_cur->name.ro,
 				&b_subpath_length, '/');
 
