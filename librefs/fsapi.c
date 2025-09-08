@@ -2429,6 +2429,9 @@ static int fsapi_node_list_filldir(
 			context->cname_length,
 			/* fsapi_node_attributes *attributes */
 			context->attributes);
+		if(err) {
+			goto out;
+		}
 
 		sys_free(&context->cname);
 		context->cname_length = 0;
