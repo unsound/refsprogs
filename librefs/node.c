@@ -9740,8 +9740,8 @@ int refs_node_scan(
 		}
 	}
 out:
-	if(block) {
-		sys_free(&block);
+	if(buffer) {
+		sys_free(&buffer);
 	}
 
 	if(padding) {
