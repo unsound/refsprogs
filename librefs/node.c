@@ -2931,6 +2931,7 @@ static int parse_generic_block(
 					"%" PRIu32 ".",
 					PRAu32(i));
 				err = ENXIO;
+				goto out;
 			}
 
 			if(i < smallest_matching_offset) {
@@ -9739,8 +9740,8 @@ int refs_node_scan(
 		}
 	}
 out:
-	if(block) {
-		sys_free(&block);
+	if(buffer) {
+		sys_free(&buffer);
 	}
 
 	if(padding) {
