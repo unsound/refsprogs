@@ -46,10 +46,10 @@ struct fsapi_volume {
 	char *volume_label_cstr;
 	size_t volume_label_cstr_length;
 
-	struct rb_tree *cache_tree;
+	struct refs_rb_tree *cache_tree;
 	size_t cached_nodes_count;
 	fsapi_node *cached_nodes_list;
-	struct rb_tree *oid_to_cached_directory_tree;
+	struct refs_rb_tree *oid_to_cached_directory_tree;
 };
 
 struct fsapi_node_path_element {
@@ -692,7 +692,7 @@ static int fsapi_node_cache_evict(
 	lru_node = vol->cached_nodes_list->prev;
 
 	/* Remove node from path cache tree. */
-	if(!rb_tree_remove(vol->cache_tree, lru_node)) {
+	if(!refs_rb_tree_remove(vol->cache_tree, lru_node)) {
 		sys_log_warning("Failed to remove node %p from tree!",
 			lru_node);
 	}
@@ -782,9 +782,9 @@ static void fsapi_node_cache_get(
 }
 
 static int fsapi_lookup_by_posix_path_compare(
-		struct rb_tree *const tree,
-		struct rb_node *const a,
-		struct rb_node *const b)
+		struct refs_rb_tree *const tree,
+		struct refs_rb_node *const a,
+		struct refs_rb_node *const b)
 {
 	const fsapi_node *const a_node = (const fsapi_node*) a->value;
 	const fsapi_node *const b_node = (const fsapi_node*) b->value;
@@ -858,8 +858,8 @@ static int fsapi_lookup_by_posix_path(
 	}
 
 	if(!vol->cache_tree) {
-		vol->cache_tree = rb_tree_create(
-			/* rb_tree_node_cmp_f cmp */
+		vol->cache_tree = refs_rb_tree_create(
+			/* refs_rb_tree_node_cmp_f cmp */
 			fsapi_lookup_by_posix_path_compare);
 		if(!vol->cache_tree) {
 			err = (err = errno) ? err : ENOMEM;
@@ -908,8 +908,8 @@ static int fsapi_lookup_by_posix_path(
 			PRAbs(search_path_element.name_length,
 			search_path_element.name.ro));
 
-		cached_node = rb_tree_find(
-			/* struct rb_tree *self */
+		cached_node = refs_rb_tree_find(
+			/* struct refs_rb_tree *self */
 			vol->cache_tree,
 			/* void *value */
 			&search_node);
@@ -989,8 +989,8 @@ static int fsapi_lookup_by_posix_path(
 					PRAbs(search_path_element.name_length,
 					search_path_element.name.ro));
 
-				cached_parent_node = rb_tree_find(
-					/* struct rb_tree *self */
+				cached_parent_node = refs_rb_tree_find(
+					/* struct refs_rb_tree *self */
 					vol->cache_tree,
 					/* void *value */
 					&search_node);
@@ -1152,8 +1152,8 @@ static int fsapi_lookup_by_posix_path(
 
 			search_node.path = &search_path_element;
 
-			cached_node = rb_tree_find(
-				/* struct rb_tree *self */
+			cached_node = refs_rb_tree_find(
+				/* struct refs_rb_tree *self */
 				vol->cache_tree,
 				/* void *value */
 				&search_node);
@@ -1327,8 +1327,8 @@ static int fsapi_lookup_by_posix_path(
 			sys_log_debug("    record_size: %" PRIuz,
 				PRAuz(new_node->record_size));
 
-			if(!rb_tree_insert(
-				/* struct rb_tree *self */
+			if(!refs_rb_tree_insert(
+				/* struct refs_rb_tree *self */
 				vol->cache_tree,
 				/* void *value */
 				new_node))
@@ -2200,8 +2200,8 @@ int fsapi_volume_get_attributes(
 }
 
 static void fsapi_volume_unmount_cache_tree_entry_destroy(
-		struct rb_tree *self,
-		struct rb_node *_node)
+		struct refs_rb_tree *self,
+		struct refs_rb_node *_node)
 {
 	fsapi_node *node = (fsapi_node*) _node->value;
 
@@ -2234,7 +2234,7 @@ int fsapi_volume_unmount(
 				cur_node, PRAuz((*vol)->cached_nodes_count),
 				PRAuz((*vol)->cached_nodes_count - 1));
 			--(*vol)->cached_nodes_count;
-			rb_tree_remove((*vol)->cache_tree, cur_node);
+			refs_rb_tree_remove((*vol)->cache_tree, cur_node);
 
 			fsapi_node_destroy(
 				/* fsapi_node *cached_node */
@@ -2254,7 +2254,7 @@ int fsapi_volume_unmount(
 	}
 
 	if((*vol)->cache_tree) {
-		rb_tree_dealloc((*vol)->cache_tree,
+		refs_rb_tree_dealloc((*vol)->cache_tree,
 			fsapi_volume_unmount_cache_tree_entry_destroy);
 	}
 

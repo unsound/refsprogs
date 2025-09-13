@@ -91,7 +91,7 @@ struct refs_node_cache_item {
 
 struct refs_node_cache {
 	size_t node_size;
-	struct rb_tree *node_tree;
+	struct refs_rb_tree *node_tree;
 	refs_node_cache_item *lru_list;
 	size_t cur_node_count;
 	size_t max_node_count;
@@ -136,9 +136,9 @@ static int parse_level3_leaf_value(
 /* Function defintions. */
 
 static int refs_node_cache_item_compare(
-		struct rb_tree *const self,
-		struct rb_node *const a_node,
-		struct rb_node *const b_node)
+		struct refs_rb_tree *const self,
+		struct refs_rb_node *const a_node,
+		struct refs_rb_node *const b_node)
 {
 	const refs_node_cache_item *const a =
 		(const refs_node_cache_item*) a_node->value;
@@ -162,10 +162,10 @@ int refs_node_cache_create(
 		refs_node_cache **const out_cache)
 {
 	int err = 0;
-	struct rb_tree *node_tree = NULL;
+	struct refs_rb_tree *node_tree = NULL;
 
-	node_tree = rb_tree_create(
-		/* rb_tree_node_cmp_f cmp */
+	node_tree = refs_rb_tree_create(
+		/* refs_rb_tree_node_cmp_f cmp */
 		refs_node_cache_item_compare);
 	if(!node_tree) {
 		err = ENOMEM;
@@ -236,8 +236,8 @@ static void refs_node_cache_item_remove_from_lru(
 }
 
 static void refs_node_cache_remove_rb_tree_callback(
-		struct rb_tree *const self,
-		struct rb_node *const node)
+		struct refs_rb_tree *const self,
+		struct refs_rb_node *const node)
 {
 	refs_node_cache_item *const item = (refs_node_cache_item*) node->value;
 
@@ -258,12 +258,12 @@ static sys_bool refs_node_cache_remove(
 	memset(&search_item, 0, sizeof(search_item));
 	search_item.start_block = start_block;
 
-	if(rb_tree_remove_with_cb(
-		/* struct rb_tree *self */
+	if(refs_rb_tree_remove_with_cb(
+		/* struct refs_rb_tree *self */
 		cache->node_tree,
 		/* void *value */
 		&search_item,
-		/* rb_tree_node_f node_cb) */
+		/* refs_rb_tree_node_f node_cb) */
 		refs_node_cache_remove_rb_tree_callback))
 	{
 		--cache->cur_node_count;
@@ -313,8 +313,8 @@ static const u8* refs_node_cache_search(
 	memset(&search_item, 0, sizeof(search_item));
 	search_item.start_block = start_block;
 
-	cache_item = (refs_node_cache_item*) rb_tree_find(
-		/* struct rb_tree *self */
+	cache_item = (refs_node_cache_item*) refs_rb_tree_find(
+		/* struct refs_rb_tree *self */
 		cache->node_tree,
 		/* void *value */
 		&search_item);
@@ -376,8 +376,8 @@ static int refs_node_cache_insert(
 	insert_item->cache = cache;
 	insert_item->start_block = first_block;
 
-	if(!rb_tree_insert(
-		/* struct rb_tree *self */
+	if(!refs_rb_tree_insert(
+		/* struct refs_rb_tree *self */
 		cache->node_tree,
 		/* void *value */
 		insert_item))
