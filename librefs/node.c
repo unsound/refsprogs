@@ -9827,15 +9827,22 @@ int refs_node_scan(
 	sector_size = le32_to_cpu(bs->bytes_per_sector);
 	cluster_size =
 		((u64) sector_size) * le32_to_cpu(bs->sectors_per_cluster);
+	if(cluster_size > 0xFFFFFFFFUL) {
+		sys_log_error("Invalid cluster size (exceeds 32-bit range): %" PRIu64,
+			PRAu64(cluster_size));
+		err = EINVAL;
+		goto out;
+	}
+
 	block_size =
 		(bs->version_major == 1) ?
 		((cluster_size == 4096) ? 12U * 1024U : 16U * 1024U) :
-		sys_max(16U * 1024U, cluster_size);
+		sys_max(16U * 1024U, (u32) cluster_size);
 	clusters_per_block =
 		(block_size > cluster_size) ? block_size / cluster_size : 1;
 	device_size = le64_to_cpu(bs->num_sectors) * sector_size;
 
-	block_index_unit = (bs->version_major == 1) ? 16384 : cluster_size;
+	block_index_unit = (bs->version_major == 1) ? 16384 : (u32) cluster_size;
 
 	err = sys_malloc(30 * block_index_unit - sizeof(bs), &padding);
 	if(err) {
@@ -9944,7 +9951,7 @@ int refs_node_scan(
 				i + clusters_per_block * cluster_size;
 			const u32 cluster_count =
 				block_end <= device_size ? clusters_per_block :
-				((device_size - i) / cluster_size);
+				(u32) ((device_size - i) / cluster_size);
 
 			err = visitor->visit_node(
 				/* void *context */
