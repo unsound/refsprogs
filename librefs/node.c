@@ -64,14 +64,18 @@ struct refs_block_map {
 	size_t length;
 };
 
-typedef struct {
+typedef struct refs_node_block_queue_element refs_node_block_queue_element;
+
+struct refs_node_block_queue_element {
 	u64 block_numbers[4];
 	u64 flags;
 	u64 checksum;
-} refs_node_block_queue_element;
+	refs_node_block_queue_element *next;
+};
 
 typedef struct {
 	refs_node_block_queue_element *queue;
+	refs_node_block_queue_element *queue_tail;
 	size_t block_queue_length;
 } refs_node_block_queue;
 
@@ -411,48 +415,64 @@ static int refs_node_block_queue_add(
 	const size_t element_size = sizeof(refs_node_block_queue_element);
 
 	int err = 0;
-	size_t i = 0;
-	refs_node_block_queue_element *new_block_queue = NULL;
+	refs_node_block_queue_element *new_element = NULL;
 
 	sys_log_debug("Block queue before expansion (%" PRIuz " elements):",
 		PRAuz(block_queue->block_queue_length));
-	for(i = 0; i < block_queue->block_queue_length; ++i) {
-		sys_log_debug("\t[%" PRIuz "]: %" PRIu64,
-			PRAuz(i),
-			PRAu64(block_queue->queue[i].block_numbers[0]));
+#if 1 || SYS_LOG_DEBUG_ENABLED
+	{
+		refs_node_block_queue_element *cur_element = block_queue->queue;
+		size_t i = 0;
+		while(cur_element) {
+			sys_log_debug("\t[%" PRIuz "]: %" PRIu64,
+				PRAuz(i),
+				PRAu64(cur_element->block_numbers[0]));
+			++i;
+			cur_element = cur_element->next;
+		}
 	}
+#endif /* SYS_LOG_DEBUG_ENABLED */
 
-	err = sys_realloc(
-		block_queue->queue,
-		new_block_queue_length * element_size,
-		&new_block_queue);
+	err = sys_malloc(sizeof(*new_element), &new_element);
 	if(err) {
 		goto out;
 	}
 
-	memset(&new_block_queue[block_queue->block_queue_length], 0,
-		element_size);
-	new_block_queue[block_queue->block_queue_length].block_numbers[0] =
-		block_numbers[0];
-	new_block_queue[block_queue->block_queue_length].block_numbers[1] =
-		block_numbers[1];
-	new_block_queue[block_queue->block_queue_length].block_numbers[2] =
-		block_numbers[2];
-	new_block_queue[block_queue->block_queue_length].block_numbers[3] =
-		block_numbers[3];
-	new_block_queue[block_queue->block_queue_length].flags = flags;
-	new_block_queue[block_queue->block_queue_length].checksum = checksum;
+	memset(new_element, 0, sizeof(*new_element));
+	new_element->block_numbers[0] = block_numbers[0];
+	new_element->block_numbers[1] = block_numbers[1];
+	new_element->block_numbers[2] = block_numbers[2];
+	new_element->block_numbers[3] = block_numbers[3];
+	new_element->flags = flags;
+	new_element->checksum = checksum;
+	new_element->next = NULL;
 
-	block_queue->queue = new_block_queue;
+	if(!block_queue->queue) {
+		block_queue->queue = new_element;
+		block_queue->queue_tail = new_element;
+	}
+	else {
+		block_queue->queue_tail->next = new_element;
+		block_queue->queue_tail = new_element;
+	}
+
 	block_queue->block_queue_length = new_block_queue_length;
 
 	sys_log_debug("Block queue after expansion (%" PRIuz " elements):",
 		PRAuz(block_queue->block_queue_length));
-	for(i = 0; i < block_queue->block_queue_length; ++i) {
-		sys_log_debug("\t[%" PRIuz "]: %" PRIu64,
-			PRAuz(i),
-			PRAu64(block_queue->queue[i].block_numbers[0]));
+#if 1 || SYS_LOG_DEBUG_ENABLED
+	{
+		refs_node_block_queue_element *cur_element = block_queue->queue;
+		size_t i = 0;
+		while(cur_element) {
+			sys_log_debug("\t[%" PRIuz "]: %" PRIu64,
+				PRAuz(i),
+				PRAu64(cur_element->block_numbers[0]));
+			++i;
+			cur_element = cur_element->next;
+		}
 	}
+#endif /* SYS_LOG_DEBUG_ENABLED */
 out:
 	return err;
 }
@@ -969,7 +989,7 @@ static void parse_node_reference(
 	}
 }
 
-static u32 parse_node_reference_list_v1(
+static int parse_node_reference_list_v1(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -978,13 +998,17 @@ static u32 parse_node_reference_list_v1(
 		const size_t block_size,
 		const u32 *const node_reference_offsets,
 		const u32 node_references_size,
-		refs_node_block_queue_element *const out_node_references)
+		refs_node_block_queue_element **const out_node_references,
+		u32 *const out_total_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
+	int err = 0;
 	u32 total_size = 0;
 	u32 i;
+	refs_node_block_queue_element *first_element = NULL;
+	refs_node_block_queue_element *last_element = NULL;
 
 	emit(prefix, indent - 1, "%s (%" PRIu32 " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
@@ -1027,25 +1051,51 @@ static u32 parse_node_reference_list_v1(
 			/* const u8 *data */
 			&block[reference_offset]);
 		if(out_node_references) {
-			out_node_references[reference_index].block_numbers[0] =
+			refs_node_block_queue_element *cur_element = NULL;
+
+			err = sys_malloc(sizeof(*cur_element), &cur_element);
+			if(err) {
+				sys_log_perror(err, "Error while allocating "
+					"reference");
+				goto out;
+			}
+
+			cur_element->block_numbers[0] =
 				read_le64(&block[reference_offset + 0]);
-			out_node_references[reference_index].block_numbers[1] =
-			out_node_references[reference_index].block_numbers[2] =
-			out_node_references[reference_index].block_numbers[3] =
-				0;
-			out_node_references[reference_index].flags =
+			cur_element->block_numbers[1] = 0;
+			cur_element->block_numbers[2] = 0;
+			cur_element->block_numbers[3] = 0;
+			cur_element->flags =
 				read_le64(&block[reference_offset + 8]);
-			out_node_references[reference_index].checksum =
+			cur_element->checksum =
 				read_le64(&block[reference_offset + 16]);
+			cur_element->next = NULL;
+
+			if(!first_element) {
+				first_element = cur_element;
+				last_element = cur_element;
+			}
+			else {
+				last_element->next = cur_element;
+				last_element = cur_element;
+			}
 		}
 
 		total_size += 24;
 	}
 
-	return total_size;
+	if(out_node_references) {
+		*out_node_references = first_element;
+	}
+
+	if(out_total_size) {
+		*out_total_size = total_size;
+	}
+out:
+	return err;
 }
 
-static u32 parse_node_reference_list_v3(
+static int parse_node_reference_list_v3(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -1054,13 +1104,17 @@ static u32 parse_node_reference_list_v3(
 		const size_t block_size,
 		const u32 *const node_reference_offsets,
 		const u32 node_references_size,
-		refs_node_block_queue_element *const out_node_references)
+		refs_node_block_queue_element **const out_node_references,
+		u32 *const out_total_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
+	int err = 0;
 	u32 total_size = 0;
 	u32 i;
+	refs_node_block_queue_element *first_element = NULL;
+	refs_node_block_queue_element *last_element = NULL;
 
 	emit(prefix, indent - 1, "%s (%" PRIu32 " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
@@ -1105,24 +1159,51 @@ static u32 parse_node_reference_list_v3(
 			/* const u8 *data */
 			&block[reference_offset]);
 		if(out_node_references) {
-			out_node_references[reference_index].block_numbers[0] =
+			refs_node_block_queue_element *cur_element = NULL;
+
+			err = sys_malloc(sizeof(*cur_element), &cur_element);
+			if(err) {
+				sys_log_perror(err, "Error while allocating "
+					"reference");
+				goto out;
+			}
+
+			cur_element->block_numbers[0] =
 				read_le64(&block[reference_offset + 0]);
-			out_node_references[reference_index].block_numbers[1] =
+			cur_element->block_numbers[1] =
 				read_le64(&block[reference_offset + 8]);
-			out_node_references[reference_index].block_numbers[2] =
+			cur_element->block_numbers[2] =
 				read_le64(&block[reference_offset + 16]);
-			out_node_references[reference_index].block_numbers[3] =
+			cur_element->block_numbers[3] =
 				read_le64(&block[reference_offset + 24]);
-			out_node_references[reference_index].flags =
+			cur_element->flags =
 				read_le64(&block[reference_offset + 32]);
-			out_node_references[reference_index].checksum =
+			cur_element->checksum =
 				read_le64(&block[reference_offset + 40]);
+			cur_element->next = NULL;
+
+			if(!first_element) {
+				first_element = cur_element;
+				last_element = cur_element;
+			}
+			else {
+				last_element->next = cur_element;
+				last_element = cur_element;
+			}
 		}
 
 		total_size += 48;
 	}
 
-	return total_size;
+	if(out_node_references) {
+		*out_node_references = first_element;
+	}
+
+	if(out_total_size) {
+		*out_total_size = total_size;
+	}
+out:
+	return err;
 }
 
 static int parse_block_header(
@@ -1295,7 +1376,7 @@ out:
 	return err;
 }
 
-static void parse_superblock_v1(
+static int parse_superblock_v1(
 		refs_node_walk_visitor *const visitor,
 		const u8 *const block,
 		size_t block_size,
@@ -1310,6 +1391,7 @@ static void parse_superblock_v1(
 	const REFS_V1_SUPERBLOCK_HEADER *const header =
 		(const REFS_V1_SUPERBLOCK_HEADER*) block;
 
+	int err = 0;
 	u32 level_1_block_list_offset = 0;
 	u32 level_1_block_list_count = 0;
 	u32 self_reference_offset = 0;
@@ -1375,8 +1457,11 @@ static void parse_superblock_v1(
 			out_secondary_level1_block);
 	}
 	else {
+		u32 total_size = 0;
+
 		i = self_reference_offset;
-		i += parse_node_reference_list_v1(
+
+		err = parse_node_reference_list_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1393,8 +1478,16 @@ static void parse_superblock_v1(
 			&self_reference_offset,
 			/* u32 node_references_size */
 			(self_reference_size > 24) ? 24 : self_reference_size,
-			/* refs_node_block_queue_element *out_node_references */
-			NULL);
+			/* refs_node_block_queue_element
+			 * **out_node_references */
+			NULL,
+			/* u32 *out_total_size */
+			&total_size);
+		if(err) {
+			goto out;
+		}
+
+		i += total_size;
 	}
 
 	if(sys_max(level_1_block_list_offset, self_reference_offset) > i)
@@ -1405,8 +1498,11 @@ static void parse_superblock_v1(
 	}
 
 	if(level_1_block_list_offset < self_reference_offset) {
+		u32 total_size = 0;
+
 		i = self_reference_offset;
-		i += parse_node_reference_list_v1(
+
+		err = parse_node_reference_list_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1423,8 +1519,16 @@ static void parse_superblock_v1(
 			&self_reference_offset,
 			/* u32 node_references_size */
 			(self_reference_size > 24) ? 24 : self_reference_size,
-			/* refs_node_block_queue_element *out_node_references */
-			NULL);
+			/* refs_node_block_queue_element
+			 * **out_node_references */
+			NULL,
+			/* u32 *out_total_size */
+			&total_size);
+		if(err) {
+			goto out;
+		}
+
+		i += total_size;
 	}
 	else {
 		i = level_1_block_list_offset;
@@ -1451,9 +1555,11 @@ static void parse_superblock_v1(
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
 			block_size - i);
 	}
+out:
+	return err;
 }
 
-static void parse_superblock_v3(
+static int parse_superblock_v3(
 		refs_node_walk_visitor *const visitor,
 		const u8 *const block,
 		const size_t block_size,
@@ -1466,6 +1572,7 @@ static void parse_superblock_v3(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
+	int err = 0;
 	u32 level_1_block_list_offset = 0;
 	u32 level_1_block_list_count = 0;
 	u32 self_reference_offset = 0;
@@ -1555,8 +1662,11 @@ static void parse_superblock_v3(
 			out_secondary_level1_block);
 	}
 	else {
+		u32 total_size = 0;
+
 		i = self_reference_offset;
-		i += parse_node_reference_list_v3(
+
+		err = parse_node_reference_list_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1573,8 +1683,16 @@ static void parse_superblock_v3(
 			&self_reference_offset,
 			/* u32 node_references_size */
 			(self_reference_size > 48) ? 48 : self_reference_size,
-			/* refs_node_block_queue_element *out_node_references */
-			NULL);
+			/* refs_node_block_queue_element
+			 * **out_node_references */
+			NULL,
+			/* u32 *out_total_size */
+			&total_size);
+		if(err) {
+			goto out;
+		}
+
+		i += total_size;
 	}
 
 	if(sys_max(level_1_block_list_offset, self_reference_offset) > i) {
@@ -1584,8 +1702,11 @@ static void parse_superblock_v3(
 	}
 
 	if(level_1_block_list_offset < self_reference_offset) {
+		u32 total_size = 0;
+
 		i = self_reference_offset;
-		i += parse_node_reference_list_v3(
+
+		err = parse_node_reference_list_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1602,8 +1723,16 @@ static void parse_superblock_v3(
 			&self_reference_offset,
 			/* u32 node_references_size */
 			(self_reference_size > 48) ? 48 : self_reference_size,
-			/* refs_node_block_queue_element *out_node_references */
-			NULL);
+			/* refs_node_block_queue_element
+			 * **out_node_references */
+			NULL,
+			/* u32 *out_total_size */
+			&total_size);
+		if(err) {
+			goto out;
+		}
+
+		i += total_size;
 	}
 	else {
 		i = level_1_block_list_offset;
@@ -1630,6 +1759,8 @@ static void parse_superblock_v3(
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
 			block_size - i);
 	}
+out:
+	return err;
 }
 
 static int parse_level1_block_level2_node_reference_list(
@@ -1874,7 +2005,9 @@ static int parse_level1_block(
 			PRAu32(self_reference_offset), PRAuz(block_size));
 	}
 	else if(is_v3) {
-		i += parse_node_reference_list_v3(
+		u32 total_size = 0;
+
+		err = parse_node_reference_list_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1891,11 +2024,23 @@ static int parse_level1_block(
 			&self_reference_offset,
 			/* u32 node_references_size */
 			(self_reference_size > 48) ? 48 : self_reference_size,
-			/* refs_node_block_queue_element *out_node_references */
-			NULL);
+			/* refs_node_block_queue_element
+			 * **out_node_references */
+			NULL,
+			/* u32 *out_total_size */
+			&total_size);
+		if(err) {
+			goto out;
+		}
+
+		i += total_size;
 	}
 	else {
-		i += parse_node_reference_list_v1(
+		u32 total_size = 0;
+
+		i = self_reference_offset;
+
+		err = parse_node_reference_list_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -1912,8 +2057,16 @@ static int parse_level1_block(
 			&self_reference_offset,
 			/* u32 node_references_size */
 			(self_reference_size > 24) ? 24 : self_reference_size,
-			/* refs_node_block_queue_element *out_node_references */
-			NULL);
+			/* refs_node_block_queue_element
+			 * **out_node_references */
+			NULL,
+			/* u32 *out_total_size */
+			&total_size);
+		if(err) {
+			goto out;
+		}
+
+		i += total_size;
 	}
 
 	if(!level2_node_reference_offsets) {
@@ -1936,19 +2089,12 @@ static int parse_level1_block(
 		level2_node_reference_list_size =
 			level2_node_reference_count *
 			(size_t) (is_v3 ? 48 : 24);
-		err = sys_malloc(level2_node_reference_count *
-			sizeof(refs_node_block_queue_element),
-			&level2_node_references);
-		if(err) {
-			sys_log_perror(err, "Error while allocating "
-				"%" PRIuz "-byte node reference array",
-				PRAuz(level2_node_reference_list_size));
-			goto out;
-		}
 
 		i = level2_node_reference_offsets[0];
 		if(is_v3) {
-			i += parse_node_reference_list_v3(
+			u32 total_size = 0;
+
+			err = parse_node_reference_list_v3(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* const char *prefix */
@@ -1966,11 +2112,22 @@ static int parse_level1_block(
 				/* u32 node_references_size */
 				level2_node_reference_list_size,
 				/* refs_node_block_queue_element
-				 * *out_node_references */
-				level2_node_references);
+				 * **out_node_references */
+				&level2_node_references,
+				/* u32 *out_total_size */
+				&total_size);
+			if(err) {
+				goto out;
+			}
+
+			i += total_size;
 		}
 		else {
-			i += parse_node_reference_list_v1(
+			u32 total_size = 0;
+
+			i = self_reference_offset;
+
+			err = parse_node_reference_list_v1(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* const char *prefix */
@@ -1988,8 +2145,15 @@ static int parse_level1_block(
 				/* u32 node_references_size */
 				level2_node_reference_list_size,
 				/* refs_node_block_queue_element
-				 * *out_node_references */
-				level2_node_references);
+				 * **out_node_references */
+				&level2_node_references,
+				/* u32 *out_total_size */
+				&total_size);
+			if(err) {
+				goto out;
+			}
+
+			i += total_size;
 		}
 	}
 
@@ -4627,30 +4791,36 @@ static int parse_level2_block(
 	}
 
 	{
-		size_t i;
+		size_t i = 0;
+		refs_node_block_queue_element *cur_element = NULL;
 
 		sys_log_debug("Level 2 block queue after processing block "
 			"(%" PRIuz " elements):",
 			PRAuz(level2_queue->block_queue_length));
-		for(i = 0; i < level2_queue->block_queue_length; ++i) {
+
+		cur_element = level2_queue->queue;
+		while(cur_element) {
 			sys_log_debug("\t[%" PRIuz "]: %" PRIu64,
 				PRAuz(i),
-				PRAu64(level2_queue->queue[i].
-				block_numbers[0]));
+				PRAu64(cur_element->block_numbers[0]));
+			++i;
+			cur_element = cur_element->next;
 		}
 	}
 
 	if(level3_queue) {
-		size_t i;
+		size_t i = 0;
+		refs_node_block_queue_element *cur_element = NULL;
 
 		sys_log_debug("Level 3 block queue after processing block "
 			"(%" PRIuz " elements):",
 			PRAuz(level3_queue->block_queue_length));
-		for(i = 0; i < level3_queue->block_queue_length; ++i) {
+		while(cur_element) {
 			sys_log_debug("\t[%" PRIuz "]: %" PRIu64,
 				PRAuz(i),
-				PRAu64(level3_queue->queue[i].
-				block_numbers[0]));
+				PRAu64(cur_element->block_numbers[0]));
+			++i;
+			cur_element = cur_element->next;
 		}
 	}
 out:
@@ -8868,7 +9038,7 @@ static int crawl_volume_metadata(
 		PRAu64(30), PRAX64(30));
 
 	if(!is_v3) {
-		parse_superblock_v1(
+		err = parse_superblock_v1(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const u8 *block */
@@ -8881,7 +9051,7 @@ static int crawl_volume_metadata(
 			&secondary_level1_block);
 	}
 	else {
-		parse_superblock_v3(
+		err = parse_superblock_v3(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const u8 *block */
@@ -8892,6 +9062,10 @@ static int crawl_volume_metadata(
 			&primary_level1_block,
 			/* u64 *out_secondary_level1_block */
 			&secondary_level1_block);
+	}
+	if(err) {
+		sys_log_perror(err, "Error while parsing superblock");
+		goto out;
 	}
 
 	if(!primary_level1_block || !secondary_level1_block) {
@@ -8947,7 +9121,7 @@ static int crawl_volume_metadata(
 			(const u8*) *primary_level1_node : block,
 			/* size_t block_size */
 			block_size,
-			/* u64 **out_level2_extents */
+			/* refs_node_block_queue_element **out_level2_extents */
 			&primary_level2_blocks,
 			/* size_t *out_level2_extents_count */
 			&primary_level2_blocks_count);
@@ -9003,7 +9177,7 @@ static int crawl_volume_metadata(
 			(const u8*) *secondary_level1_node : block,
 			/* size_t block_size */
 			block_size,
-			/* u64 **out_level2_extents */
+			/* refs_node_block_queue_element **out_level2_extents */
 			&secondary_level2_blocks,
 			/* size_t *out_level2_extents_count */
 			&secondary_level2_blocks_count);
@@ -9029,10 +9203,35 @@ static int crawl_volume_metadata(
 			PRAu32(primary_level2_blocks_count),
 			PRAu32(secondary_level2_blocks_count));
 	}
-	else if(memcmp(primary_level2_blocks, secondary_level2_blocks,
-		primary_level2_blocks_count * sizeof(primary_level2_blocks[0])))
-	{
-		if(block_map && *block_map) {
+	else {
+		refs_node_block_queue_element *cur_primary =
+			primary_level2_blocks;
+		refs_node_block_queue_element *cur_secondary =
+			secondary_level2_blocks;
+		sys_bool mismatch = SYS_FALSE;
+
+		while(cur_primary && cur_secondary) {
+			if(memcmp(cur_primary, cur_secondary,
+				offsetof(refs_node_block_queue_element, next)))
+			{
+				mismatch = SYS_TRUE;
+				break;
+			}
+
+			cur_primary = cur_primary->next;
+			cur_secondary = cur_secondary->next;
+		}
+
+		if(!!cur_primary != !!cur_secondary) {
+			sys_log_critical("Internal error: Primary and "
+				"secondary queue chains are not equally long! "
+				"Primary ends %s secondary.",
+				!cur_primary ? "before" : "after");
+			err = ENXIO;
+			goto out;
+		}
+		else if(!mismatch);
+		else if(block_map && *block_map) {
 			sys_log_debug("Mismatching level 2 block data in "
 				"level 1 blocks. Proceeding with primary...");
 		}
@@ -9043,6 +9242,11 @@ static int crawl_volume_metadata(
 	}
 
 	level2_queue.queue = primary_level2_blocks;
+	/* Find the tail. */
+	level2_queue.queue_tail = primary_level2_blocks;
+	while(level2_queue.queue_tail->next) {
+		level2_queue.queue_tail = level2_queue.queue_tail->next;
+	}
 	level2_queue.block_queue_length = primary_level2_blocks_count;
 
 	primary_level2_blocks = NULL;
@@ -9052,8 +9256,14 @@ static int crawl_volume_metadata(
 		mappings = *block_map;
 	}
 	else {
-		const size_t saved_block_queue_length =
+		refs_node_block_queue_element *const saved_queue_head =
+			level2_queue.queue;
+		refs_node_block_queue_element *const saved_queue_tail =
+			level2_queue.queue_tail;
+		const size_t saved_queue_length =
 			level2_queue.block_queue_length;
+
+		refs_node_block_queue_element *cur_element = NULL;
 
 		err = sys_calloc(sizeof(*mappings), &mappings);
 		if(err) {
@@ -9065,9 +9275,13 @@ static int crawl_volume_metadata(
 		/* For v3 volumes we first iterate over the Level 2 blocks to
 		 * find the block region mappings, located in the tree with
 		 * object ID 0xB. */
-		for(i = 0; is_v3 && i < level2_queue.block_queue_length; ++i) {
+		if(!is_v3);
+		else for(i = 0; level2_queue.queue; ++i,
+			level2_queue.queue = level2_queue.queue->next,
+			--level2_queue.block_queue_length)
+		{
 			u64 *const logical_block_numbers =
-				level2_queue.queue[i].block_numbers;
+				level2_queue.queue->block_numbers;
 
 			u64 physical_block_numbers[4];
 			const REFS_V3_BLOCK_HEADER *header = NULL;
@@ -9213,11 +9427,26 @@ static int crawl_volume_metadata(
 			}
 		}
 
+		/* Restore queue head for later iteration. */
+		level2_queue.queue = saved_queue_head;
+		level2_queue.queue_tail = saved_queue_tail;
+		level2_queue.block_queue_length = saved_queue_length;
+
+		/* Free any items added after the previous tail. */
+		if(saved_queue_tail) {
+			cur_element = saved_queue_tail->next;
+			saved_queue_tail->next = NULL;
+		}
+		while(cur_element) {
+			refs_node_block_queue_element *const next_element =
+				cur_element->next;
+			sys_free(&cur_element);
+			cur_element = next_element;
+		}
+
 		if(block_map) {
 			*block_map = mappings;
 		}
-
-		level2_queue.block_queue_length = saved_block_queue_length;
 	}
 
 	crawl_context.block_map = mappings;
@@ -9233,7 +9462,14 @@ static int crawl_volume_metadata(
 		/* Discard primary level 2 blocks as we want a crawl targeted at
 		 * the requested node number. The crawl may still add level 2
 		 * blocks to the queue if we encounter a level 2 index node. */
-		sys_free(&level2_queue.queue);
+		while(level2_queue.queue) {
+			refs_node_block_queue_element *const next_element =
+				level2_queue.queue->next;
+			sys_free(&level2_queue.queue);
+			level2_queue.queue = next_element;
+		}
+
+		level2_queue.queue_tail = NULL;
 		level2_queue.block_queue_length = 0;
 
 		physical_block_numbers[0] =
@@ -9311,9 +9547,16 @@ static int crawl_volume_metadata(
 	}
 
 	if(level2_queue.block_queue_length) {
-		for(i = 0; i < level2_queue.block_queue_length; ++i) {
+		refs_node_block_queue_element *next_element = NULL;
+
+		for(i = 0; level2_queue.queue; ++i,
+			next_element = level2_queue.queue->next,
+			sys_free(&level2_queue.queue),
+			level2_queue.queue = next_element,
+			--level2_queue.block_queue_length)
+		{
 			u64 *const logical_block_numbers =
-				level2_queue.queue[i].block_numbers;
+				level2_queue.queue->block_numbers;
 
 			u8 j;
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
@@ -9381,11 +9624,23 @@ static int crawl_volume_metadata(
 				goto out;
 			}
 		}
+
+		if(!level2_queue.queue) {
+			level2_queue.queue_tail = NULL;
+		}
 	}
+
 	if(level3_queue.block_queue_length) {
-		for(i = 0; i < level3_queue.block_queue_length; ++i) {
+		refs_node_block_queue_element *next_element = NULL;
+
+		for(i = 0; level3_queue.queue; ++i,
+			next_element = level3_queue.queue->next,
+			sys_free(&level3_queue.queue),
+			level3_queue.queue = next_element,
+			--level3_queue.block_queue_length)
+		{
 			u64 *const logical_block_numbers =
-				level3_queue.queue[i].block_numbers;
+				level3_queue.queue->block_numbers;
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 
 			physical_block_numbers[0] =
@@ -9440,22 +9695,46 @@ static int crawl_volume_metadata(
 				goto out;
 			}
 		}
+
+		if(!level3_queue.queue) {
+			level3_queue.queue_tail = NULL;
+		}
 	}
 out:
 	if(level3_queue.queue) {
-		sys_free(&level3_queue.queue);
+		while(level3_queue.queue) {
+			refs_node_block_queue_element *const next_element =
+				level3_queue.queue->next;
+			sys_free(&level3_queue.queue);
+			level3_queue.queue = next_element;
+		}
 	}
 
 	if(level2_queue.queue) {
-		sys_free(&level2_queue.queue);
+		while(level2_queue.queue) {
+			refs_node_block_queue_element *const next_element =
+				level2_queue.queue->next;
+			sys_free(&level2_queue.queue);
+			level2_queue.queue = next_element;
+		}
 	}
 
 	if(secondary_level2_blocks) {
-		sys_free(&secondary_level2_blocks);
+		while(secondary_level2_blocks) {
+			refs_node_block_queue_element *const next_element =
+				secondary_level2_blocks->next;
+			sys_free(&secondary_level2_blocks);
+			secondary_level2_blocks = next_element;
+		}
 	}
 
 	if(primary_level2_blocks) {
-		sys_free(&primary_level2_blocks);
+		while(primary_level2_blocks) {
+			refs_node_block_queue_element *const next_element =
+				primary_level2_blocks->next;
+			sys_free(&primary_level2_blocks);
+			primary_level2_blocks = next_element;
+		}
 	}
 
 	if(block) {
