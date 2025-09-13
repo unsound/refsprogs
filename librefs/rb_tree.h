@@ -72,12 +72,12 @@ struct refs_rb_iter {
 int             refs_rb_tree_node_cmp_ptr_cb (struct refs_rb_tree *self, struct refs_rb_node *a, struct refs_rb_node *b);
 void            refs_rb_tree_node_dealloc_cb (struct refs_rb_tree *self, struct refs_rb_node *node);
 
-struct refs_rb_node *refs_rb_node_alloc      ();
+struct refs_rb_node *refs_rb_node_alloc      (void);
 struct refs_rb_node *refs_rb_node_create     (void *value);
 struct refs_rb_node *refs_rb_node_init       (struct refs_rb_node *self, void *value);
 void            refs_rb_node_dealloc         (struct refs_rb_node *self);
 
-struct refs_rb_tree *refs_rb_tree_alloc      ();
+struct refs_rb_tree *refs_rb_tree_alloc      (void);
 struct refs_rb_tree *refs_rb_tree_create     (refs_rb_tree_node_cmp_f cmp);
 struct refs_rb_tree *refs_rb_tree_init       (struct refs_rb_tree *self, refs_rb_tree_node_cmp_f cmp);
 void            refs_rb_tree_dealloc         (struct refs_rb_tree *self, refs_rb_tree_node_f node_cb);
