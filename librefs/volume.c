@@ -1022,7 +1022,7 @@ int refs_volume_generate_metadata_bitmap(
 	}
 
 	context.bitmap = bitmap;
-	context.bitmap_size = bitmap_size,
+	context.bitmap_size = bitmap_size;
 
 	visitor.context = &context;
 	visitor.visit_node = refs_volume_generate_metadata_bitmap_visit_node;
