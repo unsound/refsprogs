@@ -4707,8 +4707,7 @@ static int parse_level3_object_id_key(
 		const size_t indent,
 		const u8 *const key,
 		const u16 key_offset,
-		const u16 key_size,
-		void *const context)
+		const u16 key_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -4716,7 +4715,6 @@ static int parse_level3_object_id_key(
 	int err = 0;
 
 	(void) key_size;
-	(void) context;
 
 	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
 		"object ID", PRAu16(key_offset), PRAX16(key_offset));
@@ -4735,16 +4733,13 @@ static int parse_level3_hardlink_key(
 		const size_t indent,
 		const u8 *const key,
 		const u16 key_offset,
-		const u16 key_size,
-		void *const context)
+		const u16 key_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
 	int err = 0;
 	size_t i = 0;
-
-	(void) context;
 
 	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
 		"hard link", PRAu16(key_offset), PRAX16(key_offset));
@@ -4771,16 +4766,13 @@ static int parse_level3_reparse_point_key(
 		const size_t indent,
 		const u8 *const key,
 		const u16 key_offset,
-		const u16 key_size,
-		void *const context)
+		const u16 key_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
 	int err = 0;
 	size_t i = 0;
-
-	(void) context;
 
 	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
 		"reparse point", PRAu16(key_offset), PRAX16(key_offset));
@@ -4805,8 +4797,7 @@ static int parse_level3_unknown_key(
 		const u8 *const key,
 		const u16 key_offset,
 		const u16 key_size,
-		const u32 entry_size,
-		void *const context)
+		const u32 entry_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -4814,7 +4805,6 @@ static int parse_level3_unknown_key(
 	int err = 0;
 
 	(void) crawl_context;
-	(void) context;
 
 	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
 		"unknown", PRAu16(key_offset), PRAX16(key_offset));
@@ -4845,6 +4835,7 @@ static int parse_level3_key(
 	(void) object_id;
 	(void) is_v3;
 	(void) is_index;
+	(void) context;
 
 	if(key_size > 4 && key[0] == 0x30 && key[1] == 0x00) {
 		err = parse_level3_filename_key(
@@ -4874,9 +4865,7 @@ static int parse_level3_key(
 			/* u16 key_offset */
 			key_offset,
 			/* u16 key_size */
-			key_size,
-			/* void *context */
-			context);
+			key_size);
 	}
 	else if(key_size >= 24 && read_le16(&key[0]) == 0x40) {
 		err = parse_level3_hardlink_key(
@@ -4891,9 +4880,7 @@ static int parse_level3_key(
 			/* u16 key_offset */
 			key_offset,
 			/* u16 key_size */
-			key_size,
-			/* void *context */
-			context);
+			key_size);
 	}
 	else if(key_size >= 4 && read_le16(&key[0]) == 0x10) {
 		err = parse_level3_reparse_point_key(
@@ -4908,9 +4895,7 @@ static int parse_level3_key(
 			/* u16 key_offset */
 			key_offset,
 			/* u16 key_size */
-			key_size,
-			/* void *context */
-			context);
+			key_size);
 	}
 	else {
 		err = parse_level3_unknown_key(
@@ -4929,9 +4914,7 @@ static int parse_level3_key(
 			/* u16 key_size */
 			key_size,
 			/* u32 entry_size */
-			entry_size,
-			/* void *context */
-			context);
+			entry_size);
 	}
 
 	return err;
