@@ -1100,6 +1100,13 @@ static int fsapi_lookup_by_posix_path(
 			PRAbs(cur_path_length, cur_path));
 		sys_log_debug("final_depth: %" PRIuz, PRAuz(final_depth));
 
+		if(cur_node_depth >= final_depth) {
+			sys_log_critical("Internal error: Attempted to find root node which should "
+				"have been found earlier.");
+			err = ENXIO;
+			goto out;
+		}
+
 		for(; cur_node_depth < final_depth; ++cur_node_depth) {
 			const char *cur_element;
 			size_t cur_element_length;
