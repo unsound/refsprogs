@@ -4582,7 +4582,7 @@ static int parse_level2_block(
 		/* u32 block_size */
 		block_size,
 		/* refs_node_block_queue *block_queue */
-		(object_id != 0xB && object_id != 0xC) ? level2_queue : NULL,
+		level2_queue,
 		/* sys_bool add_subnodes_in_offsets_order */
 		SYS_TRUE,
 		/* void *context */
@@ -9052,6 +9052,9 @@ static int crawl_volume_metadata(
 		mappings = *block_map;
 	}
 	else {
+		const size_t saved_block_queue_length =
+			level2_queue.block_queue_length;
+
 		err = sys_calloc(sizeof(*mappings), &mappings);
 		if(err) {
 			sys_log_perror(err, "Error while allocating mappings "
@@ -9213,6 +9216,8 @@ static int crawl_volume_metadata(
 		if(block_map) {
 			*block_map = mappings;
 		}
+
+		level2_queue.block_queue_length = saved_block_queue_length;
 	}
 
 	crawl_context.block_map = mappings;
