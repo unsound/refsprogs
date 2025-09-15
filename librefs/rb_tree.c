@@ -288,7 +288,8 @@ refs_rb_tree_insert_node (struct refs_rb_tree *self, struct refs_rb_node *node) 
                     t = g;
                 }
 
-                g = p, p = q;
+                g = p;
+                p = q;
                 q = q->link[dir];
             }
 
@@ -328,7 +329,8 @@ refs_rb_tree_remove_with_cb (struct refs_rb_tree *self, void *value, refs_rb_tre
             int last = dir;
 
             // Move the helpers down
-            g = p, p = q;
+            g = p;
+            p = q;
             q = q->link[dir];
             dir = self->cmp(self, q, &node) < 0;
       
