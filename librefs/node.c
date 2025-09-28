@@ -412,7 +412,6 @@ static int refs_node_block_queue_add(
 {
 	const size_t new_block_queue_length =
 		block_queue->block_queue_length + 1;
-	const size_t element_size = sizeof(refs_node_block_queue_element);
 
 	int err = 0;
 	refs_node_block_queue_element *new_element = NULL;
