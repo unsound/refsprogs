@@ -1872,7 +1872,7 @@ static int parse_level1_block(
 		const u64 block_number,
 		const u64 block_queue_index,
 		const u8 *const block,
-		const size_t block_size,
+		const u32 block_size,
 		refs_node_block_queue_element **const
 		out_level2_node_references,
 		size_t *const out_level2_node_references_count)
@@ -9144,7 +9144,7 @@ static int crawl_volume_metadata(
 			/* const u8 *block */
 			(primary_level1_node && *primary_level1_node) ?
 			(const u8*) *primary_level1_node : block,
-			/* size_t block_size */
+			/* u32 block_size */
 			block_size,
 			/* refs_node_block_queue_element **out_level2_extents */
 			&primary_level2_blocks,
@@ -9200,7 +9200,7 @@ static int crawl_volume_metadata(
 			/* const u8 *block */
 			(secondary_level1_node && *secondary_level1_node) ?
 			(const u8*) *secondary_level1_node : block,
-			/* size_t block_size */
+			/* u32 block_size */
 			block_size,
 			/* refs_node_block_queue_element **out_level2_extents */
 			&secondary_level2_blocks,
