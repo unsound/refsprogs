@@ -91,7 +91,7 @@ static int refsimage_node_header(
 	refsimage_crawl_context *const context =
 		(refsimage_crawl_context*) _context;
 	const sys_bool is_v3 =
-		(context->vol->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(context->vol->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	const REFS_NODE_HEADER *const header = (const REFS_NODE_HEADER*) data;
 
 	(void) header_offset;
