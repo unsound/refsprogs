@@ -996,7 +996,7 @@ static int parse_node_reference_list_v1(
 		const u8 *const block,
 		const size_t block_size,
 		const u32 *const node_reference_offsets,
-		const u32 node_references_size,
+		const size_t node_references_size,
 		refs_node_block_queue_element **const out_node_references,
 		u32 *const out_total_size)
 {
@@ -1005,18 +1005,18 @@ static int parse_node_reference_list_v1(
 
 	int err = 0;
 	u32 total_size = 0;
-	u32 i;
+	size_t i;
 	refs_node_block_queue_element *first_element = NULL;
 	refs_node_block_queue_element *last_element = NULL;
 
-	emit(prefix, indent - 1, "%s (%" PRIu32 " bytes @ %" PRIu32 " / "
+	emit(prefix, indent - 1, "%s (%" PRIuz " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
 		list_name,
-		PRAu32(node_references_size),
+		PRAuz(node_references_size),
 		PRAu32(node_reference_offsets[0]),
 		PRAX32(node_reference_offsets[0]));
 	for(i = 0; i + 24 <= node_references_size; i += 24) {
-		const u32 reference_index = i / 24;
+		const size_t reference_index = i / 24;
 		const u32 reference_offset =
 			node_reference_offsets[reference_index];
 
@@ -1102,7 +1102,7 @@ static int parse_node_reference_list_v3(
 		const u8 *const block,
 		const size_t block_size,
 		const u32 *const node_reference_offsets,
-		const u32 node_references_size,
+		const size_t node_references_size,
 		refs_node_block_queue_element **const out_node_references,
 		u32 *const out_total_size)
 {
@@ -1111,18 +1111,18 @@ static int parse_node_reference_list_v3(
 
 	int err = 0;
 	u32 total_size = 0;
-	u32 i;
+	size_t i;
 	refs_node_block_queue_element *first_element = NULL;
 	refs_node_block_queue_element *last_element = NULL;
 
-	emit(prefix, indent - 1, "%s (%" PRIu32 " bytes @ %" PRIu32 " / "
+	emit(prefix, indent - 1, "%s (%" PRIuz " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
 		list_name,
-		PRAu32(node_references_size),
+		PRAuz(node_references_size),
 		PRAu32(node_reference_offsets[0]),
 		PRAX32(node_reference_offsets[0]));
 	for(i = 0; i + 48 <= node_references_size; i += 48) {
-		const u32 reference_index = i / 48;
+		const size_t reference_index = i / 48;
 		const u32 reference_offset =
 			node_reference_offsets[reference_index];
 
@@ -2108,7 +2108,7 @@ static int parse_level1_block(
 				block_size,
 				/* const u32 *node_reference_offsets */
 				level2_node_reference_offsets,
-				/* u32 node_references_size */
+				/* size_t node_references_size */
 				level2_node_reference_list_size,
 				/* refs_node_block_queue_element
 				 * **out_node_references */
