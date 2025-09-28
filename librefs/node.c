@@ -9026,11 +9026,14 @@ static int crawl_volume_metadata(
 		sys_free(&padding);
 	}
 
-	err = sys_malloc(block_size, &block);
+	err = sys_malloc(
+		(block_index_unit > block_size) ? block_index_unit : block_size,
+		&block);
 	if(err) {
-		sys_log_perror(err, "Error while allocating %" PRIuz " bytes "
+		sys_log_perror(err, "Error while allocating %" PRIu32 " bytes "
 			"for metadata block",
-			PRAuz(block_size));
+			PRAu32((block_index_unit > block_size) ?
+			block_index_unit : block_size));
 		goto out;
 	}
 
