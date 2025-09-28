@@ -6579,7 +6579,7 @@ static int parse_attribute_named_stream_extent_value(
 				crawl_context,
 				/* u64 logical_block_number */
 				read_le64(&data[j]));
-		const u32 first_logical_block =
+		const u64 first_logical_block =
 			read_le64(&data[j + 12]);
 		const u32 cluster_count =
 			read_le32(&data[j + 20]);
