@@ -5099,8 +5099,9 @@ static int parse_attribute_data_key(
 		const u16 key_size,
 		u16 *const jp)
 {
-	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	const sys_bool is_v35plus =
+		REFS_VERSION_MIN(crawl_context->bs->version_major,
+		crawl_context->bs->version_minor, 3, 5);
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 	const u16 j_start = *jp;
@@ -5112,12 +5113,12 @@ static int parse_attribute_data_key(
 	if(j + 8 <= key_end) {
 		j += print_unknown64(prefix, indent, key, &key[j]);
 	}
-	/* v1/v3: 0x18 */
-	if(is_v3 && j + 2 <= key_end) {
+	/* v3: 0x18 */
+	if(is_v35plus && j + 2 <= key_end) {
 		j += print_unknown16(prefix, indent, key, &key[j]);
 	}
-	/* v1/v3: 0x1A */
-	if(is_v3 && j + 2 <= key_end) {
+	/* v3: 0x1A */
+	if(is_v35plus && j + 2 <= key_end) {
 		j += print_unknown16(prefix, indent, key, &key[j]);
 	}
 	/* v1: 0x18 v3: 0x1C */
@@ -5126,25 +5127,28 @@ static int parse_attribute_data_key(
 			indent, key, &key[j]);
 	}
 	/* v1: 0x1A */
-	if(!is_v3 && j + 2 <= key_end) {
+	if(!is_v35plus && j + 2 <= key_end) {
 		j += print_unknown16(prefix, indent, key, &key[j]);
 	}
 	/* v1: 0x1C */
-	if(!is_v3 && j + 2 <= key_end) {
-		j += print_unknown16(prefix, indent, key, &key[j]); /* 0x1A */
+	if(!is_v35plus && j + 2 <= key_end) {
+		j += print_unknown16(prefix, indent, key, &key[j]);
 	}
 	/* v1/v3: 0x1E */
 	if(j + 2 <= key_end) {
-		j += print_unknown16(prefix, indent, key, &key[j]); /* 0x1E */
+		j += print_unknown16(prefix, indent, key, &key[j]);
 	}
-	if(is_v3 && j + 8 <= key_end) {
-		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x20 */
+	/* v3: 0x20 */
+	if(is_v35plus && j + 8 <= key_end) {
+		j += print_unknown64(prefix, indent, key, &key[j]);
 	}
-	if(is_v3 && j + 8 <= key_end) {
-		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x28 */
+	/* v3: 0x28 */
+	if(is_v35plus && j + 8 <= key_end) {
+		j += print_unknown64(prefix, indent, key, &key[j]);
 	}
-	if(is_v3 && j + 8 <= key_end) {
-		j += print_unknown64(prefix, indent, key, &key[j]); /* 0x30 */
+	/* v3: 0x30 */
+	if(is_v35plus && j + 8 <= key_end) {
+		j += print_unknown64(prefix, indent, key, &key[j]);
 	}
 
 	*jp = j;
@@ -5607,6 +5611,9 @@ static int parse_attribute_non_resident_data_value(
 {
 	const sys_bool is_v3 =
 		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	const sys_bool is_v35plus =
+		REFS_VERSION_MIN(crawl_context->bs->version_major,
+		crawl_context->bs->version_minor, 3, 5);
 	const u32 block_index_unit = crawl_context->block_index_unit;
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -5651,7 +5658,7 @@ static int parse_attribute_non_resident_data_value(
 		j += print_unknown64(prefix, indent, value, &value[j]);
 	}
 	/* v1: 0x20 */
-	if(!is_v3 && value_end - j >= 8) {
+	if(!is_v35plus && value_end - j >= 8) {
 		j += print_unknown64(prefix, indent, value, &value[j]);
 	}
 	/* v1: 0x28 v3: 0x20 */
@@ -5664,7 +5671,7 @@ static int parse_attribute_non_resident_data_value(
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
 	/* v3: 0x2C */
-	if(is_v3 && value_end - j >= 4) {
+	if(is_v35plus && value_end - j >= 4) {
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
 	/* v1: 0x34 v3: 0x30 */
@@ -5732,7 +5739,7 @@ static int parse_attribute_non_resident_data_value(
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
 	/* 0xD0 */
-	if(is_v3 && value_end - j >= 4) {
+	if(is_v35plus && value_end - j >= 4) {
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
 	/* 0xD4 */
@@ -6861,7 +6868,9 @@ static int parse_attribute_leaf_value(
 		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
-	const u16 attribute_type_offset = is_v3 ? 0x0C : 0x08;
+	const u16 attribute_type_offset =
+		REFS_VERSION_MIN(crawl_context->bs->version_major,
+		crawl_context->bs->version_minor, 3, 5) ? 0x0C : 0x08;
 	const u16 attribute_type =
 		(key_size >= attribute_type_offset + 2) ?
 		read_le16(&key[attribute_type_offset]) : 0;
@@ -7910,14 +7919,17 @@ int parse_level3_long_value(
 			(remaining_in_attribute >= 0xC + 2) ?
 			read_le16(&attribute[0xC]) : 0;
 
-		attribute_type_offset = attr_key_offset + (is_v3 ? 0xC : 0x8);
+		attribute_type_offset =
+			REFS_VERSION_MIN(crawl_context->bs->version_major,
+			crawl_context->bs->version_minor, 3, 5) ? 0x0C : 0x08;
 		key_end =
 			(u16) sys_min(attr_key_offset + (u32) attr_key_size,
 			remaining_in_attribute);
 
-		if(attribute_type_offset + 2 <= key_end) {
+		if(attr_key_offset + attribute_type_offset + 2 <= key_end) {
 			attribute_type =
-				read_le16(&attribute[attribute_type_offset]);
+				read_le16(&attribute[attr_key_offset +
+				attribute_type_offset]);
 		}
 
 		emit(prefix, indent, "Attribute %" PRIu16 " / %" PRIu32 " @ "
