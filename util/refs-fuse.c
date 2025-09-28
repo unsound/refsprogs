@@ -1191,8 +1191,8 @@ static void refs_fuse_ll_op_lookup(
 	memset(&attributes, 0, sizeof(attributes));
 	memset(&entry_param, 0, sizeof(entry_param));
 
-	sys_log_debug("%s(req=%p, parent=0x%lX, name=\"%s\")",
-		__FUNCTION__, req, parent, name);
+	sys_log_debug("%s(req=%p, parent=0x%" PRIX64 ", name=\"%s\")",
+		__FUNCTION__, req, PRAX64(parent), name);
 
 	attributes.requested =
 		FSAPI_NODE_ATTRIBUTE_TYPE_SIZE |
@@ -1240,8 +1240,8 @@ static void refs_fuse_ll_op_lookup(
 		/* const fsapi_node_attributes *attributes */
 		&attributes);
 out:
-	sys_log_debug("%s(req=%p, parent=0x%lX, name=\"%s\"): %d (%s)",
-		__FUNCTION__, req, parent, name, err, strerror(err));
+	sys_log_debug("%s(req=%p, parent=0x%" PRIX64 ", name=\"%s\"): %d (%s)",
+		__FUNCTION__, req, PRAX64(parent), name, err, strerror(err));
 
 	if(err) {
 		fuse_reply_err(req, err);
@@ -1254,7 +1254,12 @@ out:
 static void refs_fuse_ll_op_forget(
 		fuse_req_t req,
 		fuse_ino_t ino,
-		unsigned long nlookup)
+#if FUSE_VERSION >= 30
+		uint64_t nlookup
+#else
+		unsigned long nlookup
+#endif /* FUSE_VERSION >= 30 ... */
+		)
 {
 	fsapi_volume *const vol =
 		(fsapi_volume*) fuse_req_userdata(req);
@@ -1267,8 +1272,8 @@ static void refs_fuse_ll_op_forget(
 			/* fsapi_volume *vol */
 			vol);
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, nlookup=%lu)",
-		__FUNCTION__, req, ino, nlookup);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", nlookup=%" PRIu64 ")",
+		__FUNCTION__, req, PRAX64(ino), PRAu64(nlookup));
 
 	err = fsapi_node_release(
 		/* fsapi_volume *vol */
@@ -1281,8 +1286,10 @@ static void refs_fuse_ll_op_forget(
 		sys_log_perror(err, "Error while releasing node (ignored)");
 	}
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, nlookup=%lu): %d (%s)",
-		__FUNCTION__, req, ino, nlookup, 0, strerror(0));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", nlookup=%" PRIu64 ")): %d "
+		"(%s)",
+		__FUNCTION__, req, PRAX64(ino), PRAu64(nlookup), 0,
+		strerror(0));
 
 	fuse_reply_none(req);
 }
@@ -1307,8 +1314,8 @@ static void refs_fuse_ll_op_getattr(
 
 	memset(&attributes, 0, sizeof(attributes));
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, fi=%p)",
-		__FUNCTION__, req, ino, fi);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", fi=%p)",
+		__FUNCTION__, req, PRAX64(ino), fi);
 
 	attributes.requested =
 		FSAPI_NODE_ATTRIBUTE_TYPE_SIZE |
@@ -1341,8 +1348,8 @@ static void refs_fuse_ll_op_getattr(
 		/* const fsapi_node_attributes *attributes */
 		&attributes);
 out:
-	sys_log_debug("%s(req=%p, ino=0x%lX, fi=%p): %d (%s)",
-		__FUNCTION__, req, ino, fi, err, strerror(err));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", fi=%p): %d (%s)",
+		__FUNCTION__, req, PRAX64(ino), fi, err, strerror(err));
 
 	if(err) {
 		fuse_reply_err(req, err);
@@ -1370,8 +1377,8 @@ static void refs_fuse_ll_op_readlink(
 
 	memset(&attributes, 0, sizeof(attributes));
 
-	sys_log_debug("%s(req=%p, ino=0x%lX)",
-		__FUNCTION__, req, ino);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ")",
+		__FUNCTION__, req, PRAX64(ino));
 
 	attributes.requested =
 		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
@@ -1398,8 +1405,8 @@ static void refs_fuse_ll_op_readlink(
 		/* size_t symlink_data_length */
 		attributes.symlink_target_length);
 out:
-	sys_log_debug("%s(req=%p, ino=0x%lX): %d (%s)",
-		__FUNCTION__, req, ino, err, strerror(err));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 "): %d (%s)",
+		__FUNCTION__, req, PRAX64(ino), err, strerror(err));
 
 	if(err) {
 		fuse_reply_err(req, err);
@@ -1431,8 +1438,8 @@ static void refs_fuse_ll_op_open(
 	int err = 0;
 	fsapi_node_attributes attributes;
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, fi=%p)",
-		__FUNCTION__, req, ino, fi);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", fi=%p)",
+		__FUNCTION__, req, PRAX64(ino), fi);
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -1454,8 +1461,8 @@ static void refs_fuse_ll_op_open(
 	/* No need to invalidate caches. This is read-only data. */
 	fi->keep_cache = 1;
 out:
-	sys_log_debug("%s(req=%p, ino=0x%lX, fi=%p): %d (%s)",
-		__FUNCTION__, req, ino, fi, -err, strerror(err));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", fi=%p): %d (%s)",
+		__FUNCTION__, req, PRAX64(ino), fi, -err, strerror(err));
 
 	if(err) {
 		fuse_reply_err(req, err);
@@ -1489,9 +1496,9 @@ static void refs_fuse_ll_op_read(
 	memset(&iohandler_context, 0, sizeof(iohandler_context));
 	memset(&iohandler, 0, sizeof(iohandler));
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, size=%" PRIuz ", off=%" PRId64 ", "
-		"fi=%p)",
-		__FUNCTION__, req, ino, PRAuz(size), PRAd64(off), fi);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", size=%" PRIuz ", "
+		"off=%" PRId64 ", fi=%p)",
+		__FUNCTION__, req, PRAX64(ino), PRAuz(size), PRAd64(off), fi);
 
 	err = sys_malloc(size, &buf);
 	if(err) {
@@ -1517,9 +1524,9 @@ static void refs_fuse_ll_op_read(
 		/* fsapi_iohandler *iohandler */
 		&iohandler);
 out:
-	sys_log_debug("%s(req=%p, ino=0x%lX, size=%" PRIuz ", off=%" PRId64 ", "
-		"fi=%p): %" PRIdz " (%s)",
-		__FUNCTION__, req, ino, PRAuz(size), PRAd64(off), fi,
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", size=%" PRIuz ", "
+		"off=%" PRId64 ", fi=%p): %" PRIdz " (%s)",
+		__FUNCTION__, req, PRAX64(ino), PRAuz(size), PRAd64(off), fi,
 		PRAdz(err), strerror(err));
 
 	if(err) {
@@ -1548,8 +1555,8 @@ static void refs_fuse_ll_op_statfs(
 
 	memset(&attributes, 0, sizeof(attributes));
 
-	sys_log_debug("%s(req=%p, ino=0x%lX)",
-		__FUNCTION__, req, ino);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ")",
+		__FUNCTION__, req, PRAX64(ino));
 
 	attributes.requested =
 		FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE |
@@ -1578,8 +1585,8 @@ static void refs_fuse_ll_op_statfs(
 		stvbuf.f_bfree = attributes.free_blocks;
 	}
 out:
-	sys_log_debug("%s(req=%p, ino=0x%lX): %d (%s)",
-		__FUNCTION__, req, ino, err, strerror(err));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 "): %d (%s)",
+		__FUNCTION__, req, PRAX64(ino), err, strerror(err));
 
 	if(err) {
 		fuse_reply_err(req, err);
@@ -1596,11 +1603,11 @@ static void refs_fuse_ll_op_release(
 {
 	int err = 0;
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, fi=%p)",
-		__FUNCTION__, req, ino, fi);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", fi=%p)",
+		__FUNCTION__, req, PRAX64(ino), fi);
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, fi=%p): %d (%s)",
-		__FUNCTION__, req, ino, fi, err, strerror(err));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", fi=%p): %d (%s)",
+		__FUNCTION__, req, PRAX64(ino), fi, err, strerror(err));
 
 	fuse_reply_err(req, err);
 }
@@ -1719,9 +1726,9 @@ static void refs_fuse_ll_op_readdir(
 	memset(&context, 0, sizeof(context));
 	memset(&attributes, 0, sizeof(attributes));
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, size=%" PRIuz ", off=%" PRId64 ", "
-		"fi=%p)",
-		__FUNCTION__, req, ino, PRAuz(size), PRAd64(off), fi);
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", size=%" PRIuz ", "
+		"off=%" PRId64 ", fi=%p)",
+		__FUNCTION__, req, PRAX64(ino), PRAuz(size), PRAd64(off), fi);
 
 	err = sys_malloc(size, &dirbuf);
 	if(err) {
@@ -1843,10 +1850,10 @@ static void refs_fuse_ll_op_readdir(
 		goto out;
 	}
 out:
-	sys_log_debug("%s(req=%p, ino=0x%lX, size=%" PRIuz ", off=%" PRId64 ", "
-		"fi=%p): %d (%s)",
-		__FUNCTION__, req, ino, PRAuz(size), PRAd64(off), fi, err,
-		strerror(err));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", size=%" PRIuz ", "
+		"off=%" PRId64 ", fi=%p): %d (%s)",
+		__FUNCTION__, req, PRAX64(ino), PRAuz(size), PRAd64(off), fi,
+		err, strerror(err));
 
 	if(err) {
 		fuse_reply_err(req, err);
@@ -1896,9 +1903,10 @@ static void refs_fuse_ll_op_getxattr(
 	memset(&context, 0, sizeof(context));
 	memset(&buffer_context, 0, sizeof(buffer_context));
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, name=\"%s\", size=%" PRIuz ", "
-		"position=%" PRIu32 ")",
-		__FUNCTION__, req, ino, name, PRAuz(size), PRAu32(position));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", name=\"%s\", "
+		"size=%" PRIuz ", position=%" PRIu32 ")",
+		__FUNCTION__, req, PRAX64(ino), name, PRAuz(size),
+		PRAu32(position));
 
 	if(!size) {
 		context.name = name;
@@ -2002,8 +2010,8 @@ static void refs_fuse_ll_op_listxattr(
 
 	memset(&context, 0, sizeof(context));
 
-	sys_log_debug("%s(req=%p, ino=0x%lX, size=%" PRIuz ")",
-		__FUNCTION__, req, ino, PRAuz(size));
+	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", size=%" PRIuz ")",
+		__FUNCTION__, req, PRAX64(ino), PRAuz(size));
 
 	if(size) {
 		err = sys_malloc(size, &buf);

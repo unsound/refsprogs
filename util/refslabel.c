@@ -167,6 +167,8 @@ int main(int argc, char **argv)
 		NULL,
 		/* refs_block_map **block_map */
 		NULL,
+		/* refs_node_cache **node_cache */
+		NULL,
 		/* const u64 *start_node */
 		NULL,
 		/* const u64 *object_id */

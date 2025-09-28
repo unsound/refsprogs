@@ -527,6 +527,9 @@ static inline int sys_device_pread(sys_device *const dev, const u64 offset,
 	int err = 0;
 	ssize_t res;
 
+	sys_log_debug("pread: offset=%" PRIu64 " nbytes=%" PRIuz,
+		PRAu64(offset), PRAuz(nbytes));
+
 	if(offset > INT64_MAX || nbytes > SSIZE_MAX) {
 		return EINVAL;
 	}

@@ -176,7 +176,8 @@ static int read_and_print_boot_sector(sys_device *const dev,
 		goto out;
 	}
 
-	emitln("%s sector:", "Boot");
+	emitln("%s sector (physical sector %" PRIu64 " / 0x%" PRIX64 "):",
+		"Boot", PRAu64(0), PRAX64(0));
 
 	print_boot_sector(&bs);
 
@@ -324,6 +325,8 @@ int main(int argc, char **argv)
 				/* REFS_LEVEL1_NODE **secondary_level1_node */
 				NULL,
 				/* refs_block_map **block_map */
+				NULL,
+				/* refs_node_cache **node_cache */
 				NULL,
 				/* const u64 *start_node */
 				NULL,
