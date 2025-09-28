@@ -7282,7 +7282,7 @@ static int parse_reparse_point_attribute(
 		while(k < reparse_data_size) {
 			const u16 offset = k - k_start;
 			const char *name_label = NULL;
-			u16 name_size;
+			u16 name_size = 0;
 			char *cname = NULL;
 			size_t cname_length = 0;
 
