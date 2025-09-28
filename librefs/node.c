@@ -5773,7 +5773,7 @@ static int parse_attribute_non_resident_data_value(
 	for(k = 0; k < number_of_extents; ++k) {
 		u64 first_physical_block = 0;
 		u64 first_logical_block = 0;
-		u32 block_count = 0;
+		u64 block_count = 0;
 
 		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 ":",
 			PRAu32(k + 1),
