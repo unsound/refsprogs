@@ -519,7 +519,7 @@ u64 refs_node_logical_to_physical_block_number(
 
 	u64 physical_block_number = 0;
 
-	if(bs->version_major < 3 || logical_block_number < linear_block_count) {
+	if(bs->version_major < 2 || logical_block_number < linear_block_count) {
 		/* All blocks below number 4096 / 0x1000 are identity mapped.
 		 * The blocks with object ID 0xB, 0xC and (apparently) 0x22 must
 		 * exist within this range, as they hold the key to mapping all
@@ -2480,7 +2480,7 @@ static int parse_unknown_leaf_value(
 {
 	const u32 block_index_unit = crawl_context->block_index_unit;
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
@@ -2877,7 +2877,7 @@ static int parse_generic_block(
 		/* size_t indent */
 		indent + 1,
 		/* sys_bool is_v3 */
-		is_v3,
+		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 		/* const u8 *entry */
 		entry,
 		/* u32 entry_size */
@@ -3667,6 +3667,7 @@ static int parse_0xB_0xC_key(
 }
 
 static void parse_level2_block_0xB_0xC_table_leaf_value(
+		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -3679,8 +3680,11 @@ static void parse_level2_block_0xB_0xC_table_leaf_value(
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
+	const sys_bool is_v3plus =
+		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 
 	u16 i = 0;
+
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
 		"leaf", PRAu16(value_offset), PRAX16(value_offset));
@@ -3692,8 +3696,23 @@ static void parse_level2_block_0xB_0xC_table_leaf_value(
 	print_unknown32(prefix, indent, value, &value[0x14]);
 	print_unknown64(prefix, indent, value, &value[0x18]);
 	print_unknown64(prefix, indent, value, &value[0x20]);
-	print_unknown64(prefix, indent, value, &value[0x28]);
-	print_unknown32(prefix, indent, value, &value[0x30]);
+	if(!is_v3plus) {
+		print_le64_dechex("Block range start", prefix, indent, value,
+			&value[0x28]);
+		if(out_block_range_start) {
+			*out_block_range_start = read_le64(&value[0x28]);
+		}
+
+		print_le64_dechex("Block range length", prefix, indent, value,
+			&value[0x30]);
+		if(out_block_range_length) {
+			*out_block_range_length = read_le64(&value[0x30]);
+		}
+	}
+	else {
+		print_unknown64(prefix, indent, value, &value[0x28]);
+		print_unknown32(prefix, indent, value, &value[0x30]);
+	}
 	print_unknown32(prefix, indent, value, &value[0x34]);
 
 	i = 0x40;
@@ -3705,7 +3724,7 @@ static void parse_level2_block_0xB_0xC_table_leaf_value(
 
 		i = 0x50;
 
-		if(value_size - i > 0x10) {
+		if(is_v3plus && value_size - i > 0x10) {
 			print_data_with_base(prefix, indent, i, value_size,
 				&value[i], (value_size - i) - 0x10);
 			print_le64_dechex("Block range start", prefix, indent,
@@ -3746,16 +3765,10 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		const u32 entry_size,
 		void *const context)
 {
-#if 0
-	const u32 block_index_unit = crawl_context->block_index_unit;
-	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
-#endif
 	block_range *const range = (block_range*) context;
 
 	int err = 0;
 
-	(void) crawl_context;
 	(void) object_id;
 	(void) key;
 	(void) key_offset;
@@ -3763,6 +3776,8 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 	(void) entry_offset;
 
 	parse_level2_block_0xB_0xC_table_leaf_value(
+		/* refs_node_crawl_context *crawl_context */
+		crawl_context,
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* const char *prefix */
@@ -3801,23 +3816,22 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		const u32 entry_size,
 		void *const context)
 {
-	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
 	refs_block_map *const mappings = (refs_block_map*) context;
 
 	int err = 0;
 	block_range leaf_range;
 
 	(void) object_id;
-	(void) key_offset;
-	(void) is_v3;
 	(void) key;
+	(void) key_offset;
 	(void) key_size;
 	(void) entry_offset;
 
 	memset(&leaf_range, 0, sizeof(leaf_range));
 
 	parse_level2_block_0xB_0xC_table_leaf_value(
+		/* refs_node_crawl_context *crawl_context */
+		crawl_context,
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* const char *prefix */
@@ -4355,7 +4369,7 @@ static int parse_level2_leaf_value(
 		void *const context)
 {
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 
 	int err = 0;
 
@@ -5217,7 +5231,7 @@ static int parse_attribute_named_stream_key(
 		size_t *const out_cstr_length)
 {
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 	const u16 j_start = *jp;
@@ -6381,7 +6395,7 @@ static int parse_attribute_named_stream_extent_value(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	const u32 block_index_unit = crawl_context->block_index_unit;
 	const u16 j_start = *jp;
 
@@ -6641,7 +6655,7 @@ static int parse_non_resident_attribute_list_value(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	const u32 block_index_unit = crawl_context->block_index_unit;
 	const u16 j_start = *jp;
 	const u16 value_end = j_start + value_size;
@@ -6865,7 +6879,7 @@ static int parse_attribute_leaf_value(
 		void *const context)
 {
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 	const u16 attribute_type_offset =
@@ -7410,7 +7424,7 @@ int parse_level3_long_value(
 		void *const context)
 {
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	const u16 key_type = (key_size < 2) ? 0 : read_le16(&key[0]);
 	const u64 creation_time =
 		(value_size < 40 + 8) ? 0 : read_le64(&value[40]);
@@ -7744,7 +7758,7 @@ int parse_level3_long_value(
 		/* size_t indent */
 		indent + 1,
 		/* sys_bool is_v3 */
-		is_v3,
+		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 		/* const u8 *entry */
 		&value[i],
 		/* u32 entry_size */
@@ -8445,7 +8459,7 @@ int parse_level3_short_value(
 		void *const context)
 {
 	const sys_bool is_v3 =
-		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	const u64 object_id =
 		(value_size < (is_v3 ? 8 : 0) + 8) ? 0 :
 		read_le64(&value[is_v3 ? 8 : 0]);
@@ -8893,7 +8907,7 @@ static int crawl_volume_metadata(
 		const u64 *const start_node,
 		const u64 *const object_id)
 {
-	const sys_bool is_v3 = (bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE;
+	const sys_bool is_v3 = (bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 
 	refs_node_print_visitor *const print_visitor =
 		(visitor && visitor->print_visitor.print_message) ?
