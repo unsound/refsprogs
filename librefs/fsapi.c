@@ -862,7 +862,7 @@ static int fsapi_lookup_by_posix_path(
 			/* refs_rb_tree_node_cmp_f cmp */
 			fsapi_lookup_by_posix_path_compare);
 		if(!vol->cache_tree) {
-			err = (err = errno) ? err : ENOMEM;
+			err = ENOMEM;
 			goto out;
 		}
 	}
@@ -1204,7 +1204,7 @@ static int fsapi_lookup_by_posix_path(
 				/* size_t *out_record_size */
 				&record_size);
 			if(err) {
-				sys_log_perror(errno, "lookup error");
+				sys_log_perror(err, "lookup error");
 				goto out;
 			}
 			else if(!parent_directory_object_id) {
@@ -1956,8 +1956,8 @@ static int fsapi_node_get_attributes_common(
 
 	attributes->valid = provided_mask;
 out:
-	sys_log_debug("%s(node=%p, attributes=%p): %d (%s)",
-		__FUNCTION__, node, attributes, err, strerror(err));
+	sys_log_pdebug(err, "%s(node=%p, attributes=%p)",
+		__FUNCTION__, node, attributes);
 
 	return err;
 }
@@ -2202,6 +2202,20 @@ int fsapi_volume_get_attributes(
 		vol,
 		/* fsapi_volume_attributes *out_attrs */
 		out_attrs);
+
+	return err;
+}
+
+int fsapi_volume_sync(
+		fsapi_volume *vol)
+{
+	int err;
+
+	(void) vol;
+
+	/* Syncing is always successful because there's nothing to sync at the
+	 * moment. */
+	err = 0;
 
 	return err;
 }
@@ -2839,6 +2853,22 @@ int fsapi_node_get_attributes(
 	return err;
 }
 
+int fsapi_node_set_attributes(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		fsapi_node_attributes *attributes)
+{
+	int err;
+
+	(void) vol;
+	(void) node;
+	(void) attributes;
+
+	err = EROFS;
+
+	return err;
+}
+
 typedef struct {
 	sys_bool is_short_entry;
 	u16 data_size;
@@ -3294,6 +3324,136 @@ out:
 	return err;
 }
 
+int fsapi_node_write(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		u64 offset,
+		size_t size,
+		fsapi_iohandler *iohandler)
+{
+	int err;
+
+	(void) vol;
+	(void) node;
+	(void) offset;
+	(void) size;
+	(void) iohandler;
+
+	err = EROFS;
+
+	return err;
+}
+
+int fsapi_node_sync(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		sys_bool data_only)
+{
+	int err;
+
+	(void) vol;
+	(void) node;
+	(void) data_only;
+
+	/* Syncing is always successful because there's nothing to sync at the
+	 * moment. */
+	err = 0;
+
+	return err;
+}
+
+int fsapi_node_create(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *name,
+		size_t name_length,
+		fsapi_node_attributes *attributes,
+		fsapi_node **out_node)
+{
+	int err;
+
+	(void) vol;
+	(void) node;
+	(void) name;
+	(void) name_length;
+	(void) attributes;
+	(void) out_node;
+
+	err = EROFS;
+
+	return err;
+}
+
+int fsapi_node_hardlink(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		fsapi_node *link_parent,
+		const char *link_name,
+		size_t link_name_length,
+		fsapi_node_attributes *out_attributes)
+{
+	int err;
+
+	(void) vol;
+	(void) node;
+	(void) link_parent;
+	(void) link_name;
+	(void) link_name_length;
+	(void) out_attributes;
+
+	err = EROFS;
+
+	return err;
+}
+
+int fsapi_node_rename(
+		fsapi_volume *vol,
+		fsapi_node *source_dir_node,
+		const char *source_name,
+		size_t source_name_length,
+		fsapi_node *target_dir_node,
+		const char *target_name,
+		size_t target_name_length,
+		fsapi_rename_flags flags)
+{
+	int err;
+
+	(void) vol;
+	(void) source_dir_node;
+	(void) source_name;
+	(void) source_name_length;
+	(void) target_dir_node;
+	(void) target_name;
+	(void) target_name_length;
+	(void) flags;
+
+	err = EROFS;
+
+	return err;
+}
+
+int fsapi_node_remove(
+		fsapi_volume *vol,
+		fsapi_node *parent_node,
+		sys_bool is_directory,
+		const char *name,
+		size_t name_length,
+		fsapi_node **out_removed_node)
+{
+	int err;
+
+	(void) vol;
+	(void) parent_node;
+	(void) is_directory;
+	(void) name;
+	(void) name_length;
+	(void) out_removed_node;
+
+	err = EROFS;
+
+	return err;
+}
+
 typedef struct {
 	refs_volume *vol;
 	sys_bool show_eas;
@@ -3733,5 +3893,49 @@ int fsapi_node_read_extended_attribute(
 		}
 	}
 out:
+	return err;
+}
+
+int fsapi_node_write_extended_attribute(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *xattr_name,
+		size_t xattr_name_length,
+		fsapi_node_extended_attribute_flags flags,
+		u64 offset,
+		size_t size,
+		fsapi_iohandler *iohandler)
+{
+	int err;
+
+	(void) vol;
+	(void) node;
+	(void) xattr_name;
+	(void) xattr_name_length;
+	(void) flags;
+	(void) offset;
+	(void) size;
+	(void) iohandler;
+
+	err = EROFS;
+
+	return err;
+}
+
+int fsapi_node_remove_extended_attribute(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *xattr_name,
+		size_t xattr_name_length)
+{
+	int err;
+
+	(void) vol;
+	(void) node;
+	(void) xattr_name;
+	(void) xattr_name_length;
+
+	err = EROFS;
+
 	return err;
 }
