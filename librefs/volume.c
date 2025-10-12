@@ -29,12 +29,6 @@
 #include "layout.h"
 #include "node.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <stdint.h>
-#include <inttypes.h>
-
 int refs_volume_create(
 		sys_device *const dev,
 		refs_volume **const out_vol)
