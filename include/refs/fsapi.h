@@ -226,33 +226,7 @@ typedef struct {
 	size_t symlink_target_length;
 } fsapi_node_attributes;
 
-/**
- * The handler of an I/O operation, implementing a method to process it.
- */
-typedef struct {
-	/** The context that is passed to @ref fsapi_iohandler::handle_io. */
-	void *context;
-
-	/**
-	 * The I/O handler callback function.
-	 *
-	 * Accepts a device, offset and size and processes I/O as implemented by
-	 * the handler.
-	 */
-	int (*handle_io)(
-		void *context,
-		sys_device *dev,
-		u64 offset,
-		size_t size);
-
-	/**
-	 * Copies data from a memory buffer into the I/O handler's backend.
-	 */
-	int (*copy_data)(
-		void *context,
-		const void *data,
-		size_t size);
-} fsapi_iohandler;
+typedef sys_iohandler fsapi_iohandler;
 
 typedef enum {
 	FSAPI_RENAME_FLAG_EXCHANGE = 0x1,

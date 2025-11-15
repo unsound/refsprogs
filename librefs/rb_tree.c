@@ -173,6 +173,7 @@ refs_rb_tree_dealloc (struct refs_rb_tree *self, refs_rb_tree_node_f node_cb) {
     }
 }
 
+#if !(defined(__linux__) && defined(__KERNEL__))
 int
 refs_rb_tree_test (struct refs_rb_tree *self, struct refs_rb_node *root) {
     int lh, rh;
@@ -215,6 +216,7 @@ refs_rb_tree_test (struct refs_rb_tree *self, struct refs_rb_node *root) {
             return 0;
     }
 }
+#endif /* !(defined(__linux__) && defined(__KERNEL__)) */
 
 void *
 refs_rb_tree_find(struct refs_rb_tree *self, void *value) {
@@ -436,7 +438,7 @@ refs_rb_tree_size (struct refs_rb_tree *self) {
 struct refs_rb_iter *
 refs_rb_iter_alloc (void) {
     struct refs_rb_iter *iter = NULL;
-    if(sys_malloc(sizeof(struct refs_rb_node), &iter)) {
+    if(sys_malloc(sizeof(struct refs_rb_iter), &iter)) {
         return NULL;
     }
     return iter;
