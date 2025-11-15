@@ -30,13 +30,23 @@
 // For more information, please refer to <http://unlicense.org/>
 //
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "rb_tree.h"
+
+#include "sys.h"
 
 // rb_node
 
 struct refs_rb_node *
 refs_rb_node_alloc (void) {
-    return malloc(sizeof(struct refs_rb_node));
+    struct refs_rb_node *node = NULL;
+    if(sys_malloc(sizeof(struct refs_rb_node), &node)) {
+        return NULL;
+    }
+    return node;
 }
 
 struct refs_rb_node *
@@ -57,7 +67,7 @@ refs_rb_node_create (void *value) {
 void
 refs_rb_node_dealloc (struct refs_rb_node *self) {
     if (self) {
-        free(self);
+        sys_free(&self);
     }
 }
 
@@ -110,7 +120,11 @@ refs_rb_tree_node_dealloc_cb (struct refs_rb_tree *self, struct refs_rb_node *no
 
 struct refs_rb_tree *
 refs_rb_tree_alloc (void) {
-    return malloc(sizeof(struct refs_rb_tree));
+    struct refs_rb_tree *tree = NULL;
+    if(sys_malloc(sizeof(struct refs_rb_tree), &tree)) {
+        return NULL;
+    }
+    return tree;
 }
 
 struct refs_rb_tree *
@@ -155,7 +169,7 @@ refs_rb_tree_dealloc (struct refs_rb_tree *self, refs_rb_tree_node_f node_cb) {
                 node = save;
             }
         }
-        free(self);
+        sys_free(&self);
     }
 }
 
@@ -421,7 +435,11 @@ refs_rb_tree_size (struct refs_rb_tree *self) {
 
 struct refs_rb_iter *
 refs_rb_iter_alloc (void) {
-    return malloc(sizeof(struct refs_rb_iter));
+    struct refs_rb_iter *iter = NULL;
+    if(sys_malloc(sizeof(struct refs_rb_node), &iter)) {
+        return NULL;
+    }
+    return iter;
 }
 
 struct refs_rb_iter *
@@ -442,7 +460,7 @@ refs_rb_iter_create (void) {
 void
 refs_rb_iter_dealloc (struct refs_rb_iter *self) {
     if (self) {
-        free(self);
+        sys_free(&self);
     }
 }
 
