@@ -22,6 +22,48 @@
 #ifndef _REFS_SYS_H
 #define _REFS_SYS_H
 
+typedef struct sys_iohandler sys_iohandler;
+
+#if defined(__linux__) && defined(__KERNEL__)
+#include "sys_linux.h"
+#else
 #include "sys_user.h"
+#endif /* defined(__linux__) && defined(__KERNEL__) ... */
+
+/**
+ * The handler of an I/O operation, implementing a method to process it.
+ */
+struct sys_iohandler {
+	/** The context that is passed to @ref fsapi_iohandler::handle_io. */
+	void *context;
+
+	/**
+	 * The I/O handler callback function.
+	 *
+	 * Accepts a device, offset and size and processes I/O as implemented by
+	 * the handler.
+	 */
+	int (*handle_io)(
+		void *context,
+		sys_device *dev,
+		u64 offset,
+		size_t size);
+
+	/**
+	 * Copies data from a memory buffer into the I/O handler's backend.
+	 */
+	int (*copy_data)(
+		void *context,
+		const void *data,
+		size_t size);
+
+	/**
+	 * Copies data from the I/O handler's backend to a memory buffer.
+	 */
+	int (*get_data)(
+		void *context,
+		void *data,
+		size_t size);
+};
 
 #endif /* !defined(_REFS_SYS_H) */

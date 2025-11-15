@@ -24,7 +24,9 @@
 
 #include "sys.h"
 
+#if !(defined(__linux__) && defined(__KERNEL__))
 #include <time.h>
+#endif /* !(defined(__linux__) && defined(__KERNEL__)) */
 
 #define emit(prefix, indent, format, ...) \
 	do { \
@@ -67,8 +69,14 @@
 
 static inline const char* get_ctime(s64 sec)
 {
+#if !(defined(__linux__) && defined(__KERNEL__))
 	time_t sec_time = (time_t) sec;
 	return asctime(gmtime(&sec_time));
+#else
+	static const char ctime_string[26] = { 0 };
+	/* TODO: Does this type of function exist in the kernel? */
+	return ctime_string;
+#endif /* !(defined(__linux__) && defined(__KERNEL__)) ... */
 }
 
 static inline sys_bool zeroed(const void *data, size_t size)

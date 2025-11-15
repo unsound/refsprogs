@@ -37,7 +37,7 @@
 
 #define fsapi_log_leave(err, fmt, ...) \
 	sys_log_trace("Leaving %s(" fmt "): %s%s%d%s", __FUNCTION__, \
-		##__VA_ARGS__, err ? strerror(err) : "", \
+		##__VA_ARGS__, err ? sys_strerror(err) : "", \
 		err ? " (" : "", err, err ? ")" : "")
 
 typedef struct fsapi_volume fsapi_volume;
@@ -2403,6 +2403,9 @@ int fsapi_node_lookup(
 			child_node,
 			/* fsapi_node_attributes *attributes */
 			out_attributes);
+		if(err) {
+			goto out;
+		}
 	}
 
 	if(out_child_node) {

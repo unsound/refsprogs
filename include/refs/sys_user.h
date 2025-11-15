@@ -228,6 +228,11 @@ static inline u8 sys_fls64(u64 value)
 #define SYS_LOG_TRACE_ENABLED 0
 #endif
 
+static inline const char* sys_strerror(int err)
+{
+	return strerror(err);
+}
+
 /**
  * No-op log handler that only exists to be able to statically check the format
  * string and arguments for errors when logging is turned off.
