@@ -2288,7 +2288,7 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 		node, PRAu64(node->refcount));
 
 	fsapi_node_destroy(
-		/* fsapi_node *cached_node */
+		/* fsapi_node **node */
 		&node);
 	sys_free(&_node);
 }
