@@ -182,6 +182,7 @@ struct refs_node_walk_visitor {
 typedef struct refs_node_cache refs_node_cache;
 
 int refs_node_cache_create(
+		size_t node_size,
 		size_t max_node_count,
 		refs_node_cache **out_cache);
 
