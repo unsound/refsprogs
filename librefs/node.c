@@ -151,6 +151,7 @@ static int refs_node_cache_item_compare(
 }
 
 int refs_node_cache_create(
+		const size_t node_size,
 		const size_t max_node_count,
 		refs_node_cache **const out_cache)
 {
@@ -170,6 +171,7 @@ int refs_node_cache_create(
 		goto out;
 	}
 
+	(*out_cache)->node_size = node_size;
 	(*out_cache)->node_tree = node_tree;
 	(*out_cache)->max_node_count = max_node_count;
 out:
@@ -338,11 +340,30 @@ static int refs_node_cache_insert(
 {
 	int err = 0;
 	refs_node_cache_item *insert_item = NULL;
+	sys_bool insert_item_allocated = SYS_FALSE;
+
+	if(node_size != cache->node_size) {
+		sys_log_critical("Attempted to insert a node with different "
+			"size from the cache node size. Inserted node size: "
+			"%" PRIuz " Cache node size: %" PRIuz,
+			PRAuz(node_size), PRAuz(cache->node_size));
+		err = ENXIO;
+		goto out;
+	}
+
+	sys_log_debug("Checking if we need to evict a cache item. Current node "
+		"count: %" PRIuz " Max node count: %" PRIuz,
+		PRAuz(cache->cur_node_count), PRAuz(cache->max_node_count));
 
 	if(cache->cur_node_count == cache->max_node_count) {
-		sys_log_debug("Evicting cache block %" PRIu64 " because the "
-			"cache is full.",
-			PRAu64(cache->lru_list->start_block));
+		sys_log_debug("    Reusing least recently used cache block "
+			"%" PRIu64 " (%p) because the cache is full.",
+			PRAu64(cache->lru_list->start_block),
+			cache->lru_list);
+
+		/* Reuse the least recently used item. */
+		insert_item = cache->lru_list;
+
 		if(!refs_node_cache_remove(
 			/* refs_node_cache *cache */
 			cache,
@@ -356,15 +377,20 @@ static int refs_node_cache_insert(
 			goto out;
 		}
 	}
+	else {
+		sys_log_debug("    No, cache is not full.");
 
-	err = sys_calloc(sizeof(*insert_item), &insert_item);
-	if(err) {
-		goto out;
-	}
+		err = sys_calloc(sizeof(*insert_item), &insert_item);
+		if(err) {
+			goto out;
+		}
 
-	err = sys_malloc(node_size, &insert_item->data);
-	if(err) {
-		goto out;
+		insert_item_allocated = SYS_TRUE;
+
+		err = sys_malloc(node_size, &insert_item->data);
+		if(err) {
+			goto out;
+		}
 	}
 
 	memcpy(insert_item->data, node_data, node_size);
@@ -378,17 +404,17 @@ static int refs_node_cache_insert(
 		insert_item))
 	{
 		err = ENOMEM;
+		goto out;
 	}
-	else {
-		refs_node_cache_item_add_to_lru(
-			/* refs_node_cache_item *item */
-			insert_item);
 
-		/* Ownership passed to the cache. */
-		insert_item = NULL;
-	}
+	refs_node_cache_item_add_to_lru(
+		/* refs_node_cache_item *item */
+		insert_item);
+
+	/* Ownership passed to the cache. */
+	insert_item = NULL;
 out:
-	if(insert_item) {
+	if(insert_item && insert_item_allocated) {
 		if(insert_item->data) {
 			sys_free(&insert_item->data);
 		}
@@ -8953,6 +8979,8 @@ static int crawl_volume_metadata(
 	if(node_cachep) {
 		if(!*node_cachep) {
 			err = refs_node_cache_create(
+				/* size_t node_size */
+				block_size,
 				/* size_t max_node_count */
 				128,
 				/* refs_node_cache **const out_cache */
