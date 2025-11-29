@@ -230,7 +230,7 @@ static void refs_node_cache_item_remove_from_lru(
 
 static void refs_node_cache_remove_rb_tree_callback(
 		struct refs_rb_tree *const self,
-		struct refs_rb_node *const node)
+		struct refs_rb_node *node)
 {
 	refs_node_cache_item *const item = (refs_node_cache_item*) node->value;
 
@@ -239,6 +239,8 @@ static void refs_node_cache_remove_rb_tree_callback(
 	refs_node_cache_item_remove_from_lru(
 		/* refs_node_cache_item *item */
 		item);
+
+	sys_free(&node);
 }
 
 static sys_bool refs_node_cache_remove(
