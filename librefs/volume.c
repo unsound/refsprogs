@@ -135,7 +135,7 @@ int refs_volume_create(
 	if(!device_sector_size && bs_size != filesystem_sector_size) {
 		REFS_BOOT_SECTOR *new_bs = NULL;
 
-		err = sys_realloc(bs, filesystem_sector_size, &new_bs);
+		err = sys_realloc(bs, bs_size, filesystem_sector_size, &new_bs);
 		if(err) {
 			sys_log_perror(err, "Error while shrinking boot "
 				"sector to %" PRIu32 " bytes",
@@ -169,11 +169,11 @@ int refs_volume_create(
 	vol = NULL;
 out:
 	if(bs) {
-		sys_free(&bs);
+		sys_free(sizeof(*bs), &bs);
 	}
 
 	if(vol) {
-		sys_free(&vol);
+		sys_free(sizeof(*vol), &vol);
 	}
 
 	return err;
@@ -196,8 +196,8 @@ void refs_volume_destroy(
 			&vol->block_map);
 	}
 
-	sys_free(&vol->bs);
-	sys_free(out_vol);
+	sys_free(sizeof(*vol->bs), &vol->bs);
+	sys_free(sizeof(**out_vol), out_vol);
 }
 
 typedef struct {
@@ -481,8 +481,9 @@ static int next_path_element(const void **const path,
 	size_t element_length;
 
 	sys_log_trace("Entering: path=%p path_size=%" PRIuz " out_element=%p "
-		"out_element_length=%" PRIuz,
-		path, PRAuz(path_size), out_element, PRAuz(out_element_length));
+		"out_element_length=%p (->%" PRIuz ")",
+		path, PRAuz(path_size), out_element, out_element_length,
+		PRAuz(out_element_length ? *out_element_length : 0));
 
 	if(!pathp_len) {
 		sys_log_error("Got empty subpath when getting next POSIX path "
@@ -527,9 +528,13 @@ static int next_path_element(const void **const path,
 		out_element_tmp = (refschar*) out_element;
 
 		err = sys_unistr_encode(
+			/* const char *ins */
 			pathp,
+			/* size_t ins_len */
 			element_length,
+			/* refschar **outs */
 			&out_element_tmp,
+			/* size_t *outs_len */
 			out_element_length);
 		if(err == ERANGE) {
 			goto out;
@@ -540,7 +545,8 @@ static int next_path_element(const void **const path,
 			goto out;
 		}
 		else if(out_element_tmp != out_element) {
-			sys_free(&out_element_tmp);
+			sys_free((*out_element_length + 1) *
+				sizeof(out_element_tmp[0]), &out_element_tmp);
 			sys_log_critical("Preallocated buffer was "
 				"unexpectedly reallocated when "
 				"converting pathname element "
@@ -787,7 +793,8 @@ static int refs_volume_lookup(
 	}
 out:
 	if(cur_element) {
-		sys_free(&cur_element);
+		sys_free(cur_element_capacity * sizeof(cur_element[0]),
+			&cur_element);
 	}
 
 	return err;
@@ -1075,7 +1082,7 @@ int refs_volume_generate_metadata_bitmap(
 	bitmap = NULL;
 out:
 	if(bitmap) {
-		sys_free(&bitmap);
+		sys_free(bitmap_size, &bitmap);
 	}
 
 	return err;

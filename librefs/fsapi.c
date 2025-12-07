@@ -142,8 +142,8 @@ static void fsapi_node_path_element_release(
 			fsapi_node_path_element_release(&(*element)->parent);
 		}
 
-		sys_free(&(*element)->name.rw);
-		sys_free(element);
+		sys_free((*element)->name_length, &(*element)->name.rw);
+		sys_free(sizeof(**element), element);
 	}
 }
 
@@ -489,19 +489,20 @@ static int fsapi_node_deinit(
 		fsapi_node *node)
 {
 	if(node->attributes.symlink_target) {
-		sys_free(&node->attributes.symlink_target);
+		sys_free(node->attributes.symlink_target_length,
+			&node->attributes.symlink_target);
 	}
 
 	if(node->record) {
 		sys_log_debug("Freeing record %p.",
 			 node->record);
-		sys_free(&node->record);
+		sys_free(node->record_size, &node->record);
 	}
 
 	if(node->key) {
 		sys_log_debug("Freeing key %p.",
 			 node->key);
-		sys_free(&node->key);
+		sys_free(node->key_size, &node->key);
 	}
 
 	if(node->path) {
@@ -529,7 +530,7 @@ static int fsapi_node_destroy(
 	fsapi_node_deinit(
 		/* fsapi_node *node */
 		*node);
-	sys_free(node);
+	sys_free(sizeof(**node), node);
 
 	return 0;
 }
@@ -1386,7 +1387,7 @@ static int fsapi_lookup_by_posix_path(
 	}
 out:
 	if(new_path_element) {
-		sys_free(&new_path_element);
+		sys_free(sizeof(*new_path_element), &new_path_element);
 	}
 
 	if(new_node) {
@@ -2013,7 +2014,7 @@ int fsapi_iohandler_buffer_handle_io(
 					bytes_to_transfer);
 			}
 
-			sys_free(&buf);
+			sys_free(buf_size, &buf);
 		}
 		else {
 			err = sys_device_pread(
@@ -2205,11 +2206,11 @@ out:
 		}
 
 		if(root_node) {
-			sys_free(&root_node);
+			sys_free(sizeof(*root_node), &root_node);
 		}
 
 		if(vol) {
-			sys_free(&vol);
+			sys_free(sizeof(*vol), &vol);
 		}
 	}
 
@@ -2290,7 +2291,7 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 	fsapi_node_destroy(
 		/* fsapi_node **node */
 		&node);
-	sys_free(&_node);
+	sys_free(sizeof(*_node), &_node);
 }
 
 int fsapi_volume_unmount(
@@ -2337,15 +2338,16 @@ int fsapi_volume_unmount(
 	}
 
 	if((*vol)->volume_label_cstr) {
-		sys_free(&(*vol)->volume_label_cstr);
+		sys_free((*vol)->volume_label_cstr_length,
+			&(*vol)->volume_label_cstr);
 	}
 
 	refs_volume_destroy(
 		/* refs_volume **out_vol */
 		&(*vol)->vol);
 
-	sys_free(&(*vol)->root_node);
-	sys_free(vol);
+	sys_free(sizeof(*(*vol)->root_node), &(*vol)->root_node);
+	sys_free(sizeof(**vol), vol);
 
 	fsapi_log_leave(0, "vol=%p (->%p)", vol, vol ? *vol : NULL);
 
@@ -2542,7 +2544,7 @@ static int fsapi_node_list_filldir(
 			goto out;
 		}
 
-		sys_free(&context->cname);
+		sys_free(context->cname_length + 1, &context->cname);
 		context->cname_length = 0;
 	}
 
@@ -2610,7 +2612,7 @@ static int fsapi_node_list_filldir(
 	}
 out:
 	if(cname) {
-		sys_free(&cname);
+		sys_free(cname_length + 1, &cname);
 	}
 
 	return err;
@@ -2830,7 +2832,7 @@ static int fsapi_node_list_visit_symlink(
 		context->attributes);
 out:
 	if(context->cname) {
-		sys_free(&context->cname);
+		sys_free(context->cname_length + 1, &context->cname);
 		context->cname_length = 0;
 	}
 
@@ -2916,12 +2918,14 @@ int fsapi_node_list(
 			/* fsapi_node_attributes *attributes */
 			readdir_context.attributes);
 
-		sys_free(&readdir_context.cname);
+		sys_free(readdir_context.cname_length + 1,
+			&readdir_context.cname);
 		readdir_context.cname_length = 0;
 	}
 out:
 	if(readdir_context.cname) {
-		sys_free(&readdir_context.cname);
+		sys_free(readdir_context.cname_length + 1,
+			&readdir_context.cname);
 	}
 
 	fsapi_log_leave(err, "vol=%p, directory_node=%p, attributes=%p, "

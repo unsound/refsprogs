@@ -25,6 +25,10 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 
+#ifndef REFS_SYS_MEMORY_LOGGING
+#define REFS_SYS_MEMORY_LOGGING 0
+#endif
+
 #define UINT32_MAX U32_MAX
 
 #define ENOTSUP ENOTSUPP
@@ -39,6 +43,61 @@ typedef struct {
 	u64 tv_sec;
 	u32 tv_nsec;
 } sys_timespec;
+
+#define PRIdz "zd"
+#define PRIuz "zu"
+#define PRIXz "zX"
+#define PRIbs ".*s"
+#define PRIo8 "hho"
+#define PRId8 "hhd"
+#define PRIu8 "hhu"
+#define PRIx8 "hhx"
+#define PRIX8 "hhX"
+#define PRIo16 "ho"
+#define PRId16 "hd"
+#define PRIu16 "hu"
+#define PRIx16 "hx"
+#define PRIX16 "hX"
+#define PRIo32 "lo"
+#define PRId32 "ld"
+#define PRIu32 "lu"
+#define PRIx32 "lx"
+#define PRIX32 "lX"
+#define PRIo64 "llo"
+#define PRId64 "lld"
+#define PRIu64 "llu"
+#define PRIx64 "llx"
+#define PRIX64 "llX"
+
+#define PRAoz(arg) ((size_t) (arg))
+#define PRAdz(arg) ((ssize_t) (arg))
+#define PRAuz(arg) ((size_t) (arg))
+#define PRAxz(arg) ((size_t) (arg))
+#define PRAXz(arg) ((size_t) (arg))
+#define PRAbs(precision, arg) ((int) (precision)), ((const char*) (arg))
+#define PRAo8(arg) ((unsigned char) (arg))
+#define PRAd8(arg) ((char) (arg))
+#define PRAu8(arg) ((unsigned char) (arg))
+#define PRAx8(arg) ((unsigned char) (arg))
+#define PRAX8(arg) ((unsigned char) (arg))
+#define PRAo16(arg) ((unsigned short) (arg))
+#define PRAd16(arg) ((short) (arg))
+#define PRAu16(arg) ((unsigned short) (arg))
+#define PRAx16(arg) ((unsigned short) (arg))
+#define PRAX16(arg) ((unsigned short) (arg))
+#define PRAo32(arg) ((unsigned long) (arg))
+#define PRAd32(arg) ((long) (arg))
+#define PRAu32(arg) ((unsigned long) (arg))
+#define PRAx32(arg) ((unsigned long) (arg))
+#define PRAX32(arg) ((unsigned long) (arg))
+#define PRAo64(arg) ((unsigned long long) (arg))
+#define PRAd64(arg) ((long long) (arg))
+#define PRAu64(arg) ((unsigned long long) (arg))
+#define PRAx64(arg) ((unsigned long long) (arg))
+#define PRAX64(arg) ((unsigned long long) (arg))
+
+#define PRI0PAD(precision) "0" #precision
+#define PRIPAD(precision) #precision
 
 /* Note: Identical to sys.h, should be in a common header. */
 static inline u8 sys_fls64(u64 value)
@@ -239,9 +298,25 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 #define sys_min(a, b) ((a) < (b) ? (a) : (b))
 #define sys_max(a, b) ((a) > (b) ? (a) : (b))
 
+#if REFS_SYS_MEMORY_LOGGING
+extern atomic_long_t sys_bytes_allocated;
+#endif /* REFS_SYS_MEMORY_LOGGING */
+
 static inline int _sys_malloc(size_t size, void **out_ptr)
 {
-	return (*out_ptr = kmalloc(size, GFP_KERNEL)) ? 0 : ENOMEM;
+	int ret;
+
+	ret = (*out_ptr = kmalloc(size, GFP_KERNEL)) ? 0 : ENOMEM;
+#if REFS_SYS_MEMORY_LOGGING
+	if(!ret) {
+		const long new_bytes_allocated =
+			atomic_long_add_return(size, &sys_bytes_allocated);
+		sys_log_info("malloc(%" PRIuz " (%p)): Total allocated -> %lu",
+			PRAuz(size), *out_ptr, new_bytes_allocated);
+	}
+#endif /* REFS_SYS_MEMORY_LOGGING */
+
+	return ret;
 }
 
 #define sys_malloc(size, out_ptr) \
@@ -249,28 +324,65 @@ static inline int _sys_malloc(size_t size, void **out_ptr)
 
 static inline int _sys_calloc(size_t size, void **out_ptr)
 {
-	return (*out_ptr = kzalloc(size, GFP_KERNEL)) ? 0 : ENOMEM;
+	int ret;
+
+	ret = (*out_ptr = kzalloc(size, GFP_KERNEL)) ? 0 : ENOMEM;
+#if REFS_SYS_MEMORY_LOGGING
+	if(!ret) {
+		const long new_bytes_allocated =
+			atomic_long_add_return(size, &sys_bytes_allocated);
+		sys_log_info("calloc(%" PRIuz " (%p)): Total allocated -> %lu",
+			PRAuz(size), *out_ptr, new_bytes_allocated);
+	}
+#endif /* REFS_SYS_MEMORY_LOGGING */
+
+	return ret;
 }
 
 #define sys_calloc(size, out_ptr) \
 	_sys_calloc((size), (void**) (out_ptr))
 
-static inline int _sys_realloc(void *cur_ptr, size_t size, void **out_ptr)
+static inline int _sys_realloc(void *cur_ptr, size_t old_size, size_t size,
+		void **out_ptr)
 {
-	return (*out_ptr = krealloc(cur_ptr, size, GFP_KERNEL)) ? 0 : ENOMEM;
+	int ret;
+
+	ret = (*out_ptr = krealloc(cur_ptr, size, GFP_KERNEL)) ? 0 : ENOMEM;
+#if REFS_SYS_MEMORY_LOGGING
+	if(!ret) {
+		const long new_bytes_allocated = atomic_long_add_return(
+			(old_size < size) ? (size - old_size) :
+				-(old_size - size),
+			&sys_bytes_allocated);
+		sys_log_info("realloc(%" PRIuz " (%p) -> %" PRIuz " (%p)): "
+			"Total allocated -> %lu",
+			PRAuz(old_size), cur_ptr, PRAuz(size), *out_ptr,
+			new_bytes_allocated);
+	}
+#endif /* REFS_SYS_MEMORY_LOGGING */
+
+	return ret;
 }
 
-#define sys_realloc(cur_ptr, size, out_ptr) \
-	_sys_realloc((cur_ptr), (size), (void**) (out_ptr))
+#define sys_realloc(cur_ptr, old_size, size, out_ptr) \
+	_sys_realloc((cur_ptr), (old_size), (size), (void**) (out_ptr))
 
-static inline void _sys_free(void **out_ptr)
+static inline void _sys_free(size_t size, void **out_ptr)
 {
+#if REFS_SYS_MEMORY_LOGGING
+	const long new_bytes_allocated =
+		atomic_long_add_return(-size, &sys_bytes_allocated);
+	sys_log_info("free(%" PRIuz ", %p): Total allocated -> %lu",
+		PRAuz(size), *out_ptr, new_bytes_allocated);
+#endif /* REFS_SYS_MEMORY_LOGGING */
+
 	kfree(*out_ptr);
 	*out_ptr = NULL;
+
 }
 
-#define sys_free(out_ptr) \
-	_sys_free((void**) (out_ptr))
+#define sys_free(size, out_ptr) \
+	_sys_free((size), (void**) (out_ptr))
 
 static inline int sys_strndup(const char *str, size_t len, char **dupstr)
 {
@@ -279,64 +391,17 @@ static inline int sys_strndup(const char *str, size_t len, char **dupstr)
 	if(!(*dupstr = kstrndup(str, len, GFP_KERNEL))) {
 		err = ENOMEM;
 	}
+	else {
+#if REFS_SYS_MEMORY_LOGGING
+		const long new_bytes_allocated =
+			atomic_long_add_return(len + 1, &sys_bytes_allocated);
+		sys_log_info("strndup(%" PRIuz " (%p)): Total allocated -> %lu",
+			PRAuz(len + 1), *dupstr, new_bytes_allocated);
+#endif /* REFS_SYS_MEMORY_LOGGING */
+	}
 
 	return err;
 }
-
-#define PRIdz "zd"
-#define PRIuz "zu"
-#define PRIXz "zX"
-#define PRIbs ".*s"
-#define PRIo8 "hho"
-#define PRId8 "hhd"
-#define PRIu8 "hhu"
-#define PRIx8 "hhx"
-#define PRIX8 "hhX"
-#define PRIo16 "ho"
-#define PRId16 "hd"
-#define PRIu16 "hu"
-#define PRIx16 "hx"
-#define PRIX16 "hX"
-#define PRIo32 "lo"
-#define PRId32 "ld"
-#define PRIu32 "lu"
-#define PRIx32 "lx"
-#define PRIX32 "lX"
-#define PRIo64 "llo"
-#define PRId64 "lld"
-#define PRIu64 "llu"
-#define PRIx64 "llx"
-#define PRIX64 "llX"
-
-#define PRAoz(arg) ((size_t) (arg))
-#define PRAdz(arg) ((ssize_t) (arg))
-#define PRAuz(arg) ((size_t) (arg))
-#define PRAxz(arg) ((size_t) (arg))
-#define PRAXz(arg) ((size_t) (arg))
-#define PRAbs(precision, arg) ((int) (precision)), ((const char*) (arg))
-#define PRAo8(arg) ((unsigned char) (arg))
-#define PRAd8(arg) ((char) (arg))
-#define PRAu8(arg) ((unsigned char) (arg))
-#define PRAx8(arg) ((unsigned char) (arg))
-#define PRAX8(arg) ((unsigned char) (arg))
-#define PRAo16(arg) ((unsigned short) (arg))
-#define PRAd16(arg) ((short) (arg))
-#define PRAu16(arg) ((unsigned short) (arg))
-#define PRAx16(arg) ((unsigned short) (arg))
-#define PRAX16(arg) ((unsigned short) (arg))
-#define PRAo32(arg) ((unsigned long) (arg))
-#define PRAd32(arg) ((long) (arg))
-#define PRAu32(arg) ((unsigned long) (arg))
-#define PRAx32(arg) ((unsigned long) (arg))
-#define PRAX32(arg) ((unsigned long) (arg))
-#define PRAo64(arg) ((unsigned long long) (arg))
-#define PRAd64(arg) ((long long) (arg))
-#define PRAu64(arg) ((unsigned long long) (arg))
-#define PRAx64(arg) ((unsigned long long) (arg))
-#define PRAX64(arg) ((unsigned long long) (arg))
-
-#define PRI0PAD(precision) "0" #precision
-#define PRIPAD(precision) #precision
 
 int sys_unistr_decode(const refschar *ins, size_t ins_len,
 		char **outs, size_t *outs_len);
