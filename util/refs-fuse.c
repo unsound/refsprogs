@@ -1417,7 +1417,8 @@ out:
 	}
 
 	if(attributes.symlink_target) {
-		sys_free(&attributes.symlink_target);
+		sys_free(attributes.symlink_target_length + 1,
+			&attributes.symlink_target);
 	}
 }
 
@@ -1538,7 +1539,7 @@ out:
 	}
 
 	if(buf) {
-		sys_free(&buf);
+		sys_free(size, &buf);
 	}
 }
 
@@ -1863,7 +1864,7 @@ out:
 	}
 
 	if(dirbuf) {
-		sys_free(&dirbuf);
+		sys_free(size, &dirbuf);
 	}
 }
 
@@ -1940,6 +1941,11 @@ static void refs_fuse_ll_op_getxattr(
 
 		memset(&iohandler, 0, sizeof(iohandler));
 
+		err = sys_malloc(size, &buf);
+		if(err) {
+			goto out;
+		}
+
 		buffer_context.buf.rw = buf;
 		buffer_context.remaining_size = size;
 		buffer_context.is_read = SYS_TRUE;
@@ -1986,7 +1992,7 @@ out:
 	}
 
 	if(buf) {
-		sys_free(&buf);
+		sys_free(size, &buf);
 	}
 }
 
@@ -2048,7 +2054,7 @@ out:
 	}
 
 	if(buf) {
-		sys_free(&buf);
+		sys_free(size, &buf);
 	}
 }
 

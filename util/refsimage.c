@@ -596,7 +596,7 @@ static int refsimage_fd_stream_process_hole(
 	}
 out:
 	if(buffer) {
-		sys_free(&buffer);
+		sys_free(buffer_size, &buffer);
 	}
 
 	return err;
@@ -1115,7 +1115,7 @@ static int refsimage_restore_ntfsclone_image(
 	}
 out:
 	if(buffer) {
-		sys_free(&buffer);
+		sys_free(block_size, &buffer);
 	}
 
 	if(in_fd != -1) {
@@ -1502,11 +1502,11 @@ out:
 	}
 
 	if(buffer) {
-		sys_free(&buffer);
+		sys_free(buffer_size, &buffer);
 	}
 
 	if(bitmap) {
-		sys_free(&bitmap);
+		sys_free(bitmap_size, &bitmap);
 	}
 
 	if(vol) {

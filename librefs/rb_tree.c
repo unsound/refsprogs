@@ -67,7 +67,7 @@ refs_rb_node_create (void *value) {
 void
 refs_rb_node_dealloc (struct refs_rb_node *self) {
     if (self) {
-        sys_free(&self);
+        sys_free(sizeof(*self), &self);
     }
 }
 
@@ -169,7 +169,8 @@ refs_rb_tree_dealloc (struct refs_rb_tree *self, refs_rb_tree_node_f node_cb) {
                 node = save;
             }
         }
-        sys_free(&self);
+
+        sys_free(sizeof(*self), &self);
     }
 }
 
@@ -462,7 +463,7 @@ refs_rb_iter_create (void) {
 void
 refs_rb_iter_dealloc (struct refs_rb_iter *self) {
     if (self) {
-        sys_free(&self);
+        sys_free(sizeof(*self), &self);
     }
 }
 

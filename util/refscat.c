@@ -100,6 +100,7 @@ static int refscat_node_file_extent(
 		(refscat_print_data_ctx*) _context;
 
 	int err = 0;
+	size_t buf_size = 0;
 	char *buf = NULL;
 
 	if(context->name_matches &&
@@ -115,8 +116,6 @@ static int refscat_node_file_extent(
 		u64 cur_pos = first_physical_block * block_index_unit;
 		u64 bytes_remaining =
 			sys_min(bytes_to_extent_end, context->remaining_bytes);
-		size_t buf_size =
-			(size_t) sys_min(bytes_remaining, 4U * 1024UL * 1024U);
 
 		context->stream_found = SYS_TRUE;
 
@@ -140,6 +139,8 @@ static int refscat_node_file_extent(
 			goto out;
 		}
 
+		buf_size =
+			(size_t) sys_min(bytes_remaining, 4U * 1024UL * 1024U);
 		err = sys_malloc(buf_size, &buf);
 		if(err) {
 			sys_log_perror(err, "Error while allocating temporary "
@@ -228,7 +229,7 @@ static int refscat_node_file_extent(
 	}
 out:
 	if(buf) {
-		sys_free(&buf);
+		sys_free(buf_size, &buf);
 	}
 
 	return err;
@@ -672,7 +673,7 @@ static int refscat_node_stream_extent(
 	}
 out:
 	if(buf) {
-		sys_free(&buf);
+		sys_free(buf_size, &buf);
 	}
 
 	return err;
@@ -1068,7 +1069,7 @@ int main(int argc, char **argv)
 	ret = (EXIT_SUCCESS);
 out:
 	if(context.name) {
-		sys_free(&context.name);
+		sys_free(context.name_length + 1, &context.name);
 	}
 
 	if(vol) {

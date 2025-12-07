@@ -31,6 +31,10 @@
 #include <linux/buffer_head.h>
 #include <linux/nls.h>
 
+#if REFS_SYS_MEMORY_LOGGING
+atomic_long_t sys_bytes_allocated = ATOMIC_LONG_INIT(0);
+#endif /* REFS_SYS_MEMORY_LOGGING */
+
 const char* sys_strerror(int err)
 {
 	switch(err) {
@@ -113,10 +117,12 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 
 	if(*outs);
 	else if(len < buf_capacity) {
+		size_t shrunk_buf_capacity = 0;
 		char *shrunk_buf = NULL;
 
-		buf_capacity = (size_t) len + 1;
-		err = sys_realloc(buf, buf_capacity, &shrunk_buf);
+		shrunk_buf_capacity = (size_t) len + 1;
+		err = sys_realloc(buf, buf_capacity, shrunk_buf_capacity,
+			&shrunk_buf);
 		if(err) {
 			/* Shrinking an allocation should never fail? */
 			goto out;
@@ -134,8 +140,8 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 	(*outs)[len] = '\0';
 	*outs_len = (size_t) len;
 out:
-	if(buf) {
-		sys_free(&buf);
+	if(!*outs && buf) {
+		sys_free(buf_capacity, &buf);
 	}
 
 	return err;
@@ -183,10 +189,12 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 
 	if(*outs);
 	else if(len < buf_capacity / sizeof(refschar)) {
+		size_t shrunk_buf_capacity = 0;
 		wchar_t *shrunk_buf = NULL;
 
-		buf_capacity = ((size_t) len + 1) * sizeof(refschar);
-		err = sys_realloc(buf, buf_capacity, &shrunk_buf);
+		shrunk_buf_capacity = ((size_t) len + 1) * sizeof(refschar);
+		err = sys_realloc(buf, buf_capacity, shrunk_buf_capacity,
+			&shrunk_buf);
 		if(err) {
 			/* Shrinking an allocation should never fail? */
 			goto out;
@@ -204,8 +212,8 @@ int sys_unistr_encode(const char *const ins, const size_t ins_len,
 	(*outs)[len] = cpu_to_le16(0);
 	*outs_len = (size_t) len;
 out:
-	if(buf) {
-		sys_free(&buf);
+	if(!outs && buf) {
+		sys_free(buf_capacity, &buf);
 	}
 
 	return err;

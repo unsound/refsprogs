@@ -5546,7 +5546,7 @@ static int fsapi_linux_dir_inode_op_fileattr_get(
 
 static void fsapi_linux_symlink_inode_cleanup_link(void *link)
 {
-	sys_free(&link);
+	sys_free(strlen((char*) link) + 1, &link);
 }
 
 static const char* fsapi_linux_symlink_inode_op_get_link(
@@ -6750,7 +6750,7 @@ out:
 	}
 
 	if(ctx) {
-		sys_free(&ctx);
+		sys_free(sizeof(*ctx), &ctx);
 	}
 
 	if(vol) {

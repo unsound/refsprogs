@@ -372,24 +372,30 @@ static inline int _sys_calloc(size_t size, void **out_ptr)
 #define sys_calloc(size, out_ptr) \
 	_sys_calloc((size), (void**) (out_ptr))
 
-static inline int _sys_realloc(void *cur_ptr, size_t size, void **out_ptr)
+static inline int _sys_realloc(void *cur_ptr, size_t old_size, size_t size,
+		void **out_ptr)
 {
 	int err;
+
+	(void) old_size;
+
 	return (*out_ptr = realloc(cur_ptr, size)) ? 0 :
 		((err = errno) ? err : ENOMEM);
 }
 
-#define sys_realloc(cur_ptr, size, out_ptr) \
-	_sys_realloc((cur_ptr), (size), (void**) (out_ptr))
+#define sys_realloc(cur_ptr, old_size, size, out_ptr) \
+	_sys_realloc((cur_ptr), (old_size), (size), (void**) (out_ptr))
 
-static inline void _sys_free(void **out_ptr)
+static inline void _sys_free(size_t size, void **out_ptr)
 {
+	(void) size;
+
 	free(*out_ptr);
 	*out_ptr = NULL;
 }
 
-#define sys_free(out_ptr) \
-	_sys_free((void**) (out_ptr))
+#define sys_free(size, out_ptr) \
+	_sys_free((size), (void**) (out_ptr))
 
 #ifdef HAVE_STRNDUP
 static inline void sys_strndup(const char *str, size_t len, char **dupstr)
