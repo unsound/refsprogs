@@ -2745,10 +2745,10 @@ static int fsapi_node_list_visit_long_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
-		/* u16 child_entry_offset */
-		child_entry_offset,
 		/* sys_bool is_directory */
 		SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
 		/* u64 parent_node_object_id */
