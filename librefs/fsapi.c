@@ -2659,6 +2659,7 @@ static int fsapi_node_list_visit_short_entry(
 		/* u16 child_entry_offset */
 		child_entry_offset,
 		/* sys_bool is_directory */
+		((file_flags & 0x10000000UL) && hard_link_id) ? SYS_FALSE :
 		SYS_TRUE,
 		/* u32 file_flags */
 		file_flags,
