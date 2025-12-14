@@ -226,8 +226,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_ERROR_ENABLED
 #define sys_log_perror(err, fmt, ...) \
-	printk(KERN_ERR "[ERROR] " fmt ": %s\n", ##__VA_ARGS__, \
-		sys_strerror(err))
+	printk(KERN_ERR "[ERROR] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		sys_strerror(err), (err))
 #else
 #define sys_log_perror sys_log_pnoop
 #endif
@@ -241,8 +241,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_WARNING_ENABLED
 #define sys_log_pwarning(err, fmt, ...) \
-	printk(KERN_WARNING "[WARNING] " fmt ": %s\n", ##__VA_ARGS__, \
-		sys_strerror(err))
+	printk(KERN_WARNING "[WARNING] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		sys_strerror(err), (err))
 #else
 #define sys_log_pwarning sys_log_pnoop
 #endif
@@ -256,7 +256,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_INFO_ENABLED
 #define sys_log_pinfo(err, fmt, ...) \
-	printk(KERN_INFO fmt ": %s\n", ##__VA_ARGS__, sys_strerror(err))
+	printk(KERN_INFO fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		sys_strerror(err), (err))
 #else
 #define sys_log_pinfo sys_log_pnoop
 #endif
@@ -270,8 +271,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_DEBUG_ENABLED
 #define sys_log_pdebug(err, fmt, ...) \
-	printk(KERN_DEBUG "[DEBUG] " fmt ": %s\n", ##__VA_ARGS__, \
-		sys_strerror(err))
+	printk(KERN_DEBUG "[DEBUG] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		sys_strerror(err), (err))
 #else
 #define sys_log_pdebug sys_log_pnoop
 #endif
@@ -285,8 +286,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_TRACE_ENABLED
 #define sys_log_ptrace(err, fmt, ...) \
-	printk(KERN_DEBUG "[TRACE] " fmt ": %s\n", ##__VA_ARGS__, \
-		sys_strerror(err))
+	printk(KERN_DEBUG "[TRACE] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		sys_strerror(err), (err))
 #else
 #define sys_log_ptrace sys_log_pnoop
 #endif
