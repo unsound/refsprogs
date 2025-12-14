@@ -28,6 +28,24 @@ jobs:
     - name: make distcheck
       run: make distcheck
 
+  build-ubuntu-noble-kernel:
+
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: cd targets/linux && make
+
+  build-ubuntu-jammy-kernel:
+
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: cd targets/linux && make
+
   build-macos:
 
     runs-on: macos-latest
