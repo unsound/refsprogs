@@ -374,11 +374,11 @@ static int print_leaf_by_path(
 	}
 out:
 	if(record) {
-		sys_free(&record);
+		sys_free(record_size, &record);
 	}
 
 	if(key) {
-		sys_free(&key);
+		sys_free(key_size, &key);
 	}
 
 	return err;
@@ -718,7 +718,7 @@ static int read_and_print_boot_sector(sys_device *const dev,
 	}
 out:
 	if(bs) {
-		sys_free(&bs);
+		sys_free(sizeof(*bs), &bs);
 	}
 
 	return err;
