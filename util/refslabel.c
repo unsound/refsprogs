@@ -76,7 +76,7 @@ static int refslabel_node_volume_label_entry(
 
 	fprintf(stdout, "%" PRIbs "\n",
 		PRAbs(volume_label_cstr_length, volume_label_cstr));
-	sys_free(&volume_label_cstr);
+	sys_free(volume_label_cstr_length + 1, &volume_label_cstr);
 	err = -1;
 out:
 	return err;

@@ -6,6 +6,7 @@ publicheaders = \
 	layout.h \
 	node.h \
 	sys.h \
+	sys_user.h \
 	util.h \
 	volume.h
 
