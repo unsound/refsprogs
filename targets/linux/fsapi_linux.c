@@ -6387,9 +6387,9 @@ static int fsapi_linux_xattr_get(
 
 	int ret = 0;
 	int err = 0;
-	size_t valid_bytes = 0;
 	fsapi_iohandler_buffer_context buffer_context;
 	sys_iohandler iohandler;
+	u64 xattr_size = 0;
 
 	memset(&buffer_context, 0, sizeof(buffer_context));
 	memset(&iohandler, 0, sizeof(iohandler));
@@ -6404,12 +6404,14 @@ static int fsapi_linux_xattr_get(
 		goto out;
 	}
 
-	buffer_context.buf.rw = value;
-	buffer_context.remaining_size = size;
-	buffer_context.is_read = SYS_TRUE;
-	iohandler.context = &buffer_context;
-	iohandler.handle_io = fsapi_iohandler_buffer_handle_io;
-	iohandler.copy_data = fsapi_iohandler_buffer_copy_data;
+	if(size) {
+		buffer_context.buf.rw = value;
+		buffer_context.remaining_size = size;
+		buffer_context.is_read = SYS_TRUE;
+		iohandler.context = &buffer_context;
+		iohandler.handle_io = fsapi_iohandler_buffer_handle_io;
+		iohandler.copy_data = fsapi_iohandler_buffer_copy_data;
+	}
 
 	err = fsapi_node_read_extended_attribute(
 		/* fsapi_volume *vol */
@@ -6425,7 +6427,9 @@ static int fsapi_linux_xattr_get(
 		/* size_t size */
 		size,
 		/* fsapi_iohandler *iohandler */
-		&iohandler);
+		size ? &iohandler : NULL,
+		/* u64 *out_xattr_size */
+		size ? NULL : &xattr_size);
 	if(err == ENOENT) {
 		ret = -ENODATA;
 	}
@@ -6433,6 +6437,10 @@ static int fsapi_linux_xattr_get(
 		ret = -err;
 	}
 	else {
+		const size_t valid_bytes =
+			size ? size - buffer_context.remaining_size :
+			xattr_size;
+
 		ret = (valid_bytes > INT_MAX) ? INT_MAX : (int) valid_bytes;
 	}
 out:
