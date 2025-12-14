@@ -1,0 +1,13 @@
+obj-m := refs.o
+
+ccflags-y := \
+	-DVERSION=\"2025.11.15\"
+
+refs-y := \
+	refs_init.o \
+	fsapi_linux.o \
+	sys_linux.o \
+	fsapi.o \
+	node.o \
+	rb_tree.o \
+	volume.o

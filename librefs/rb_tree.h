@@ -33,10 +33,14 @@
 #ifndef _REFS_RB_TREE_H
 #define _REFS_RB_TREE_H
 
+#if defined(__linux__) && defined(__KERNEL__)
+#include <linux/types.h>
+#else
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#endif /* defined(__linux__) && defined(__KERNEL__) ... */
 
 #ifndef RB_ITER_MAX_HEIGHT
 #define RB_ITER_MAX_HEIGHT 64 // Tallest allowable tree to iterate

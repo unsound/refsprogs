@@ -163,14 +163,15 @@ out:
 		if(!err && *outs_len + 1 < outs_capacity) {
 			/* Shrink *outs to actual length. */
 			outs_tmp = NULL;
-			err = sys_realloc(*outs, *outs_len + 1, &outs_tmp);
+			err = sys_realloc(*outs, outs_capacity, *outs_len + 1,
+				&outs_tmp);
 			if(!err) {
 				*outs = outs_tmp;
 			}
 		}
 
 		if(err) {
-			sys_free(outs);
+			sys_free(outs_capacity * sizeof((*outs)[0]), outs);
 		}
 	}
 
@@ -283,6 +284,7 @@ out:
 			/* Shrink *outs to actual length. */
 			outs_tmp = NULL;
 			err = sys_realloc(*outs,
+				outs_capacity * sizeof(refschar),
 				(*outs_len + 1) * sizeof(refschar), &outs_tmp);
 			if(!err) {
 				*outs = outs_tmp;
@@ -290,7 +292,7 @@ out:
 		}
 
 		if(err) {
-			sys_free(outs);
+			sys_free(outs_capacity * sizeof((*outs)[0]), outs);
 		}
 	}
 

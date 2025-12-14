@@ -163,7 +163,7 @@ static int refsls_print_dirent(
 	}
 
 	if(ctx->cur_name) {
-		sys_free(&ctx->cur_name);
+		sys_free(ctx->cur_name_length + 1, &ctx->cur_name);
 	}
 	ctx->cur_name_length = 0;
 	ctx->cur_hard_link_id = 0;
@@ -341,7 +341,7 @@ static int refsls_print_dirent(
 				"subdirectory");
 		}
 
-		sys_free(&subdir_ctx.prefix);
+		sys_free(subdir_prefix_string_length, &subdir_ctx.prefix);
 
 		if(err) {
 			goto out;
@@ -818,7 +818,7 @@ int main(int argc, char **argv)
 	ret = (EXIT_SUCCESS);
 out:
 	if(context.cur_name) {
-		sys_free(&context.cur_name);
+		sys_free(context.cur_name_length + 1, &context.cur_name);
 	}
 
 	if(vol) {

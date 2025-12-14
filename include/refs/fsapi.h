@@ -226,33 +226,19 @@ typedef struct {
 	size_t symlink_target_length;
 } fsapi_node_attributes;
 
-/**
- * The handler of an I/O operation, implementing a method to process it.
- */
-typedef struct {
-	/** The context that is passed to @ref fsapi_iohandler::handle_io. */
-	void *context;
+typedef sys_iohandler fsapi_iohandler;
 
-	/**
-	 * The I/O handler callback function.
-	 *
-	 * Accepts a device, offset and size and processes I/O as implemented by
-	 * the handler.
-	 */
-	int (*handle_io)(
-		void *context,
-		sys_device *dev,
-		u64 offset,
-		size_t size);
+typedef enum {
+	FSAPI_RENAME_FLAG_EXCHANGE = 0x1,
+	FSAPI_RENAME_FLAG_NOREPLACE = 0x2,
+	FSAPI_RENAME_FLAG_WHITEOUT = 0x4
+} fsapi_rename_flags;
 
-	/**
-	 * Copies data from a memory buffer into the I/O handler's backend.
-	 */
-	int (*copy_data)(
-		void *context,
-		const void *data,
-		size_t size);
-} fsapi_iohandler;
+typedef enum {
+	FSAPI_NODE_EXTENDED_ATTRIBUTE_FLAG_CREATE = 0x1,
+	FSAPI_NODE_EXTENDED_ATTRIBUTE_FLAG_REPLACE = 0x2,
+	FSAPI_NODE_EXTENDED_ATTRIBUTE_FLAG_TRUNCATE = 0x4
+} fsapi_node_extended_attribute_flags;
 
 /**
  * Context for the buffer I/O handler.
@@ -271,7 +257,7 @@ typedef struct {
  *
  * @param context
  *      (in) The context for the I/O target handler (for this handler this is an
- *      @ref fsapi_iotarget_buffer_context).
+ *      @ref fsapi_iohandler_buffer_context).
  * @param dev
  *      (in) The @ref sys_device for which this I/O operation is to be peformed.
  * @param offset
@@ -288,11 +274,11 @@ int fsapi_iohandler_buffer_handle_io(
 		size_t size);
 
 /**
- * Copy handler for the buffer I/O handler.
+ * Handler for copying data into the buffer (e.g. a read operation).
  *
  * @param context
  *      (in) The context for the I/O target handler (for this handler this is an
- *      @ref fsapi_iotarget_buffer_context).
+ *      @ref fsapi_iohandler_buffer_context).
  * @param buffer
  *      (in) The buffer from which the data should be copied.
  * @param size
@@ -303,6 +289,24 @@ int fsapi_iohandler_buffer_handle_io(
 int fsapi_iohandler_buffer_copy_data(
 		void *context,
 		const void *buffer,
+		size_t size);
+
+/**
+ * Handler for getting data from the buffer (e.g. a write operation).
+ *
+ * @param context
+ *      (in) The context for the I/O target handler (for this handler this is an
+ *      @ref fsapi_iohandler_buffer_context).
+ * @param buffer
+ *      (in) The buffer to which the data should be copied.
+ * @param size
+ *      (in) The number of bytes to copy.
+ *
+ * @return 0 on success and a non-0 @p errno value on failure.
+ */
+int fsapi_iohandler_buffer_get_data(
+		void *_context,
+		void *buffer,
 		size_t size);
 
 /**
@@ -371,6 +375,9 @@ void fsapi_volume_get_root_node(
 int fsapi_volume_get_attributes(
 		fsapi_volume *vol,
 		fsapi_volume_attributes *out_attrs);
+
+int fsapi_volume_sync(
+		fsapi_volume *vol);
 
 /**
  * Unmount a volume.
@@ -510,6 +517,31 @@ int fsapi_node_get_attributes(
 		fsapi_node_attributes *out_attributes);
 
 /**
+ * Set attributes for a node.
+ *
+ * @param vol
+ *      (in) The @p fsapi_volume of the mount.
+ * @param node
+ *      (in) The node whose attributes we are querying.
+ * @param attributes
+ *      (in/out) A pointer to a @ref fsapi_node_attributes struct with the
+ *      @ref fsapi_node_attributes::valid bitmask filled in with the attributes
+ *      to set.
+ *      After successfully setting attributes, this function will populate
+ *      @p attributes with the attributes that the filesystem supports and that
+ *      are requested and indicate their presence in the
+ *      @ref fsapi_node_attributes::requested bitmask.
+ *      The returned values may differ from the values initially passed to the
+ *      function if the filesystem cannot store them in the requested precision.
+ *
+ * @return 0 on success and a non-0 @p errno value on failure.
+ */
+int fsapi_node_set_attributes(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		fsapi_node_attributes *attributes);
+
+/**
  * Get data for @p node in a filesystem-specific format that has to be
  * interpreted in a filesystem-specific way.
  *
@@ -551,6 +583,52 @@ int fsapi_node_read(
 		u64 offset,
 		size_t size,
 		fsapi_iohandler *iohandler);
+
+int fsapi_node_write(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		u64 offset,
+		size_t size,
+		fsapi_iohandler *iohandler);
+
+int fsapi_node_sync(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		sys_bool data_only);
+
+int fsapi_node_create(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *name,
+		size_t name_length,
+		fsapi_node_attributes *attributes,
+		fsapi_node **out_node);
+
+int fsapi_node_hardlink(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		fsapi_node *link_parent,
+		const char *link_name,
+		size_t link_name_length,
+		fsapi_node_attributes *out_attributes);
+
+int fsapi_node_rename(
+		fsapi_volume *vol,
+		fsapi_node *source_dir_node,
+		const char *source_name,
+		size_t source_name_length,
+		fsapi_node *target_dir_node,
+		const char *target_name,
+		size_t target_name_length,
+		fsapi_rename_flags flags);
+
+int fsapi_node_remove(
+		fsapi_volume *vol,
+		fsapi_node *parent_node,
+		sys_bool is_directory,
+		const char *name,
+		size_t name_length,
+		fsapi_node **out_removed_node);
 
 /**
  * List the extended attributes of a node.
@@ -606,5 +684,21 @@ int fsapi_node_read_extended_attribute(
 		u64 offset,
 		size_t size,
 		fsapi_iohandler *iohandler);
+
+int fsapi_node_write_extended_attribute(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *xattr_name,
+		size_t xattr_name_length,
+		fsapi_node_extended_attribute_flags flags,
+		u64 offset,
+		size_t size,
+		fsapi_iohandler *iohandler);
+
+int fsapi_node_remove_extended_attribute(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *xattr_name,
+		size_t xattr_name_length);
 
 #endif /* _REFS_FSAPI_H */
