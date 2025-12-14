@@ -3849,6 +3849,7 @@ typedef struct {
 	fsapi_iohandler *iohandler;
 	sys_bool stream_found;
 	u64 stream_non_resident_id;
+	u64 stream_size;
 	u64 remaining_bytes;
 } fsapi_node_read_extended_attribute_context;
 
@@ -3872,20 +3873,23 @@ static int fsapi_node_read_extended_attribute_visit_ea(
 	}
 
 	context->stream_found = SYS_TRUE;
+	context->stream_size = data_size;
 	context->remaining_bytes = data_size;
 
-	err = context->iohandler->copy_data(
-		/* void *context */
-		context->iohandler->context,
-		/* const void *data */
-		data,
-		/* size_t size */
-		data_size);
-	if(err) {
-		goto out;
-	}
+	if(context->iohandler) {
+		err = context->iohandler->copy_data(
+			/* void *context */
+			context->iohandler->context,
+			/* const void *data */
+			data,
+			/* size_t size */
+			data_size);
+		if(err) {
+			goto out;
+		}
 
-	context->remaining_bytes -= data_size;
+		context->remaining_bytes -= data_size;
+	}
 
 	/* Stop iterating since we found our match. */
 	err = -1;
@@ -3915,8 +3919,10 @@ static int fsapi_node_read_extended_attribute_visit_stream(
 	if(!context->remaining_bytes) {
 		context->remaining_bytes = data_size;
 	}
+	context->stream_size = data_size;
 
-	if(data_reference->resident) {
+	if(!context->iohandler);
+	else if(data_reference->resident) {
 		err = context->iohandler->copy_data(
 			/* void *context */
 			context->iohandler->context,
@@ -4003,7 +4009,8 @@ int fsapi_node_read_extended_attribute(
 		size_t xattr_name_length,
 		u64 offset,
 		size_t size,
-		fsapi_iohandler *iohandler)
+		fsapi_iohandler *iohandler,
+		u64 *out_xattr_size)
 {
 	int err = 0;
 
@@ -4017,12 +4024,14 @@ int fsapi_node_read_extended_attribute(
 
 	fsapi_log_enter("vol=%p, node=%p, xattr_name=%p (->%.*s), "
 		"xattr_name_length=%" PRIuz ", offset=%" PRIu64 ", "
-		"size=%" PRIuz ", iohandler=%p",
+		"size=%" PRIuz ", iohandler=%p, out_xattr_size=%p "
+		"(->%" PRIu64 ")",
 		vol, node, xattr_name,
 		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
 		xattr_name ? xattr_name : "",
 		PRAuz(xattr_name_length), PRAu64(offset), PRAuz(size),
-		iohandler);
+		iohandler, out_xattr_size,
+		PRAu64(out_xattr_size ? *out_xattr_size : 0));
 
 	if(node == vol->root_node || node->is_short_entry) {
 		/* TODO: Check where root node's streams and EAs are located. */
@@ -4137,15 +4146,21 @@ int fsapi_node_read_extended_attribute(
 			goto out;
 		}
 	}
+
+	if(out_xattr_size) {
+		*out_xattr_size = context.stream_size;
+	}
 out:
 	fsapi_log_leave(err, "vol=%p, node=%p, xattr_name=%p (->%.*s), "
 		"xattr_name_length=%" PRIuz ", offset=%" PRIu64 ", "
-		"size=%" PRIuz ", iohandler=%p",
+		"size=%" PRIuz ", iohandler=%p, out_xattr_size=%p "
+		"(->%" PRIu64 ")",
 		vol, node, xattr_name,
 		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
 		xattr_name ? xattr_name : "",
 		PRAuz(xattr_name_length), PRAu64(offset), PRAuz(size),
-		iohandler);
+		iohandler, out_xattr_size,
+		PRAu64(out_xattr_size ? *out_xattr_size : 0));
 
 	return err;
 }
