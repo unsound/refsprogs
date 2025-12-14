@@ -2649,6 +2649,10 @@ static int fsapi_node_list_visit_short_entry(
 	(void) record;
 	(void) record_size;
 
+	sys_log_debug("Got short entry with file flags 0x%" PRIX32 ", hard "
+		"link ID %" PRIu64 ", object ID %" PRIu64,
+		PRAX32(file_flags), PRAu64(hard_link_id), PRAu64(object_id));
+
 	err = fsapi_node_list_filldir(
 		/* fsapi_readdir_context *context */
 		context,
@@ -2656,11 +2660,10 @@ static int fsapi_node_list_visit_short_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
+		/* sys_bool is_directory */
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
 		child_entry_offset,
-		/* sys_bool is_directory */
-		((file_flags & 0x10000000UL) && hard_link_id) ? SYS_FALSE :
-		SYS_TRUE,
 		/* u32 file_flags */
 		file_flags,
 		/* u64 parent_node_object_id */
@@ -2738,6 +2741,9 @@ static int fsapi_node_list_visit_long_entry(
 	(void) key_size;
 	(void) record;
 	(void) record_size;
+
+	sys_log_debug("Got long entry with file flags 0x%" PRIX32 ".",
+		PRAX32(file_flags));
 
 	return fsapi_node_list_filldir(
 		/* fsapi_readdir_context *context */
