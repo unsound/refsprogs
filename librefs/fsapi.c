@@ -32,6 +32,14 @@
 #include "util.h"
 #include "volume.h"
 
+#define fsapi_log_enter(fmt, ...) \
+	sys_log_trace("Entering %s(" fmt ")...", __FUNCTION__, ##__VA_ARGS__)
+
+#define fsapi_log_leave(err, fmt, ...) \
+	sys_log_trace("Leaving %s(" fmt "): %s%s%d%s", __FUNCTION__, \
+		##__VA_ARGS__, err ? sys_strerror(err) : "", \
+		err ? " (" : "", err, err ? ")" : "")
+
 typedef struct fsapi_volume fsapi_volume;
 typedef struct fsapi_node_path_element fsapi_node_path_element;
 typedef struct fsapi_node fsapi_node;
@@ -134,8 +142,8 @@ static void fsapi_node_path_element_release(
 			fsapi_node_path_element_release(&(*element)->parent);
 		}
 
-		sys_free(&(*element)->name.rw);
-		sys_free(element);
+		sys_free((*element)->name_length, &(*element)->name.rw);
+		sys_free(sizeof(**element), element);
 	}
 }
 
@@ -481,19 +489,20 @@ static int fsapi_node_deinit(
 		fsapi_node *node)
 {
 	if(node->attributes.symlink_target) {
-		sys_free(&node->attributes.symlink_target);
+		sys_free(node->attributes.symlink_target_length,
+			&node->attributes.symlink_target);
 	}
 
 	if(node->record) {
 		sys_log_debug("Freeing record %p.",
 			 node->record);
-		sys_free(&node->record);
+		sys_free(node->record_size, &node->record);
 	}
 
 	if(node->key) {
 		sys_log_debug("Freeing key %p.",
 			 node->key);
-		sys_free(&node->key);
+		sys_free(node->key_size, &node->key);
 	}
 
 	if(node->path) {
@@ -521,7 +530,7 @@ static int fsapi_node_destroy(
 	fsapi_node_deinit(
 		/* fsapi_node *node */
 		*node);
-	sys_free(node);
+	sys_free(sizeof(**node), node);
 
 	return 0;
 }
@@ -862,7 +871,7 @@ static int fsapi_lookup_by_posix_path(
 			/* refs_rb_tree_node_cmp_f cmp */
 			fsapi_lookup_by_posix_path_compare);
 		if(!vol->cache_tree) {
-			err = (err = errno) ? err : ENOMEM;
+			err = ENOMEM;
 			goto out;
 		}
 	}
@@ -1204,7 +1213,7 @@ static int fsapi_lookup_by_posix_path(
 				/* size_t *out_record_size */
 				&record_size);
 			if(err) {
-				sys_log_perror(errno, "lookup error");
+				sys_log_perror(err, "lookup error");
 				goto out;
 			}
 			else if(!parent_directory_object_id) {
@@ -1378,7 +1387,7 @@ static int fsapi_lookup_by_posix_path(
 	}
 out:
 	if(new_path_element) {
-		sys_free(&new_path_element);
+		sys_free(sizeof(*new_path_element), &new_path_element);
 	}
 
 	if(new_node) {
@@ -1956,8 +1965,8 @@ static int fsapi_node_get_attributes_common(
 
 	attributes->valid = provided_mask;
 out:
-	sys_log_debug("%s(node=%p, attributes=%p): %d (%s)",
-		__FUNCTION__, node, attributes, err, strerror(err));
+	sys_log_pdebug(err, "%s(node=%p, attributes=%p)",
+		__FUNCTION__, node, attributes);
 
 	return err;
 }
@@ -2005,7 +2014,7 @@ int fsapi_iohandler_buffer_handle_io(
 					bytes_to_transfer);
 			}
 
-			sys_free(&buf);
+			sys_free(buf_size, &buf);
 		}
 		else {
 			err = sys_device_pread(
@@ -2068,6 +2077,22 @@ int fsapi_iohandler_buffer_copy_data(
 	return 0;
 }
 
+int fsapi_iohandler_buffer_get_data(
+		void *_context,
+		void *buffer,
+		size_t size)
+{
+	fsapi_iohandler_buffer_context *const context =
+		(fsapi_iohandler_buffer_context*) _context;
+	const size_t bytes_to_copy = sys_min(size, context->remaining_size);
+
+	memcpy(buffer, context->buf.ro, bytes_to_copy);
+	context->buf.ro = &context->buf.ro[bytes_to_copy];
+	context->remaining_size -= bytes_to_copy;
+
+	return 0;
+}
+
 int fsapi_volume_mount(
 		sys_device *dev,
 		sys_bool read_only,
@@ -2083,6 +2108,13 @@ int fsapi_volume_mount(
 	fsapi_volume *vol = NULL;
 	fsapi_node *root_node = NULL;
 	refs_volume *rvol = NULL;
+
+	fsapi_log_enter("dev=%p, read_only=%u, custom_mount_options=%p, "
+		"out_vol=%p (->%p), out_root_node=%p (->%p), out_attrs=%p",
+		dev, read_only, custom_mount_options,
+		out_vol, out_vol ? *out_vol : NULL,
+		out_root_node, out_root_node ? *out_root_node : NULL,
+		out_attrs);
 
 	if(!read_only) {
 		sys_log_error("Read/write support not implemented yet.");
@@ -2174,13 +2206,21 @@ out:
 		}
 
 		if(root_node) {
-			sys_free(&root_node);
+			sys_free(sizeof(*root_node), &root_node);
 		}
 
 		if(vol) {
-			sys_free(&vol);
+			sys_free(sizeof(*vol), &vol);
 		}
 	}
+
+	fsapi_log_leave(err, "dev=%p, read_only=%u, custom_mount_options=%p, "
+		"out_vol=%p (->%p), out_root_node=%p (->%p), out_attrs=%p",
+		dev, read_only, custom_mount_options,
+		out_vol, out_vol ? *out_vol : NULL,
+		out_root_node, out_root_node ? *out_root_node : NULL,
+		out_attrs);
+
 	return err;
 }
 
@@ -2188,7 +2228,13 @@ void fsapi_volume_get_root_node(
 		fsapi_volume *vol,
 		fsapi_node **out_root_node)
 {
+	fsapi_log_enter("vol=%p, out_root_node=%p (->%p)",
+		vol, out_root_node, out_root_node ? *out_root_node : NULL);
+
 	*out_root_node = vol->root_node;
+
+	fsapi_log_leave(0, "vol=%p, out_root_node=%p (->%p)",
+		vol, out_root_node, out_root_node ? *out_root_node : NULL);
 }
 
 int fsapi_volume_get_attributes(
@@ -2197,11 +2243,35 @@ int fsapi_volume_get_attributes(
 {
 	int err = 0;
 
+	fsapi_log_enter("vol=%p, out_attrs=%p",
+		vol, out_attrs);
+
 	err = fsapi_volume_get_attributes_common(
 		/* fsapi_volume *vol */
 		vol,
 		/* fsapi_volume_attributes *out_attrs */
 		out_attrs);
+
+	fsapi_log_leave(err, "vol=%p, out_attrs=%p",
+		vol, out_attrs);
+
+	return err;
+}
+
+int fsapi_volume_sync(
+		fsapi_volume *vol)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p", vol);
+
+	(void) vol;
+
+	/* Syncing is always successful because there's nothing to sync at the
+	 * moment. */
+	err = 0;
+
+	fsapi_log_leave(err, "vol=%p", vol);
 
 	return err;
 }
@@ -2219,14 +2289,16 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 		node, PRAu64(node->refcount));
 
 	fsapi_node_destroy(
-		/* fsapi_node *cached_node */
+		/* fsapi_node **node */
 		&node);
-	sys_free(&_node);
+	sys_free(sizeof(*_node), &_node);
 }
 
 int fsapi_volume_unmount(
 		fsapi_volume **vol)
 {
+	fsapi_log_enter("vol=%p (->%p)", vol, vol ? *vol : NULL);
+
 	sys_log_debug("Iterating over cached nodes list %p...",
 		(*vol)->cached_nodes_list);
 
@@ -2266,15 +2338,18 @@ int fsapi_volume_unmount(
 	}
 
 	if((*vol)->volume_label_cstr) {
-		sys_free(&(*vol)->volume_label_cstr);
+		sys_free((*vol)->volume_label_cstr_length,
+			&(*vol)->volume_label_cstr);
 	}
 
 	refs_volume_destroy(
 		/* refs_volume **out_vol */
 		&(*vol)->vol);
 
-	sys_free(&(*vol)->root_node);
-	sys_free(vol);
+	sys_free(sizeof(*(*vol)->root_node), &(*vol)->root_node);
+	sys_free(sizeof(**vol), vol);
+
+	fsapi_log_leave(0, "vol=%p (->%p)", vol, vol ? *vol : NULL);
 
 	return 0;
 }
@@ -2289,6 +2364,16 @@ int fsapi_node_lookup(
 {
 	int err = 0;
 	fsapi_node *child_node = NULL;
+
+	fsapi_log_enter("vol=%p, parent_node=%p, path=%p (->\"%.*s\"), "
+		"path_length=%" PRIuz ", out_child_node=%p (->%p), "
+		"out_attributes=%p",
+		vol, parent_node, path,
+		path ? (int) sys_min(path_length, (size_t) INT_MAX) : 0,
+		path ? path : 0,
+		PRAuz(path_length),
+		out_child_node, out_child_node ? *out_child_node : NULL,
+		out_attributes);
 
 	err = fsapi_lookup_by_posix_path(
 		/* fsapi_volume *vol */
@@ -2320,6 +2405,9 @@ int fsapi_node_lookup(
 			child_node,
 			/* fsapi_node_attributes *attributes */
 			out_attributes);
+		if(err) {
+			goto out;
+		}
 	}
 
 	if(out_child_node) {
@@ -2344,6 +2432,16 @@ out:
 		}
 	}
 
+	fsapi_log_leave(err, "vol=%p, parent_node=%p, path=%p (->\"%.*s\"), "
+		"path_length=%" PRIuz ", out_child_node=%p (->%p), "
+		"out_attributes=%p",
+		vol, parent_node, path,
+		path ? (int) sys_min(path_length, (size_t) INT_MAX) : 0,
+		path ? path : 0,
+		PRAuz(path_length),
+		out_child_node, out_child_node ? *out_child_node : NULL,
+		out_attributes);
+
 	return err;
 }
 
@@ -2353,6 +2451,9 @@ int fsapi_node_release(
 		size_t release_count)
 {
 	int err = 0;
+
+	fsapi_log_enter("vol=%p, node=%p (->%p), release_count=%" PRIuz,
+		vol, node, node ? *node : NULL, PRAuz(release_count));
 
 	if((*node) == vol->root_node) {
 		/* Root node is not refcounted. It exists until the mount is
@@ -2389,6 +2490,9 @@ int fsapi_node_release(
 	}
 	*node = NULL;
 out:
+	fsapi_log_leave(err, "vol=%p, node=%p (->%p), release_count=%" PRIuz,
+		vol, node, node ? *node : NULL, PRAuz(release_count));
+
 	return err;
 }
 
@@ -2440,7 +2544,7 @@ static int fsapi_node_list_filldir(
 			goto out;
 		}
 
-		sys_free(&context->cname);
+		sys_free(context->cname_length + 1, &context->cname);
 		context->cname_length = 0;
 	}
 
@@ -2508,7 +2612,7 @@ static int fsapi_node_list_filldir(
 	}
 out:
 	if(cname) {
-		sys_free(&cname);
+		sys_free(cname_length + 1, &cname);
 	}
 
 	return err;
@@ -2545,6 +2649,10 @@ static int fsapi_node_list_visit_short_entry(
 	(void) record;
 	(void) record_size;
 
+	sys_log_debug("Got short entry with file flags 0x%" PRIX32 ", hard "
+		"link ID %" PRIu64 ", object ID %" PRIu64,
+		PRAX32(file_flags), PRAu64(hard_link_id), PRAu64(object_id));
+
 	err = fsapi_node_list_filldir(
 		/* fsapi_readdir_context *context */
 		context,
@@ -2552,10 +2660,10 @@ static int fsapi_node_list_visit_short_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
+		/* sys_bool is_directory */
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
 		child_entry_offset,
-		/* sys_bool is_directory */
-		SYS_TRUE,
 		/* u32 file_flags */
 		file_flags,
 		/* u64 parent_node_object_id */
@@ -2634,6 +2742,9 @@ static int fsapi_node_list_visit_long_entry(
 	(void) record;
 	(void) record_size;
 
+	sys_log_debug("Got long entry with file flags 0x%" PRIX32 ".",
+		PRAX32(file_flags));
+
 	return fsapi_node_list_filldir(
 		/* fsapi_readdir_context *context */
 		(fsapi_readdir_context*) context,
@@ -2641,10 +2752,10 @@ static int fsapi_node_list_visit_long_entry(
 		file_name,
 		/* u16 file_name_length */
 		file_name_length,
-		/* u16 child_entry_offset */
-		child_entry_offset,
 		/* sys_bool is_directory */
 		SYS_FALSE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
 		/* u64 parent_node_object_id */
@@ -2728,7 +2839,7 @@ static int fsapi_node_list_visit_symlink(
 		context->attributes);
 out:
 	if(context->cname) {
-		sys_free(&context->cname);
+		sys_free(context->cname_length + 1, &context->cname);
 		context->cname_length = 0;
 	}
 
@@ -2752,6 +2863,10 @@ int fsapi_node_list(
 
 	memset(&readdir_context, 0, sizeof(readdir_context));
 	memset(&visitor, 0, sizeof(visitor));
+
+	fsapi_log_enter("vol=%p, directory_node=%p, attributes=%p, "
+		"context=%p, handle_dirent=%p",
+		vol, directory_node, attributes, context, handle_dirent);
 
 	if(!directory_node->directory_object_id) {
 		err = ENOTDIR;
@@ -2810,13 +2925,19 @@ int fsapi_node_list(
 			/* fsapi_node_attributes *attributes */
 			readdir_context.attributes);
 
-		sys_free(&readdir_context.cname);
+		sys_free(readdir_context.cname_length + 1,
+			&readdir_context.cname);
 		readdir_context.cname_length = 0;
 	}
 out:
 	if(readdir_context.cname) {
-		sys_free(&readdir_context.cname);
+		sys_free(readdir_context.cname_length + 1,
+			&readdir_context.cname);
 	}
+
+	fsapi_log_leave(err, "vol=%p, directory_node=%p, attributes=%p, "
+		"context=%p, handle_dirent=%p",
+		vol, directory_node, attributes, context, handle_dirent);
 
 	return err;
 }
@@ -2828,6 +2949,9 @@ int fsapi_node_get_attributes(
 {
 	int err;
 
+	fsapi_log_enter("vol=%p, node=%p, out_attributes=%p",
+		vol, node, out_attributes);
+
 	err = fsapi_node_get_attributes_common(
 		/* fsapi_volume *vol */
 		vol,
@@ -2835,6 +2959,31 @@ int fsapi_node_get_attributes(
 		node,
 		/* fsapi_node_attributes *attributes */
 		out_attributes);
+
+	fsapi_log_leave(err, "vol=%p, node=%p, out_attributes=%p",
+		vol, node, out_attributes);
+
+	return err;
+}
+
+int fsapi_node_set_attributes(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		fsapi_node_attributes *attributes)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, attributes=%p",
+		vol, node, attributes);
+
+	(void) vol;
+	(void) node;
+	(void) attributes;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, attributes=%p",
+		vol, node, attributes);
 
 	return err;
 }
@@ -2853,6 +3002,9 @@ int fsapi_node_get_raw_data(
 	int err = 0;
 	fsapi_refs_raw_node_data *raw_data = NULL;
 
+	fsapi_log_enter("vol=%p, node=%p, out_raw_data=%p",
+		vol, node, out_raw_data);
+
 	(void) vol;
 
 	err = sys_malloc(sizeof(fsapi_refs_raw_node_data) + node->record_size,
@@ -2867,6 +3019,9 @@ int fsapi_node_get_raw_data(
 
 	*out_raw_data = raw_data;
 out:
+	fsapi_log_leave(err, "vol=%p, node=%p, out_raw_data=%p",
+		vol, node, out_raw_data);
+
 	return err;
 }
 
@@ -3208,10 +3363,9 @@ int fsapi_node_read(
 	memset(&context, 0, sizeof(context));
 	memset(&visitor, 0, sizeof(visitor));
 
-	sys_log_trace("%s(vol=%p, node=%p, offset=%" PRIu64 ", "
-		"size=%" PRIuz ", iohandler=%p): Entering...",
-		__FUNCTION__, vol, node, PRAu64(offset), PRAuz(size),
-		iohandler);
+	fsapi_log_enter("vol=%p, node=%p, offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, PRAu64(offset), PRAuz(size), iohandler);
 
 	context.vol = vol->vol;
 	context.iohandler = iohandler;
@@ -3287,10 +3441,246 @@ int fsapi_node_read(
 		}
 	}
 out:
-	sys_log_ptrace(err, "%s(vol=%p, node=%p, offset=%" PRIu64 ", "
-		"size=%" PRIuz ", iohandler=%p): Leaving with",
-		__FUNCTION__, vol, node, PRAu64(offset), PRAuz(size),
-		iohandler);
+	fsapi_log_leave(err, "vol=%p, node=%p, offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, PRAu64(offset), PRAuz(size), iohandler);
+
+	return err;
+}
+
+int fsapi_node_write(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		u64 offset,
+		size_t size,
+		fsapi_iohandler *iohandler)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, PRAu64(offset), PRAuz(size), iohandler);
+
+	(void) vol;
+	(void) node;
+	(void) offset;
+	(void) size;
+	(void) iohandler;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, PRAu64(offset), PRAuz(size), iohandler);
+
+	return err;
+}
+
+int fsapi_node_sync(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		sys_bool data_only)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, data_only=%u",
+		vol, node, data_only);
+
+	(void) vol;
+	(void) node;
+	(void) data_only;
+
+	/* Syncing is always successful because there's nothing to sync at the
+	 * moment. */
+	err = 0;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, data_only=%u",
+		vol, node, data_only);
+
+	return err;
+}
+
+int fsapi_node_create(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *name,
+		size_t name_length,
+		fsapi_node_attributes *attributes,
+		fsapi_node **out_node)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, name=%p (->%.*s), "
+		"name_length=%" PRIuz ", attributes=%p, out_node=%p (->%p)",
+		vol, node,
+		name, name ? (int) sys_min(name_length, INT_MAX) : 0,
+		name ? name : "",
+		PRAuz(name_length),
+		attributes,
+		out_node, out_node ? *out_node : NULL);
+
+
+	(void) vol;
+	(void) node;
+	(void) name;
+	(void) name_length;
+	(void) attributes;
+	(void) out_node;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, name=%p (->%.*s), "
+		"name_length=%" PRIuz ", attributes=%p, out_node=%p (->%p)",
+		vol, node,
+		name, name ? (int) sys_min(name_length, INT_MAX) : 0,
+		name ? name : "",
+		PRAuz(name_length),
+		attributes,
+		out_node, out_node ? *out_node : NULL);
+
+	return err;
+}
+
+int fsapi_node_hardlink(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		fsapi_node *link_parent,
+		const char *link_name,
+		size_t link_name_length,
+		fsapi_node_attributes *out_attributes)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, link_parent=%p, "
+		"link_name=%p (->%.*s), link_name_length=%" PRIuz ", "
+		"out_attributes=%p",
+		vol, node, link_parent,
+		link_name,
+		link_name ? (int) sys_min(link_name_length, INT_MAX) : 0,
+		link_name ? link_name : "",
+		PRAuz(link_name_length),
+		out_attributes);
+
+	(void) vol;
+	(void) node;
+	(void) link_parent;
+	(void) link_name;
+	(void) link_name_length;
+	(void) out_attributes;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, link_parent=%p, "
+		"link_name=%p (->%.*s), link_name_length=%" PRIuz ", "
+		"out_attributes=%p",
+		vol, node, link_parent,
+		link_name,
+		link_name ? (int) sys_min(link_name_length, INT_MAX) : 0,
+		link_name ? link_name : "",
+		PRAuz(link_name_length),
+		out_attributes);
+
+	return err;
+}
+
+int fsapi_node_rename(
+		fsapi_volume *vol,
+		fsapi_node *source_dir_node,
+		const char *source_name,
+		size_t source_name_length,
+		fsapi_node *target_dir_node,
+		const char *target_name,
+		size_t target_name_length,
+		fsapi_rename_flags flags)
+{
+	int err;
+
+
+	fsapi_log_enter("vol=%p, source_dir_node=%p, "
+		"source_name=%p (->%.*s), source_name_length=%" PRIuz ", "
+		"target_dir_node=%p, target_name=%p (->%.*s), "
+		"target_name_length=%" PRIuz ", flags=0x%X",
+		vol,
+		source_dir_node,
+		source_name,
+		source_name ? (int) sys_min(source_name_length, INT_MAX) : 0,
+		source_name ? source_name : "",
+		PRAuz(source_name_length),
+		target_dir_node,
+		target_name,
+		target_name ? (int) sys_min(target_name_length, INT_MAX) : 0,
+		target_name ? target_name : "",
+		PRAuz(target_name_length),
+		flags);
+
+	(void) vol;
+	(void) source_dir_node;
+	(void) source_name;
+	(void) source_name_length;
+	(void) target_dir_node;
+	(void) target_name;
+	(void) target_name_length;
+	(void) flags;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, source_dir_node=%p, "
+		"source_name=%p (->%.*s), source_name_length=%" PRIuz ", "
+		"target_dir_node=%p, target_name=%p (->%.*s), "
+		"target_name_length=%" PRIuz ", flags=0x%X",
+		vol,
+		source_dir_node,
+		source_name,
+		source_name ? (int) sys_min(source_name_length, INT_MAX) : 0,
+		source_name ? source_name : "",
+		PRAuz(source_name_length),
+		target_dir_node,
+		target_name,
+		target_name ? (int) sys_min(target_name_length, INT_MAX) : 0,
+		target_name ? target_name : "",
+		PRAuz(target_name_length),
+		flags);
+
+	return err;
+}
+
+int fsapi_node_remove(
+		fsapi_volume *vol,
+		fsapi_node *parent_node,
+		sys_bool is_directory,
+		const char *name,
+		size_t name_length,
+		fsapi_node **out_removed_node)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, parent_node=%p, is_directory=%u, "
+		"name=%p (->%.*s), name_length=%" PRIuz ", "
+		"out_removed_node=%p (->%p)",
+		vol, parent_node, is_directory,
+		name, name ? (int) sys_min(name_length, INT_MAX) : 0,
+		name ? name : "",
+		PRAuz(name_length),
+		out_removed_node, out_removed_node ? *out_removed_node : NULL);
+
+	(void) vol;
+	(void) parent_node;
+	(void) is_directory;
+	(void) name;
+	(void) name_length;
+	(void) out_removed_node;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, parent_node=%p, is_directory=%u, "
+		"name=%p (->%.*s), name_length=%" PRIuz ", "
+		"out_removed_node=%p (->%p)",
+		vol, parent_node, is_directory,
+		name, name ? (int) sys_min(name_length, INT_MAX) : 0,
+		name ? name : "",
+		PRAuz(name_length),
+		out_removed_node, out_removed_node ? *out_removed_node : NULL);
+
 	return err;
 }
 
@@ -3384,6 +3774,9 @@ int fsapi_node_list_extended_attributes(
 	memset(&crawl_context, 0, sizeof(crawl_context));
 	memset(&visitor, 0, sizeof(visitor));
 
+	fsapi_log_enter("vol=%p, node=%p, context=%p, xattr_handler=%p",
+		vol, node, context, xattr_handler);
+
 	if(node == vol->root_node || node->is_short_entry) {
 		/* TODO: Check where root node's streams and EAs are located. */
 		err = 0;
@@ -3441,6 +3834,9 @@ int fsapi_node_list_extended_attributes(
 			"extended attributes");
 	}
 out:
+	fsapi_log_leave(err, "vol=%p, node=%p, context=%p, xattr_handler=%p",
+		vol, node, context, xattr_handler);
+
 	return err;
 }
 
@@ -3619,6 +4015,15 @@ int fsapi_node_read_extended_attribute(
 	memset(&crawl_context, 0, sizeof(crawl_context));
 	memset(&visitor, 0, sizeof(visitor));
 
+	fsapi_log_enter("vol=%p, node=%p, xattr_name=%p (->%.*s), "
+		"xattr_name_length=%" PRIuz ", offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, xattr_name,
+		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
+		xattr_name ? xattr_name : "",
+		PRAuz(xattr_name_length), PRAu64(offset), PRAuz(size),
+		iohandler);
+
 	if(node == vol->root_node || node->is_short_entry) {
 		/* TODO: Check where root node's streams and EAs are located. */
 		err = ENOENT;
@@ -3733,5 +4138,90 @@ int fsapi_node_read_extended_attribute(
 		}
 	}
 out:
+	fsapi_log_leave(err, "vol=%p, node=%p, xattr_name=%p (->%.*s), "
+		"xattr_name_length=%" PRIuz ", offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, xattr_name,
+		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
+		xattr_name ? xattr_name : "",
+		PRAuz(xattr_name_length), PRAu64(offset), PRAuz(size),
+		iohandler);
+
+	return err;
+}
+
+int fsapi_node_write_extended_attribute(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *xattr_name,
+		size_t xattr_name_length,
+		fsapi_node_extended_attribute_flags flags,
+		u64 offset,
+		size_t size,
+		fsapi_iohandler *iohandler)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, xattr_name=%p (->%.*s), "
+		"xattr_name_length=%" PRIuz ", flags=0x%X, offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, xattr_name,
+		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
+		xattr_name ? xattr_name : "",
+		PRAuz(xattr_name_length), flags, PRAu64(offset), PRAuz(size),
+		iohandler);
+
+	(void) vol;
+	(void) node;
+	(void) xattr_name;
+	(void) xattr_name_length;
+	(void) flags;
+	(void) offset;
+	(void) size;
+	(void) iohandler;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, xattr_name=%p (->%.*s), "
+		"xattr_name_length=%" PRIuz ", flags=0x%X, offset=%" PRIu64 ", "
+		"size=%" PRIuz ", iohandler=%p",
+		vol, node, xattr_name,
+		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
+		xattr_name ? xattr_name : "",
+		PRAuz(xattr_name_length), flags, PRAu64(offset), PRAuz(size),
+		iohandler);
+
+	return err;
+}
+
+int fsapi_node_remove_extended_attribute(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		const char *xattr_name,
+		size_t xattr_name_length)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, xattr_name=%p (->%.*s), "
+		"xattr_name_length=%" PRIuz,
+		vol, node, xattr_name,
+		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
+		xattr_name ? xattr_name : "",
+		PRAuz(xattr_name_length));
+
+	(void) vol;
+	(void) node;
+	(void) xattr_name;
+	(void) xattr_name_length;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, xattr_name=%p (->%.*s), "
+		"xattr_name_length=%" PRIuz,
+		vol, node, xattr_name,
+		xattr_name ? (int) sys_min(xattr_name_length, INT_MAX) : 0,
+		xattr_name ? xattr_name : "",
+		PRAuz(xattr_name_length));
+
 	return err;
 }

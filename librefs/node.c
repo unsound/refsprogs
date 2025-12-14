@@ -30,13 +30,6 @@
 #include "util.h"
 #include "sys.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <time.h>
-#include <errno.h>
-
 
 /* Macros. */
 
@@ -158,6 +151,7 @@ static int refs_node_cache_item_compare(
 }
 
 int refs_node_cache_create(
+		const size_t node_size,
 		const size_t max_node_count,
 		refs_node_cache **const out_cache)
 {
@@ -177,6 +171,7 @@ int refs_node_cache_create(
 		goto out;
 	}
 
+	(*out_cache)->node_size = node_size;
 	(*out_cache)->node_tree = node_tree;
 	(*out_cache)->max_node_count = max_node_count;
 out:
@@ -237,7 +232,7 @@ static void refs_node_cache_item_remove_from_lru(
 
 static void refs_node_cache_remove_rb_tree_callback(
 		struct refs_rb_tree *const self,
-		struct refs_rb_node *const node)
+		struct refs_rb_node *node)
 {
 	refs_node_cache_item *const item = (refs_node_cache_item*) node->value;
 
@@ -246,6 +241,8 @@ static void refs_node_cache_remove_rb_tree_callback(
 	refs_node_cache_item_remove_from_lru(
 		/* refs_node_cache_item *item */
 		item);
+
+	sys_free(sizeof(*node), &node);
 }
 
 static sys_bool refs_node_cache_remove(
@@ -294,13 +291,13 @@ void refs_node_cache_destroy(
 		}
 
 		if(item->data) {
-			sys_free(&item->data);
+			sys_free((*cachep)->node_size, &item->data);
 		}
 
-		sys_free(&item);
+		sys_free(sizeof(*item), &item);
 	}
 
-	sys_free(cachep);
+	sys_free(sizeof(**cachep), cachep);
 }
 
 static const u8* refs_node_cache_search(
@@ -343,11 +340,30 @@ static int refs_node_cache_insert(
 {
 	int err = 0;
 	refs_node_cache_item *insert_item = NULL;
+	sys_bool insert_item_allocated = SYS_FALSE;
+
+	if(node_size != cache->node_size) {
+		sys_log_critical("Attempted to insert a node with different "
+			"size from the cache node size. Inserted node size: "
+			"%" PRIuz " Cache node size: %" PRIuz,
+			PRAuz(node_size), PRAuz(cache->node_size));
+		err = ENXIO;
+		goto out;
+	}
+
+	sys_log_debug("Checking if we need to evict a cache item. Current node "
+		"count: %" PRIuz " Max node count: %" PRIuz,
+		PRAuz(cache->cur_node_count), PRAuz(cache->max_node_count));
 
 	if(cache->cur_node_count == cache->max_node_count) {
-		sys_log_debug("Evicting cache block %" PRIu64 " because the "
-			"cache is full.",
-			PRAu64(cache->lru_list->start_block));
+		sys_log_debug("    Reusing least recently used cache block "
+			"%" PRIu64 " (%p) because the cache is full.",
+			PRAu64(cache->lru_list->start_block),
+			cache->lru_list);
+
+		/* Reuse the least recently used item. */
+		insert_item = cache->lru_list;
+
 		if(!refs_node_cache_remove(
 			/* refs_node_cache *cache */
 			cache,
@@ -361,15 +377,20 @@ static int refs_node_cache_insert(
 			goto out;
 		}
 	}
+	else {
+		sys_log_debug("    No, cache is not full.");
 
-	err = sys_calloc(sizeof(*insert_item), &insert_item);
-	if(err) {
-		goto out;
-	}
+		err = sys_calloc(sizeof(*insert_item), &insert_item);
+		if(err) {
+			goto out;
+		}
 
-	err = sys_malloc(node_size, &insert_item->data);
-	if(err) {
-		goto out;
+		insert_item_allocated = SYS_TRUE;
+
+		err = sys_malloc(node_size, &insert_item->data);
+		if(err) {
+			goto out;
+		}
 	}
 
 	memcpy(insert_item->data, node_data, node_size);
@@ -383,22 +404,22 @@ static int refs_node_cache_insert(
 		insert_item))
 	{
 		err = ENOMEM;
+		goto out;
 	}
-	else {
-		refs_node_cache_item_add_to_lru(
-			/* refs_node_cache_item *item */
-			insert_item);
 
-		/* Ownership passed to the cache. */
-		insert_item = NULL;
-	}
+	refs_node_cache_item_add_to_lru(
+		/* refs_node_cache_item *item */
+		insert_item);
+
+	/* Ownership passed to the cache. */
+	insert_item = NULL;
 out:
-	if(insert_item) {
+	if(insert_item && insert_item_allocated) {
 		if(insert_item->data) {
-			sys_free(&insert_item->data);
+			sys_free(cache->node_size, &insert_item->data);
 		}
 
-		sys_free(&insert_item);
+		sys_free(sizeof(*insert_item), &insert_item);
 	}
 
 	return err;
@@ -2165,7 +2186,9 @@ static int parse_level1_block(
 	*out_level2_node_references = level2_node_references;
 out:
 	if(level2_node_reference_offsets) {
-		sys_free(&level2_node_reference_offsets);
+		sys_free(level2_node_reference_list_size *
+			sizeof(level2_node_reference_offsets[0]),
+			&level2_node_reference_offsets);
 	}
 
 	return err;
@@ -3251,7 +3274,8 @@ out:
 	}
 
 	if(value_offsets) {
-		sys_free(&value_offsets);
+		sys_free(values_count * sizeof(value_offsets[0]),
+			&value_offsets);
 	}
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
@@ -3858,6 +3882,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 
 		err = sys_realloc(
 			mappings->entries,
+			mappings->length * sizeof(mappings->entries[0]),
 			(mappings->length + 1) * sizeof(mappings->entries[0]),
 			&new_mapping_table_entries);
 		if(err) {
@@ -4878,7 +4903,7 @@ static int parse_level3_filename_key(
 		PRAbs(cstr_length, cstr));
 out:
 	if(cstr) {
-		sys_free(&cstr);
+		sys_free(cstr_length + 1, &cstr);
 	}
 
 	return err;
@@ -5314,7 +5339,7 @@ static int parse_attribute_named_stream_key(
 	}
 out:
 	if(cstr) {
-		sys_free(&cstr);
+		sys_free(cstr_length + 1, &cstr);
 	}
 
 	return err;
@@ -5459,7 +5484,6 @@ static int parse_attribute_key(
 
 	int err = 0;
 	u16 j = 0;
-	char *cstr = NULL;
 
 	(void) object_id;
 	(void) is_v3;
@@ -5604,10 +5628,6 @@ out:
 	if(j < key_size) {
 		print_data_with_base(prefix, indent, j, key_size, &key[j],
 			key_size - j);
-	}
-
-	if(cstr) {
-		sys_free(&cstr);
 	}
 
 	return err;
@@ -6855,7 +6875,7 @@ static int parse_non_resident_attribute_list_value(
 	*jp = j;
 out:
 	if(block) {
-		sys_free(&block);
+		sys_free(crawl_context->block_size, &block);
 	}
 
 	return err;
@@ -7071,7 +7091,7 @@ out:
 	}
 
 	if(cstr) {
-		sys_free(&cstr);
+		sys_free(cstr_length + 1, &cstr);
 	}
 
 	return err;
@@ -7363,7 +7383,7 @@ static int parse_reparse_point_attribute(
 				"0x%" PRIX16 ": %" PRIbs,
 				name_label, PRAu16(j + k), PRAX16(j + k),
 				PRAbs(cname_length, cname));
-			sys_free(&cname);
+			sys_free(cname_length + 1, &cname);
 			k += name_size;
 		}
 
@@ -7459,6 +7479,7 @@ int parse_level3_long_value(
 	u16 offsets_start = 0;
 	u16 j = 0;
 	char *cstr = NULL;
+	size_t cstr_length = 0;
 
 	(void) context;
 
@@ -8142,8 +8163,6 @@ int parse_level3_long_value(
 			}
 		}
 		else if(attribute_type == 0x00B0) {
-			size_t cstr_length = 0;
-
 			sys_log_debug("Parsing named stream attribute.");
 
 			/* This attribute type contains data relating to
@@ -8369,7 +8388,7 @@ int parse_level3_long_value(
 		i += remaining_in_attribute;
 
 		if(cstr) {
-			sys_free(&cstr);
+			sys_free(cstr_length + 1, &cstr);
 		}
 	}
 
@@ -8408,7 +8427,7 @@ out:
 	}
 
 	if(cstr) {
-		sys_free(&cstr);
+		sys_free(cstr_length + 1, &cstr);
 	}
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
@@ -8679,7 +8698,7 @@ static int parse_level3_volume_label_value(
 	}
 out:
 	if(cname) {
-		sys_free(&cname);
+		sys_free(cname_length + 1, &cname);
 	}
 
 	return err;
@@ -8888,10 +8907,11 @@ void refs_block_map_destroy(
 		refs_block_map **const block_map)
 {
 	if((*block_map)->entries) {
-		sys_free(&(*block_map)->entries);
+		sys_free((*block_map)->length * sizeof(*(*block_map)->entries),
+			&(*block_map)->entries);
 	}
 
-	sys_free(block_map);
+	sys_free(sizeof(**block_map), block_map);
 }
 
 static int crawl_volume_metadata(
@@ -8919,7 +8939,9 @@ static int crawl_volume_metadata(
 	u32 block_index_unit = 0;
 	refs_node_cache *node_cache = NULL;
 	refs_node_crawl_context crawl_context;
+	size_t padding_size = 0;
 	u8 *padding = NULL;
+	size_t block_allocated_size = 0;
 	u8 *block = NULL;
 	refs_block_map *mappings = NULL;
 	u64 primary_level1_block = 0;
@@ -8958,6 +8980,8 @@ static int crawl_volume_metadata(
 	if(node_cachep) {
 		if(!*node_cachep) {
 			err = refs_node_cache_create(
+				/* size_t node_size */
+				block_size,
 				/* size_t max_node_count */
 				128,
 				/* refs_node_cache **const out_cache */
@@ -8993,12 +9017,12 @@ static int crawl_volume_metadata(
 
 	if(print_visitor && print_visitor->verbose) {
 		/* Print the data between the boot sector and the superblock. */
-		err = sys_malloc(30 * block_index_unit - sizeof(bs),
-			&padding);
+		padding_size = 30 * block_index_unit - sizeof(*bs);
+		err = sys_malloc(padding_size, &padding);
 		if(err) {
 			sys_log_perror(err, "Error while allocating %" PRIuz " "
 				"bytes for padding",
-				PRAuz(30 * block_index_unit - sizeof(bs)));
+				PRAuz(padding_size));
 			goto out;
 		}
 
@@ -9008,32 +9032,30 @@ static int crawl_volume_metadata(
 			/* u64 pos */
 			sizeof(*bs),
 			/* size_t count */
-			30 * block_index_unit - sizeof(*bs),
+			padding_size,
 			/* void *b */
 			padding);
 		if(err) {
 			sys_log_perror(err, "Error while reading %" PRIuz " "
 				"bytes from sector 1 (offset %" PRIu64 ")",
-				PRAuz(30 * block_index_unit - sizeof(*bs)),
+				PRAuz(padding_size),
 				PRAu64(sizeof(*bs)));
 			goto out;
 		}
 
-		print_data_with_base("", 0, sizeof(*bs),
-			30 * block_index_unit, padding,
-			30 * block_index_unit - sizeof(*bs));
+		print_data_with_base("", 0, sizeof(*bs), 30 * block_index_unit,
+			padding, padding_size);
 
-		sys_free(&padding);
+		sys_free(padding_size, &padding);
 	}
 
-	err = sys_malloc(
-		(block_index_unit > block_size) ? block_index_unit : block_size,
-		&block);
+	block_allocated_size =
+		(block_index_unit > block_size) ? block_index_unit : block_size;
+	err = sys_malloc(block_allocated_size, &block);
 	if(err) {
 		sys_log_perror(err, "Error while allocating %" PRIu32 " bytes "
 			"for metadata block",
-			PRAu32((block_index_unit > block_size) ?
-			block_index_unit : block_size));
+			PRAu32(block_allocated_size));
 		goto out;
 	}
 
@@ -9468,7 +9490,7 @@ static int crawl_volume_metadata(
 		while(cur_element) {
 			refs_node_block_queue_element *const next_element =
 				cur_element->next;
-			sys_free(&cur_element);
+			sys_free(sizeof(*cur_element), &cur_element);
 			cur_element = next_element;
 		}
 
@@ -9493,7 +9515,8 @@ static int crawl_volume_metadata(
 		while(level2_queue.queue) {
 			refs_node_block_queue_element *const next_element =
 				level2_queue.queue->next;
-			sys_free(&level2_queue.queue);
+			sys_free(sizeof(*level2_queue.queue),
+				&level2_queue.queue);
 			level2_queue.queue = next_element;
 		}
 
@@ -9579,7 +9602,8 @@ static int crawl_volume_metadata(
 
 		for(i = 0; level2_queue.queue; ++i,
 			next_element = level2_queue.queue->next,
-			sys_free(&level2_queue.queue),
+			sys_free(sizeof(*level2_queue.queue),
+				&level2_queue.queue),
 			level2_queue.queue = next_element,
 			--level2_queue.block_queue_length)
 		{
@@ -9663,7 +9687,8 @@ static int crawl_volume_metadata(
 
 		for(i = 0; level3_queue.queue; ++i,
 			next_element = level3_queue.queue->next,
-			sys_free(&level3_queue.queue),
+			sys_free(sizeof(*level3_queue.queue),
+				&level3_queue.queue),
 			level3_queue.queue = next_element,
 			--level3_queue.block_queue_length)
 		{
@@ -9733,7 +9758,8 @@ out:
 		while(level3_queue.queue) {
 			refs_node_block_queue_element *const next_element =
 				level3_queue.queue->next;
-			sys_free(&level3_queue.queue);
+			sys_free(sizeof(*level3_queue.queue),
+				&level3_queue.queue);
 			level3_queue.queue = next_element;
 		}
 	}
@@ -9742,7 +9768,8 @@ out:
 		while(level2_queue.queue) {
 			refs_node_block_queue_element *const next_element =
 				level2_queue.queue->next;
-			sys_free(&level2_queue.queue);
+			sys_free(sizeof(*level2_queue.queue),
+				&level2_queue.queue);
 			level2_queue.queue = next_element;
 		}
 	}
@@ -9751,7 +9778,8 @@ out:
 		while(secondary_level2_blocks) {
 			refs_node_block_queue_element *const next_element =
 				secondary_level2_blocks->next;
-			sys_free(&secondary_level2_blocks);
+			sys_free(sizeof(*secondary_level2_blocks),
+				&secondary_level2_blocks);
 			secondary_level2_blocks = next_element;
 		}
 	}
@@ -9760,13 +9788,14 @@ out:
 		while(primary_level2_blocks) {
 			refs_node_block_queue_element *const next_element =
 				primary_level2_blocks->next;
-			sys_free(&primary_level2_blocks);
+			sys_free(sizeof(*primary_level2_blocks),
+				&primary_level2_blocks);
 			primary_level2_blocks = next_element;
 		}
 	}
 
 	if(block) {
-		sys_free(&block);
+		sys_free(block_allocated_size, &block);
 	}
 
 	if(mappings && !(block_map && *block_map == mappings)) {
@@ -9782,7 +9811,7 @@ out:
 	}
 
 	if(padding) {
-		sys_free(&padding);
+		sys_free(padding_size, &padding);
 	}
 
 	return err;
@@ -9842,6 +9871,7 @@ int refs_node_scan(
 	u32 clusters_per_block = 0;
 	u64 device_size = 0;
 	u32 block_index_unit = 0;
+	size_t padding_size = 0;
 	u8 *padding = NULL;
 	u32 buffer_size = 0;
 	ssize_t buffer_valid_size = 0;
@@ -9856,7 +9886,8 @@ int refs_node_scan(
 	cluster_size =
 		((u64) sector_size) * le32_to_cpu(bs->sectors_per_cluster);
 	if(cluster_size > 0xFFFFFFFFUL) {
-		sys_log_error("Invalid cluster size (exceeds 32-bit range): %" PRIu64,
+		sys_log_error("Invalid cluster size (exceeds 32-bit range): "
+			"%" PRIu64,
 			PRAu64(cluster_size));
 		err = EINVAL;
 		goto out;
@@ -9872,11 +9903,12 @@ int refs_node_scan(
 
 	block_index_unit = (bs->version_major == 1) ? 16384 : (u32) cluster_size;
 
-	err = sys_malloc(30 * block_index_unit - sizeof(bs), &padding);
+	padding_size = 30 * block_index_unit - sizeof(*bs);
+	err = sys_malloc(padding_size, &padding);
 	if(err) {
 		sys_log_perror(err, "Error while allocating %" PRIuz " bytes "
 			"for padding",
-			PRAuz(30 * block_index_unit - sizeof(bs)));
+			PRAuz(padding_size));
 		goto out;
 	}
 
@@ -9886,21 +9918,20 @@ int refs_node_scan(
 		/* u64 pos */
 		sizeof(*bs),
 		/* size_t count */
-		30 * block_index_unit - sizeof(*bs),
+		padding_size,
 		/* void *b */
 		padding);
 	if(err) {
 		sys_log_perror(err, "Error while reading %" PRIuz " bytes from "
 			"sector 1 (offset %" PRIu64 ")",
-			PRAuz(30 * block_index_unit - sizeof(*bs)),
-			PRAu64(sizeof(*bs)));
+			PRAuz(padding_size), PRAu64(sizeof(*bs)));
 		goto out;
 	}
 
 	print_data_with_base("", 0, sizeof(*bs), 30 * block_index_unit,
-		padding, 30 * block_index_unit - sizeof(*bs));
+		padding, padding_size);
 
-	sys_free(&padding);
+	sys_free(padding_size, &padding);
 
 	buffer_size = (u32) sys_max(block_size, 32U * 1024UL * 1024UL);
 	err = sys_malloc(buffer_size, &buffer);
@@ -9997,11 +10028,11 @@ int refs_node_scan(
 	}
 out:
 	if(buffer) {
-		sys_free(&buffer);
+		sys_free(buffer_size, &buffer);
 	}
 
 	if(padding) {
-		sys_free(&padding);
+		sys_free(padding_size, &padding);
 	}
 
 	return err;
