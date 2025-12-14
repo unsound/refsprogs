@@ -671,8 +671,13 @@ int fsapi_node_list_extended_attributes(
  * @param size
  *      (in) The number of bytes to read.
  * @param iohandler
- *      (in) The @ref fsapi_iohandler that will process the read parameters and
- *      perform the extended attribute I/O.
+ *      (in) (optional) The @ref fsapi_iohandler that will process the read
+ *      parameters and perform the extended attribute I/O. If handling the I/O
+ *      is not needed for this call (e.g. the caller only wants the attribute
+ *      size) then @p NULL should be passed here.
+ * @param out_xattr_size
+ *      (out) (optional) Pointer to a @ref u64 field that on successful return
+ *      will receive the total size of the extended attribute.
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
@@ -683,7 +688,8 @@ int fsapi_node_read_extended_attribute(
 		size_t xattr_name_length,
 		u64 offset,
 		size_t size,
-		fsapi_iohandler *iohandler);
+		fsapi_iohandler *iohandler,
+		u64 *out_xattr_size);
 
 int fsapi_node_write_extended_attribute(
 		fsapi_volume *vol,
