@@ -666,7 +666,7 @@ static int refs_volume_lookup(
 		err = refs_node_walk(
 			/* refs_device *dev */
 			vol->dev,
-			/* REFS_BOOT_SECTOR *bs */
+			/* const REFS_BOOT_SECTOR *bs */
 			vol->bs,
 			/* REFS_SUPERBLOCK **sb */
 			&vol->sb,
@@ -715,7 +715,7 @@ static int refs_volume_lookup(
 			err = refs_node_walk(
 				/* refs_device *dev */
 				vol->dev,
-				/* REFS_BOOT_SECTOR *bs */
+				/* const REFS_BOOT_SECTOR *bs */
 				vol->bs,
 				/* REFS_SUPERBLOCK **sb */
 				&vol->sb,
@@ -907,7 +907,7 @@ int refs_volume_lookup_by_object_id(
 	err = refs_node_walk(
 		/* refs_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* REFS_SUPERBLOCK **sb */
 		&vol->sb,
@@ -1068,7 +1068,7 @@ int refs_volume_generate_metadata_bitmap(
 	err = refs_node_scan(
 		/* refs_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* refs_node_walk_visitor *visitor */
 		&visitor);

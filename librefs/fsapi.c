@@ -611,7 +611,7 @@ static int fsapi_volume_get_attributes_common(
 			err = refs_node_walk(
 				/* sys_device *dev */
 				vol->vol->dev,
-				/* REFS_BOOT_SECTOR *bs */
+				/* const REFS_BOOT_SECTOR *bs */
 				vol->vol->bs,
 				/* REFS_SUPERBLOCK_HEADER **sb */
 				NULL,
@@ -1677,7 +1677,7 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		err = refs_node_walk(
 			/* sys_device *dev */
 			context->vol->dev,
-			/* REFS_BOOT_SECTOR *bs */
+			/* const REFS_BOOT_SECTOR *bs */
 			context->vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
 			&context->vol->sb,
@@ -2803,7 +2803,7 @@ static int fsapi_node_list_visit_short_entry(
 		err = refs_node_walk(
 			/* sys_device *dev */
 			context->vol->dev,
-			/* REFS_BOOT_SECTOR *bs */
+			/* const REFS_BOOT_SECTOR *bs */
 			context->vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
 			&context->vol->sb,
@@ -2992,7 +2992,7 @@ int fsapi_node_list(
 	err = refs_node_walk(
 		/* sys_device *dev */
 		vol->vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->vol->bs,
 		/* REFS_SUPERBLOCK_HEADER **sb */
 		&vol->vol->sb,

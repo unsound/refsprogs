@@ -191,7 +191,7 @@ void refs_node_cache_destroy(
 
 struct refs_node_crawl_context {
 	sys_device *dev;
-	REFS_BOOT_SECTOR *bs;
+	const REFS_BOOT_SECTOR *bs;
 	refs_block_map *block_map;
 	refs_node_cache *node_cache;
 	u32 cluster_size;
@@ -201,7 +201,7 @@ struct refs_node_crawl_context {
 
 static inline refs_node_crawl_context refs_node_crawl_context_init(
 		sys_device *const dev,
-		REFS_BOOT_SECTOR *const bs,
+		const REFS_BOOT_SECTOR *const bs,
 		refs_block_map *const block_map,
 		refs_node_cache *const node_cache,
 		const u32 cluster_size,
@@ -334,7 +334,7 @@ u64 refs_node_logical_to_physical_block_number(
  */
 int refs_node_walk(
 		sys_device *dev,
-		REFS_BOOT_SECTOR *bs,
+		const REFS_BOOT_SECTOR *bs,
 		REFS_SUPERBLOCK_HEADER **sb,
 		REFS_LEVEL1_NODE **primary_level1_node,
 		REFS_LEVEL1_NODE **secondary_level1_node,
@@ -362,7 +362,7 @@ struct refs_node_scan_visitor {
  */
 int refs_node_scan(
 		sys_device *dev,
-		REFS_BOOT_SECTOR *bs,
+		const REFS_BOOT_SECTOR *bs,
 		refs_node_scan_visitor *visitor);
 
 #endif /* _REFS_NODE_H */
