@@ -716,10 +716,18 @@ static int fsapi_node_cache_evict(
 		vol,
 		/* fsapi_node *cached_node */
 		lru_node);
-	sys_log_debug("Decrementing cached nodes on evict: %" PRIu64 " -> "
-		"%" PRIu64,
+
+	sys_log_debug("Decrementing cached nodes when evicting node %p "
+		"(0x%" PRIX64 ":\"%.*s\") with refcount %" PRIu64 ": "
+		"%" PRIu64 " -> %" PRIu64,
+		lru_node,
+		PRAX64(lru_node->parent_directory_object_id),
+		(int) sys_min(INT_MAX, lru_node->path->name_length),
+		lru_node->path->name.ro,
+		PRAu64(lru_node->refcount),
 		PRAu64(vol->cached_nodes_count),
 		PRAu64(vol->cached_nodes_count - 1));
+
 	--vol->cached_nodes_count;
 	if(out_evicted_node) {
 		*out_evicted_node = lru_node;
@@ -768,10 +776,18 @@ static int fsapi_node_cache_put(
 		vol,
 		/* fsapi_node *cached_node */
 		node);
-	sys_log_debug("Incrementing cached nodes on put: %" PRIu64 " -> "
-		"%" PRIu64,
+
+	sys_log_debug("Incrementing cached nodes when putting node %p "
+		"(0x%" PRIX64 ":\"%.*s\") with refcount %" PRIu64 ": "
+		"%" PRIu64 " -> %" PRIu64,
+		node,
+		PRAX64(node->parent_directory_object_id),
+		(int) sys_min(INT_MAX, node->path->name_length),
+		node->path->name.ro,
+		PRAu64(node->refcount),
 		PRAu64(vol->cached_nodes_count),
 		PRAu64(vol->cached_nodes_count + 1));
+
 	++vol->cached_nodes_count;
 out:
 	return err;
@@ -788,11 +804,177 @@ static void fsapi_node_cache_get(
 		/* fsapi_node *cached_node */
 		node);
 
-	sys_log_debug("Decrementing cached nodes on get: %" PRIu64 " -> "
-		"%" PRIu64,
+	sys_log_debug("Decrementing cached nodes when getting node %p "
+		"(0x%" PRIX64 ":\"%.*s\") with refcount %" PRIu64 ": "
+		"%" PRIu64 " -> %" PRIu64,
+		node,
+		PRAX64(node->parent_directory_object_id),
+		(int) sys_min(INT_MAX, node->path->name_length),
+		node->path->name.ro,
+		PRAu64(node->refcount),
 		PRAu64(vol->cached_nodes_count),
 		PRAu64(vol->cached_nodes_count - 1));
+
 	--vol->cached_nodes_count;
+}
+
+static int fsapi_node_cache_enter(
+		fsapi_volume *const vol,
+		char *const name,
+		const size_t name_length,
+		fsapi_node_path_element *const parent_element,
+		const u64 node_number,
+		const u64 parent_directory_object_id,
+		const u64 directory_object_id,
+		const sys_bool is_short_entry,
+		const u16 entry_offset,
+		u8 *const key,
+		const size_t key_size,
+		u8 *const record,
+		const size_t record_size,
+		fsapi_node **const out_new_node)
+{
+	int err = 0;
+	fsapi_node *new_node = NULL;
+	fsapi_node_path_element *new_path_element = NULL;
+
+	if(vol->cached_nodes_count >= cached_nodes_max) {
+		/* Reuse the existing node at the tail of the list, i.e. the one
+		 * that was used least recently. */
+
+		err = fsapi_node_cache_evict(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node **out_evicted_node */
+			&new_node);
+		if(err) {
+			goto out;
+		}
+
+		sys_log_debug("Reusing node %p for \"%" PRIbs "\" since we "
+			"reached the maximum number of cached nodes "
+			"(%" PRIuz " >= %" PRIuz ").",
+			new_node,
+			PRAbs(name_length, name),
+			PRAuz(vol->cached_nodes_count + 1),
+			PRAuz(cached_nodes_max));
+
+		/* Free resources of existing node and zero the allocation. */
+		fsapi_node_recycle(
+			/* fsapi_node *node */
+			new_node);
+	}
+	else {
+		err = sys_calloc(sizeof(*new_node), &new_node);
+		if(err) {
+			goto out;
+		}
+
+		sys_log_debug("Allocated new node %p for \"%" PRIbs "\" since "
+			"we are below the maximum number of cached nodes "
+			"(%" PRIuz " < %" PRIuz ").",
+			new_node,
+			PRAbs(name_length, name),
+			PRAuz(vol->cached_nodes_count),
+			PRAuz(cached_nodes_max));
+	}
+
+	err = sys_calloc(sizeof(*new_path_element), &new_path_element);
+	if(err) {
+		goto out;
+	}
+
+	if(parent_element) {
+		parent_element->u.refcount++;
+	}
+
+	new_path_element->parent = parent_element;
+	new_path_element->depth =
+		(parent_element ? parent_element->depth : 0) + 1;
+	new_path_element->name_is_subpath = SYS_FALSE;
+	new_path_element->u.refcount = 1;
+	new_path_element->name.rw = name;
+	new_path_element->name_length = name_length;
+
+	fsapi_node_init(
+		/* fsapi_node *node */
+		new_node,
+		/* fsapi_node_path_element *path */
+		new_path_element,
+		/* u64 node_number */
+		node_number,
+		/* u64 parent_directory_object_id */
+		parent_directory_object_id,
+		/* u64 directory_object_id */
+		directory_object_id,
+		/* sys_bool is_short_entry */
+		is_short_entry,
+		/* u16 entry_offset */
+		entry_offset,
+		/* u8 *key */
+		key,
+		/* size_t key_size */
+		key_size,
+		/* u8 *record */
+		record,
+		/* size_t record_size */
+		record_size,
+		/* fsapi_node *prev */
+		NULL,
+		/* fsapi_node *next */
+		NULL);
+
+	sys_log_debug("Lookup result:");
+	sys_log_debug("    parent_directory_object_id: "
+		"%" PRIu64,
+		PRAu64(new_node->parent_directory_object_id));
+	sys_log_debug("    directory_object_id: %" PRIu64,
+		PRAu64(new_node->directory_object_id));
+	sys_log_debug("    key: %p", new_node->key);
+	sys_log_debug("    key_size: %" PRIuz,
+		PRAuz(new_node->key_size));
+	sys_log_debug("    record: %p", new_node->record);
+	sys_log_debug("    record_size: %" PRIuz,
+		PRAuz(new_node->record_size));
+
+	if(!refs_rb_tree_insert(
+		/* struct refs_rb_tree *self */
+		vol->cache_tree,
+		/* void *value */
+		new_node))
+	{
+		sys_log_error("Error inserting looked up entry in cache.");
+		err = ENOMEM;
+		goto out;
+	}
+
+	if(out_new_node) {
+		*out_new_node = new_node;
+	}
+	else {
+		err = fsapi_node_cache_put(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node *node */
+			new_node);
+		if(err) {
+			goto out;
+		}
+	}
+
+	new_node = NULL;
+	/* Ownership of the element passed to the node. */
+	new_path_element = NULL;
+out:
+	if(new_path_element) {
+		sys_free(sizeof(*new_path_element), &new_path_element);
+	}
+
+	if(new_node) {
+		sys_free(sizeof(*new_node), &new_node);
+	}
+
+	return err;
 }
 
 static int fsapi_lookup_by_posix_path_compare(
@@ -944,24 +1126,6 @@ static int fsapi_lookup_by_posix_path(
 				cached_node,
 				cached_node->parent_directory_object_id ? "" :
 				" (negative)");
-
-			if(cached_node->next) {
-				/* The node is part of the inactive list (the
-				 * node cache) and is not currently in use. It
-				 * must be removed from that list before being
-				 * returned as an active node. */
-				fsapi_remove_cached_node_from_list(
-					/* fsapi_volume *vol */
-					vol,
-					/* fsapi_node *cached_node */
-					cached_node);
-			}
-
-			sys_log_debug("Decrementing cached nodes on cache hit: "
-				"%" PRIu64 " -> %" PRIu64,
-				PRAu64(vol->cached_nodes_count),
-				PRAu64(vol->cached_nodes_count - 1));
-			--vol->cached_nodes_count;
 		}
 		else if(search_path_element.name_is_subpath &&
 			search_path_element.u.subpath_depth > 1 &&
@@ -1274,57 +1438,6 @@ static int fsapi_lookup_by_posix_path(
 				goto out;
 			}
 
-			if(vol->cached_nodes_count >= cached_nodes_max) {
-				/* Reuse the existing node at the tail of the
-				 * list, i.e. the one that was used least
-				 * recently. */
-
-				err = fsapi_node_cache_evict(
-					/* fsapi_volume *vol */
-					vol,
-					/* fsapi_node **out_evicted_node */
-					&new_node);
-				if(err) {
-					goto out;
-				}
-
-				sys_log_debug("Reusing node %p for "
-					"\"%" PRIbs "\" since we reached the "
-					"maximum number of cached nodes "
-					"(%" PRIuz " >= %" PRIuz ").",
-					new_node,
-					PRAbs(path_length, path),
-					PRAuz(vol->cached_nodes_count + 1),
-					PRAuz(cached_nodes_max));
-
-				/* Free resources of existing node and zero the
-				 * allocation. */
-				fsapi_node_recycle(
-					/* fsapi_node *node */
-					new_node);
-			}
-			else {
-				err = sys_calloc(sizeof(fsapi_node), &new_node);
-				if(err) {
-					goto out;
-				}
-
-				sys_log_debug("Allocated new node %p for "
-					"\"%" PRIbs "\" since we are below the "
-					"maximum number of cached nodes "
-					"(%" PRIuz " < %" PRIuz ").",
-					new_node,
-					PRAbs(path_length, path),
-					PRAuz(vol->cached_nodes_count),
-					PRAuz(cached_nodes_max));
-			}
-
-			err = sys_calloc(sizeof(fsapi_node_path_element),
-				&new_path_element);
-			if(err) {
-				goto out;
-			}
-
 			err = sys_strndup(
 				/* const char *str */
 				cur_element,
@@ -1337,24 +1450,15 @@ static int fsapi_lookup_by_posix_path(
 				goto out;
 			}
 
-			if(cur_node->path) {
-				cur_node->path->u.refcount++;
-			}
-
-			new_path_element->parent = cur_node->path;
-			new_path_element->depth =
-				(cur_node->path ? cur_node->path->depth : 0) +
-				1;
-			new_path_element->name_is_subpath = SYS_FALSE;
-			new_path_element->u.refcount = 1;
-			new_path_element->name.rw = dup_element;
-			new_path_element->name_length = cur_element_length;
-
-			fsapi_node_init(
-				/* fsapi_node *node */
-				new_node,
-				/* fsapi_node_path_element *path */
-				new_path_element,
+			err = fsapi_node_cache_enter(
+				/* fsapi_volume *vol */
+				vol,
+				/* char *name */
+				dup_element,
+				/* size_t name_length */
+				cur_element_length,
+				/* fsapi_node_path_element *parent_element */
+				cur_node->path,
 				/* u64 node_number */
 				node_number,
 				/* u64 parent_directory_object_id */
@@ -1373,36 +1477,10 @@ static int fsapi_lookup_by_posix_path(
 				record,
 				/* size_t record_size */
 				record_size,
-				/* fsapi_node *prev */
-				NULL,
-				/* fsapi_node *next */
-				NULL);
-
-			/* Ownership of the element passed to the node. */
-			new_path_element = NULL;
-
-			sys_log_debug("Lookup result:");
-			sys_log_debug("    parent_directory_object_id: "
-				"%" PRIu64,
-				PRAu64(new_node->parent_directory_object_id));
-			sys_log_debug("    directory_object_id: %" PRIu64,
-				PRAu64(new_node->directory_object_id));
-			sys_log_debug("    key: %p", new_node->key);
-			sys_log_debug("    key_size: %" PRIuz,
-				PRAuz(new_node->key_size));
-			sys_log_debug("    record: %p", new_node->record);
-			sys_log_debug("    record_size: %" PRIuz,
-				PRAuz(new_node->record_size));
-
-			if(!refs_rb_tree_insert(
-				/* struct refs_rb_tree *self */
-				vol->cache_tree,
-				/* void *value */
-				new_node))
-			{
-				sys_log_error("Error inserting looked up entry "
-					"in cache.");
-				err = ENOMEM;
+				/* fsapi_node **out_new_node */
+				&new_node);
+			if(err) {
+				sys_free(cur_element_length + 1, &dup_element);
 				goto out;
 			}
 
@@ -2394,9 +2472,13 @@ static void fsapi_volume_unmount_cache_tree_entry_destroy(
 
 	(void) self;
 
-	sys_log_warning("Destroying node %p with %" PRIu64 " remaining "
-		"references...",
-		node, PRAu64(node->refcount));
+	sys_log_warning("Destroying node %p (0x%" PRIX64 ":\"%.*s\") with "
+		"%" PRIu64 " remaining references...",
+		node,
+		PRAX64(node->parent_directory_object_id),
+		(int) sys_min(INT_MAX, node->path->name_length),
+		node->path->name.ro,
+		PRAu64(node->refcount));
 
 	fsapi_node_destroy(
 		/* fsapi_node **node */
@@ -2418,10 +2500,19 @@ int fsapi_volume_unmount(
 		do {
 			fsapi_node *next_node = cur_node->next;
 
-			sys_log_debug("Cleaning up cached node %p (cached "
-				"nodes: %" PRIuz " -> %" PRIuz ")...",
-				cur_node, PRAuz((*vol)->cached_nodes_count),
+			sys_log_debug("Cleaning up cached node %p / "
+				"0x%" PRIX64 ":\"%.*s\" with refcount "
+				"%" PRIu64 " (cached nodes: %" PRIuz " -> "
+				"%" PRIuz ")...",
+				cur_node,
+				PRAX64(cur_node->parent_directory_object_id),
+				(int) sys_min(INT_MAX,
+				cur_node->path->name_length),
+				cur_node->path->name.ro,
+				PRAu64(cur_node->refcount),
+				PRAuz((*vol)->cached_nodes_count),
 				PRAuz((*vol)->cached_nodes_count - 1));
+
 			--(*vol)->cached_nodes_count;
 			refs_rb_tree_remove((*vol)->cache_tree, cur_node);
 
@@ -2633,7 +2724,8 @@ out:
 }
 
 typedef struct {
-	refs_volume *vol;
+	fsapi_volume *vol;
+	fsapi_node *node;
 	fsapi_node_attributes *attributes;
 	char *cname;
 	size_t cname_length;
@@ -2644,6 +2736,163 @@ typedef struct {
 		size_t name_length,
 		fsapi_node_attributes *attributes);
 } fsapi_readdir_context;
+
+static int fsapi_node_list_cache_node(
+		fsapi_readdir_context *const context,
+		const refschar *const file_name,
+		const u16 file_name_length,
+		const u16 child_entry_offset,
+		const sys_bool is_short_entry,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 directory_object_id,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	int err = 0;
+	fsapi_node_path_element search_path_element;
+	fsapi_node search_node;
+	fsapi_node *cached_node = NULL;
+	char *cname = NULL;
+	size_t cname_length = 0;
+	u8 *key_dup = NULL;
+	u8 *record_dup = NULL;
+	sys_bool cache_locked = SYS_TRUE;
+
+	memset(&search_path_element, 0, sizeof(search_path_element));
+	memset(&search_node, 0, sizeof(search_node));
+
+	err = sys_unistr_decode(
+		/* const refschar *ins */
+		file_name,
+		/* size_t ins_len */
+		file_name_length,
+		/* char **outs */
+		&cname,
+		/* size_t *outs_len */
+		&cname_length);
+	if(err) {
+		goto out;
+	}
+
+	search_path_element.parent = context->node->path;
+	search_path_element.depth =
+		(context->node->path ? context->node->path->depth : 0) +
+		1;
+	search_path_element.name_is_subpath = SYS_FALSE;
+	search_path_element.name_length = cname_length;
+	search_path_element.name.ro = cname;
+
+	search_node.path = &search_path_element;
+
+	err = sys_mutex_lock(
+		/* sys_mutex *mutex */
+		&context->vol->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_locked = SYS_TRUE;
+
+	cached_node = refs_rb_tree_find(
+		/* struct refs_rb_tree *self */
+		context->vol->cache_tree,
+		/* void *value */
+		&search_node);
+	if(cached_node) {
+		sys_log_debug("Found 0x%" PRIX64 ":\"%.*s\" in cache. No need "
+			"to enter into cache from directory listing...",
+			PRAX64(parent_node_object_id),
+			(int) sys_min(INT_MAX, cname_length), cname);
+		goto out;
+	}
+
+	err = sys_malloc(key_size, &key_dup);
+	if(err) {
+		goto out;
+	}
+
+	memcpy(key_dup, key, key_size);
+
+	err = sys_malloc(record_size, &record_dup);
+	if(err) {
+		goto out;
+	}
+
+	memcpy(record_dup, record, record_size);
+
+	sys_log_debug("Entering directory entry 0x%" PRIX64 ":\"%.*s\" with "
+		"%" PRIuz "-byte key and %" PRIuz "-byte record into cache...",
+		PRAX64(parent_node_object_id),
+		(int) sys_min(INT_MAX, cname_length), cname, PRAuz(key_size),
+		PRAuz(record_size));
+
+	err = fsapi_node_cache_enter(
+		/* fsapi_volume *vol */
+		context->vol,
+		/* const char *name */
+		cname,
+		/* size_t name_length */
+		cname_length,
+		/* fsapi_node_path_element *parent_element */
+		context->node->path,
+		/* u64 node_number */
+		node_number,
+		/* u64 parent_directory_object_id */
+		parent_node_object_id,
+		/* u64 directory_object_id */
+		directory_object_id,
+		/* sys_bool is_short_entry */
+		is_short_entry,
+		/* u16 entry_offset */
+		child_entry_offset,
+		/* const u8 *key */
+		key_dup,
+		/* size_t key_size */
+		key_size,
+		/* u8 *record */
+		record_dup,
+		/* size_t record_size */
+		record_size,
+		/* fsapi_node *out_new_node */
+		NULL);
+	if(err) {
+		goto out;
+	}
+
+	/* Ownership passed to the cached node. */
+	cname = NULL;
+	key_dup = NULL;
+	record_dup = NULL;
+out:
+	if(cache_locked) {
+		int unlock_err = 0;
+
+		unlock_err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&context->vol->cache_lock);
+		if(unlock_err) {
+			err = err ? err : unlock_err;
+			goto out;
+		}
+	}
+
+	if(record_dup) {
+		sys_free(record_size, &record_dup);
+	}
+
+	if(key_dup) {
+		sys_free(key_size, &key_dup);
+	}
+
+	if(cname) {
+		sys_free(cname_length + 1, &cname);
+	}
+
+	return err;
+}
 
 static int fsapi_node_list_filldir(
 		fsapi_readdir_context *context,
@@ -2784,10 +3033,6 @@ static int fsapi_node_list_visit_short_entry(
 	int err = 0;
 
 	(void) hard_link_id;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
 
 	sys_log_debug("Got short entry with file flags 0x%" PRIX32 ", hard "
 		"link ID %" PRIu64 ", object ID %" PRIu64,
@@ -2837,25 +3082,57 @@ static int fsapi_node_list_visit_short_entry(
 
 		err = refs_node_walk(
 			/* sys_device *dev */
-			context->vol->dev,
+			context->vol->vol->dev,
 			/* const REFS_BOOT_SECTOR *bs */
-			context->vol->bs,
+			context->vol->vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
-			&context->vol->sb,
+			&context->vol->vol->sb,
 			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&context->vol->primary_level1_node,
+			&context->vol->vol->primary_level1_node,
 			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&context->vol->secondary_level1_node,
+			&context->vol->vol->secondary_level1_node,
 			/* refs_block_map **block_map */
-			&context->vol->block_map,
+			&context->vol->vol->block_map,
 			/* refs_node_cache **node_cache */
-			&context->vol->node_cache,
+			&context->vol->vol->node_cache,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */
 			&object_id,
 			/* refs_node_walk_visitor *visitor */
 			&visitor);
+		if(err) {
+			goto out;
+		}
+	}
+
+	err = fsapi_node_list_cache_node(
+		/* fsapi_readdir_context *context */
+		context,
+		/* const refschar *file_name */
+		file_name,
+		/* u16 file_name_length */
+		file_name_length,
+		/* u16 child_entry_offset */
+		child_entry_offset,
+		/* sys_bool is_short_entry */
+		SYS_TRUE,
+		/* u64 node_number */
+		node_number,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
+		/* u64 directory_object_id */
+		object_id,
+		/* const u8 *key */
+		key,
+		/* size_t key_size */
+		key_size,
+		/* const u8 *record */
+		record,
+		/* size_t record_size */
+		record_size);
+	if(err) {
+		goto out;
 	}
 out:
 	return err;
@@ -2880,15 +3157,12 @@ static int fsapi_node_list_visit_long_entry(
 		const u8 *const record,
 		const size_t record_size)
 {
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
+	int err = 0;
 
 	sys_log_debug("Got long entry with file flags 0x%" PRIX32 ".",
 		PRAX32(file_flags));
 
-	return fsapi_node_list_filldir(
+	err = fsapi_node_list_filldir(
 		/* fsapi_readdir_context *context */
 		(fsapi_readdir_context*) context,
 		/* const refschar *file_name */
@@ -2917,6 +3191,40 @@ static int fsapi_node_list_visit_long_entry(
 		file_size,
 		/* u64 allocated_size */
 		allocated_size);
+	if(err) {
+		goto out;
+	}
+
+	err = fsapi_node_list_cache_node(
+		/* fsapi_readdir_context *context */
+		context,
+		/* const refschar *file_name */
+		file_name,
+		/* u16 file_name_length */
+		file_name_length,
+		/* u16 child_entry_offset */
+		child_entry_offset,
+		/* sys_bool is_short_entry */
+		SYS_FALSE,
+		/* u64 node_number */
+		node_number,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
+		/* u64 directory_object_id */
+		0,
+		/* const u8 *key */
+		key,
+		/* size_t key_size */
+		key_size,
+		/* const u8 *record */
+		record,
+		/* size_t record_size */
+		record_size);
+	if(err) {
+		goto out;
+	}
+out:
+	return err;
 }
 
 static int fsapi_node_list_visit_symlink(
@@ -3018,7 +3326,8 @@ int fsapi_node_list(
 		goto out;
 	}
 
-	readdir_context.vol = vol->vol;
+	readdir_context.vol = vol;
+	readdir_context.node = directory_node;
 	readdir_context.attributes = attributes;
 	readdir_context.handle_dirent_context = context;
 	readdir_context.handle_dirent = handle_dirent;
