@@ -2427,6 +2427,7 @@ static int parse_index_value(
 		const char *const prefix,
 		const size_t indent,
 		const sys_bool is_v3,
+		const sys_bool add_to_queue,
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
@@ -2463,7 +2464,7 @@ static int parse_index_value(
 			/* const u8 *data */
 			&value[j]);
 
-		if(block_queue) {
+		if(block_queue && add_to_queue) {
 			/* Add the next level block number parsed from the value
 			 * to the block queue. */
 			const le64 *const value_le64 = (const le64*) &value[j];
@@ -2609,6 +2610,11 @@ static int parse_generic_entry(
 			u16 key_size,
 			u32 entry_size,
 			void *context),
+		sys_bool (*const should_add_subnode)(
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_size,
+			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
 			refs_node_walk_visitor *visitor,
@@ -2624,7 +2630,8 @@ static int parse_generic_entry(
 			u16 entry_offset,
 			u32 entry_size,
 			void *context),
-		refs_node_block_queue *const block_queue)
+		refs_node_block_queue *const block_queue,
+		sys_bool *const out_added_subnode)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -2636,6 +2643,7 @@ static int parse_generic_entry(
 	const u8 *key = NULL;
 	u16 value_offset = 0;
 	u16 value_size = 0;
+	sys_bool add_subnode = SYS_FALSE;
 
 	(void) block_index_unit;
 
@@ -2729,6 +2737,11 @@ static int parse_generic_entry(
 	if(is_index && value_offset < entry_size &&
 		value_size <= entry_size - value_offset)
 	{
+		add_subnode =
+			(!should_add_subnode ||
+			should_add_subnode(is_v3, key, key_size, context)) ?
+			SYS_TRUE : SYS_FALSE;
+
 		err = parse_index_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
@@ -2738,6 +2751,8 @@ static int parse_generic_entry(
 			indent + 2,
 			/* sys_bool is_v3 */
 			is_v3,
+			/* sys_bool add_to_queue */
+			add_subnode,
 			/* const u8 *value */
 			&entry[value_offset],
 			/* u16 value_offset */
@@ -2779,6 +2794,10 @@ static int parse_generic_entry(
 			/* void *context */
 			context);
 	}
+
+	if(out_added_subnode) {
+		*out_added_subnode = add_subnode;
+	}
 out:
 	return err;
 }
@@ -2808,6 +2827,11 @@ static int parse_generic_block(
 			u16 key_offset,
 			u16 key_size,
 			u32 entry_size,
+			void *context),
+		sys_bool (*const should_add_subnode)(
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_size,
 			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
@@ -2854,18 +2878,21 @@ static int parse_generic_block(
 	u32 value_offsets_start_real = 0;
 	u32 value_offsets_end_real = 0;
 	u32 j = 0;
+	sys_bool added_subnode = SYS_FALSE;
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
 		"cluster_number=%" PRIu64 ", block_number=%" PRIu64 ", "
 		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
 		"block_size=%" PRIu32 ", block_queue=%p, "
 		"add_subnodes_in_offsets_order=%d, context=%p, parse_key=%p, "
-		"parse_leaf_value=%p, leaf_entry_handler=%p): Entering...",
+		"should_add_subnode=%p, parse_leaf_value=%p, "
+		"leaf_entry_handler=%p): Entering...",
 		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
 		PRAu64(cluster_number), PRAu64(block_number),
 		PRAu64(block_queue_index), PRAu8(level), block,
 		PRAu32(block_size), block_queue, add_subnodes_in_offsets_order,
-		context, parse_key, parse_leaf_value, leaf_entry_handler);
+		context, parse_key, should_add_subnode, parse_leaf_value,
+		leaf_entry_handler);
 
 	if(block_size < 512) {
 		/* It doesn't make sense to have blocks less than a sector, and
@@ -3121,6 +3148,13 @@ static int parse_generic_block(
 			 *      u16 key_size,
 			 *      void *context) */
 			parse_key,
+			/* sys_bool (*should_add_subnode)(
+			 *     sys_bool is_v3,
+			 *     const u8 *key,
+			 *     u16 key_size,
+			 *     void *context) */
+			(should_add_subnode && !added_subnode) ?
+				should_add_subnode : NULL,
 			/* int (*parse_leaf_value)(
 			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
@@ -3139,7 +3173,9 @@ static int parse_generic_block(
 			parse_leaf_value,
 			/* refs_node_block_queue *block_queue */
 			(!is_index_node || !add_subnodes_in_offsets_order) ?
-			NULL : block_queue);
+			NULL : block_queue,
+			/* sys_bool *out_added_subnode */
+			&added_subnode);
 		if(err) {
 			goto out;
 		}
@@ -3182,7 +3218,6 @@ static int parse_generic_block(
 	{
 		/* We have already read the value offsets, now read each
 		 * value in the order that it appears and advance pointer. */
-
 		for(j = 0; j < values_count; ++j) {
 			/* Look up the next offset in the value offsets
 			 * array. */
@@ -3265,6 +3300,12 @@ static int parse_generic_block(
 				 *      u32 entry_size,
 				 *      void *context) */
 				parse_key,
+				/* sys_bool (*should_add_subnode)(
+				 *     sys_bool is_v3,
+				 *     const u8 *key,
+				 *     u16 key_size,
+				 *     void *context) */
+				NULL,
 				/* int (*parse_leaf_value)(
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
@@ -3283,7 +3324,9 @@ static int parse_generic_block(
 				/* refs_node_block_queue *block_queue */
 				(!is_index_node ||
 				add_subnodes_in_offsets_order) ? NULL :
-				block_queue);
+				block_queue,
+				/* sys_bool *out_added_subnode */
+				NULL);
 			if(err) {
 				goto out;
 			}
@@ -3341,14 +3384,87 @@ out:
 		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
 		"block_size=%" PRIu32 ", block_queue=%p, "
 		"add_subnodes_in_offsets_order=%d, context=%p, parse_key=%p, "
-		"parse_leaf_value=%p, leaf_entry_handler=%p): Leaving.",
+		"should_add_subnode=%p, parse_leaf_value=%p, "
+		"leaf_entry_handler=%p): Leaving.",
 		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
 		PRAu64(cluster_number), PRAu64(block_number),
 		PRAu64(block_queue_index), PRAu8(level), block,
 		PRAu32(block_size), block_queue, add_subnodes_in_offsets_order,
-		context, parse_key, parse_leaf_value, leaf_entry_handler);
+		context, parse_key, should_add_subnode, parse_leaf_value,
+		leaf_entry_handler);
 
 	return err;
+}
+
+typedef struct {
+	sys_bool is_mapping;
+	u64 object_id;
+	refs_node_block_queue *level3_block_queue;
+} level2_0x2_leaf_parse_context;
+
+static sys_bool parse_level2_0x2_should_add_subnode(
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		void *const _context)
+{
+	level2_0x2_leaf_parse_context *const context =
+		(level2_0x2_leaf_parse_context*) _context;
+
+	sys_bool res = SYS_TRUE;
+
+	(void) is_v3;
+
+	if(!context->is_mapping) {
+		/* If we aren't doing object ID mapping then add all
+		 * subnodes. */
+		goto out;
+	}
+
+	if(key_size >= 2) {
+		const u16 key_type = read_le16(&key[0x0]);
+
+		/* Observed value for this field is 0x0. Reject unknown values
+		 * since we don't know the significance of this field. */
+		if(key_type != 0x0) {
+			res = SYS_FALSE;
+		}
+	}
+	if(key_size >= 4) {
+		const u16 reserved = read_le16(&key[0x2]);
+
+		/* Observed value for this field is 0x0. Reject unknown values
+		 * since we don't know the significance of this field. */
+		if(reserved != 0x0) {
+			res = SYS_FALSE;
+		}
+	}
+	if(key_size >= 8) {
+		const u32 reserved = read_le32(&key[0x4]);
+
+		/* Observed value for this field is 0x0. Reject unknown values
+		 * since we don't know the significance of this field. */
+		if(reserved != 0x0) {
+			res = SYS_FALSE;
+		}
+	}
+	if(key_size >= 16) {
+		const u64 object_id = read_le64(&key[0x8]);
+
+		/* If the object ID in the key is less than the requested object
+		 * ID, then we reject the key. This is because indices in ReFS
+		 * specify the last key of the child node, not the first key as
+		 * is usually the case in other filesystems. */
+		sys_log_debug("%s: %" PRIu64 " < %" PRIu64, __FUNCTION__,
+			PRAu64(object_id), PRAu64(context->object_id));
+		if(object_id < context->object_id) {
+			res = SYS_FALSE;
+		}
+	}
+out:
+	sys_log_debug("%s: %s", __FUNCTION__, res ? "Yes" : "No");
+
+	return res;
 }
 
 static int parse_level2_0x2_key(
@@ -3377,12 +3493,6 @@ static int parse_level2_0x2_key(
 
 	return 0;
 }
-
-typedef struct {
-	sys_bool is_mapping;
-	u64 object_id;
-	refs_node_block_queue *level3_block_queue;
-} level2_0x2_leaf_parse_context;
 
 static int parse_level2_0x2_leaf_value(
 		refs_node_walk_visitor *const visitor,
@@ -4861,6 +4971,12 @@ static int parse_level2_block(
 		 *      u32 entry_size,
 		 *      void *context) */
 		parse_level2_key,
+		/* sys_bool (*should_add_subnode)(
+		 *     sys_bool is_v3,
+		 *     const u8 *key,
+		 *     u16 key_size,
+		 *     void *context) */
+		(object_id == 0x2) ? parse_level2_0x2_should_add_subnode : NULL,
 		/* int (*parse_leaf_value)(
 		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
@@ -6901,6 +7017,12 @@ static int parse_non_resident_attribute_list_value(
 			 *      u32 entry_size,
 			 *      void *context) */
 			parse_attribute_key,
+			/* sys_bool (*should_add_subnode)(
+			 *     sys_bool is_v3,
+			 *     const u8 *key,
+			 *     u16 key_size,
+			 *     void *context) */
+			NULL,
 			/* int (*parse_leaf_value)(
 			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
@@ -8935,6 +9057,12 @@ static int parse_level3_block(
 		 *      u32 entry_size,
 		 *      void *context) */
 		parse_level3_key,
+		/* sys_bool (*should_add_subnode)(
+		 *     sys_bool is_v3,
+		 *     const u8 *key,
+		 *     u16 key_size,
+		 *     void *context) */
+		NULL,
 		/* int (*parse_leaf_value)(
 		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
@@ -9534,6 +9662,12 @@ static int crawl_volume_metadata(
 				 *      u16 key_offset,
 				 *      u16 key_size,
 				 *      void *context) */
+				NULL,
+				/* sys_bool (*should_add_subnode)(
+				 *     sys_bool is_v3,
+				 *     const u8 *key,
+				 *     u16 key_size,
+				 *     void *context) */
 				NULL,
 				/* int (*parse_leaf_value)(
 				 *      refs_node_crawl_context *crawl_context,
