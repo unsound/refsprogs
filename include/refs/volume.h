@@ -59,6 +59,7 @@ int refs_volume_lookup_by_posix_path(
 		u64 *out_parent_directory_object_id,
 		u64 *out_directory_object_id,
 		sys_bool *out_is_short_entry,
+		u64 *out_node_number,
 		u16 *out_entry_offset,
 		u8 **out_key,
 		size_t *out_key_size,
