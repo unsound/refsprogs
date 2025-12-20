@@ -4141,7 +4141,11 @@ static int fsapi_linux_dir_op_iterate(
 		 *     size_t name_length,
 		 *     fsapi_node_attributes *attributes) */
 		fsapi_linux_readdir_handle_dirent);
-	if(err) {
+	if(err == -1) {
+		/* Break code when the buffer is full, not an error. */
+		err = 0;
+	}
+	else if(err) {
 		sys_log_perror(err, "handle_dirent callback returned error for "
 			"offset %" PRIu64, PRAu64(offset));
 		ret = -err;
