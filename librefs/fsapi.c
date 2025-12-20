@@ -4291,7 +4291,10 @@ int fsapi_node_list_extended_attributes(
 		node->record_size,
 		/* void *context */
 		NULL);
-	if(err && err != -1) {
+	if(err == -1) {
+		err = 0;
+	}
+	else if(err) {
 		sys_log_perror(err, "Error while parsing node for listing "
 			"extended attributes");
 	}
