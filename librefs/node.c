@@ -72,6 +72,23 @@ typedef struct {
 	size_t block_queue_length;
 } refs_node_block_queue;
 
+typedef struct refs_object_map_cache_item refs_object_map_cache_item;
+
+struct refs_object_map_cache_item {
+	u64 object_id;
+	u64 node_number;
+	refs_object_map_cache_item *lru_list_prev;
+	refs_object_map_cache_item *lru_list_next;
+};
+
+typedef struct {
+	sys_mutex cache_lock;
+	struct refs_rb_tree *object_id_tree;
+	refs_object_map_cache_item *lru_list;
+	size_t cur_node_count;
+	size_t max_node_count;
+} refs_object_map_cache;
+
 typedef struct refs_node_cache_item refs_node_cache_item;
 
 struct refs_node_cache_item {
@@ -89,6 +106,7 @@ struct refs_node_cache {
 	refs_node_cache_item *lru_list;
 	size_t cur_node_count;
 	size_t max_node_count;
+	refs_object_map_cache *object_map_cache;
 };
 
 
@@ -131,6 +149,370 @@ static int parse_level3_leaf_value(
 
 /* Function defintions. */
 
+static int refs_object_map_cache_item_compare(
+		struct refs_rb_tree *const self,
+		struct refs_rb_node *const a_node,
+		struct refs_rb_node *const b_node)
+{
+	const refs_object_map_cache_item *const a =
+		(const refs_object_map_cache_item*) a_node->value;
+	const refs_object_map_cache_item *const b =
+		(const refs_object_map_cache_item*) b_node->value;
+
+	(void) self;
+
+	if(a->object_id < b->object_id) {
+		return -1;
+	}
+	else if(a->object_id > b->object_id) {
+		return 1;
+	}
+
+	return 0;
+}
+
+
+static void refs_object_map_cache_item_add_to_lru(
+		refs_object_map_cache *const cache,
+		refs_object_map_cache_item *const item)
+{
+	if(!cache->lru_list) {
+		item->lru_list_next = item;
+		item->lru_list_prev = item;
+		cache->lru_list = item;
+	}
+	else {
+		/* We insert the new item at the previous location from
+		 * the head, i.e. at the tail of the list. Then we pop
+		 * off the least recently used item from the head. */
+		item->lru_list_prev = cache->lru_list->lru_list_prev;
+		cache->lru_list->lru_list_prev->lru_list_next = item;
+		cache->lru_list->lru_list_prev = item;
+		item->lru_list_next = cache->lru_list;
+	}
+
+	sys_log_debug("Add to LRU: %p (next: %p, prev: %p)",
+		item, item->lru_list_next, item->lru_list_prev);
+
+	++cache->cur_node_count;
+}
+
+static void refs_object_map_cache_item_remove_from_lru(
+		refs_object_map_cache *const cache,
+		refs_object_map_cache_item *const item)
+{
+	sys_log_debug("Remove from LRU: %p", item);
+
+	if(item->lru_list_next != item) {
+		/* Connect the next and previous item bypassing the item that is
+		 * being removed. */
+		refs_object_map_cache_item *const next =
+			item->lru_list_next;
+		refs_object_map_cache_item *const prev =
+			item->lru_list_prev;
+		next->lru_list_prev = item->lru_list_prev;
+		prev->lru_list_next = item->lru_list_next;
+	}
+
+	if(cache->lru_list == item) {
+		/* If this is the head of the list, replace the head if there
+		 * are more items or set it to NULL if there aren't. */
+		cache->lru_list =
+			(item->lru_list_next != item) ? item->lru_list_next :
+			NULL;
+	}
+
+	item->lru_list_next = NULL;
+	item->lru_list_prev = NULL;
+}
+
+static int refs_object_map_cache_create(
+		refs_object_map_cache **const out_object_map_cache)
+{
+	int err = 0;
+	refs_object_map_cache *object_map_cache = NULL;
+	sys_bool cache_lock_initialized = SYS_FALSE;
+
+	err = sys_calloc(sizeof(*object_map_cache), &object_map_cache);
+	if(err) {
+		goto out;
+	}
+
+	object_map_cache->object_id_tree = refs_rb_tree_create(
+		/* refs_rb_tree_node_cmp_f cmp */
+		refs_object_map_cache_item_compare);
+	if(!object_map_cache->object_id_tree) {
+		err = ENOMEM;
+		goto out;
+	}
+
+	err = sys_mutex_init(
+		/* sys_mutex *mutex */
+		&object_map_cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_lock_initialized = SYS_TRUE;
+
+	object_map_cache->object_id_tree->info = object_map_cache;
+	object_map_cache->max_node_count = 1024;
+
+	*out_object_map_cache = object_map_cache;
+	object_map_cache = NULL;
+out:
+	if(object_map_cache) {
+		if(cache_lock_initialized) {
+			sys_mutex_deinit(
+				/* sys_mutex *mutex */
+				&object_map_cache->cache_lock);
+		}
+
+		if(object_map_cache->object_id_tree) {
+			refs_rb_tree_dealloc(
+				/* struct refs_rb_tree *self */
+				object_map_cache->object_id_tree,
+				/* refs_rb_tree_node_f node_cb */
+				refs_rb_tree_node_dealloc_cb);
+		}
+
+		sys_free(sizeof(*object_map_cache), &object_map_cache);
+	}
+
+	return err;
+}
+
+static void refs_object_map_cache_remove_rb_tree_callback(
+		struct refs_rb_tree *const self,
+		struct refs_rb_node *node)
+{
+	refs_object_map_cache_item *const item =
+		(refs_object_map_cache_item*) node->value;
+
+	refs_object_map_cache_item_remove_from_lru(
+		/* refs_object_map_cache *cache */
+		(refs_object_map_cache*) self->info,
+		/* refs_object_map_cache_item *item */
+		item);
+
+	sys_free(sizeof(*node), &node);
+}
+
+static sys_bool refs_object_map_cache_remove(
+		refs_object_map_cache *const cache,
+		const u64 object_id)
+{
+	sys_bool res;
+	refs_object_map_cache_item search_item;
+
+	memset(&search_item, 0, sizeof(search_item));
+	search_item.object_id = object_id;
+
+	if(refs_rb_tree_remove_with_cb(
+		/* struct refs_rb_tree *self */
+		cache->object_id_tree,
+		/* void *value */
+		&search_item,
+		/* refs_rb_tree_node_f node_cb) */
+		refs_object_map_cache_remove_rb_tree_callback))
+	{
+		--cache->cur_node_count;
+		res = SYS_TRUE;
+	}
+	else {
+		res = SYS_FALSE;
+	}
+
+	return res;
+}
+
+static int refs_object_map_cache_insert(
+		refs_object_map_cache *const cache,
+		const u64 object_id,
+		const u64 node_number)
+{
+	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
+	refs_object_map_cache_item *insert_item = NULL;
+	sys_bool insert_item_allocated = SYS_FALSE;
+
+	err = sys_mutex_lock(
+		/* sys_mutex *const mutex */
+		&cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_locked = SYS_TRUE;
+
+	sys_log_debug("Checking if we need to evict a cache item. Current node "
+		"count: %" PRIuz " Max node count: %" PRIuz,
+		PRAuz(cache->cur_node_count), PRAuz(cache->max_node_count));
+
+	if(cache->cur_node_count == cache->max_node_count) {
+		sys_log_debug("    Reusing least recently used cache object ID "
+			"%" PRIu64 " (%p) because the cache is full.",
+			PRAu64(cache->lru_list->object_id),
+			cache->lru_list);
+
+		/* Reuse the least recently used item. */
+		insert_item = cache->lru_list;
+
+		if(!refs_object_map_cache_remove(
+			/* refs_object_map_cache *cache */
+			cache,
+			/* u64 object_id */
+			cache->lru_list->object_id))
+		{
+			sys_log_critical("Couldn't find the head to the list "
+				"in the cache tree: %" PRIu64,
+				PRAu64(cache->lru_list->object_id));
+			err = ENXIO;
+			goto out;
+		}
+
+		memset(insert_item, 0, sizeof(*insert_item));
+	}
+	else {
+		sys_log_debug("    No, cache is not full.");
+
+		err = sys_calloc(sizeof(*insert_item), &insert_item);
+		if(err) {
+			goto out;
+		}
+
+		insert_item_allocated = SYS_TRUE;
+	}
+
+	insert_item->object_id = object_id;
+	insert_item->node_number = node_number;
+
+	if(!refs_rb_tree_insert(
+		/* struct refs_rb_tree *self */
+		cache->object_id_tree,
+		/* void *value */
+		insert_item))
+	{
+		err = ENOMEM;
+		goto out;
+	}
+
+	refs_object_map_cache_item_add_to_lru(
+		/* refs_object_map_cache *cache */
+		cache,
+		/* refs_object_map_cache_item *item */
+		insert_item);
+
+	sys_log_debug("Added object ID mapping 0x%" PRIX64 " -> %" PRIu64 " / "
+		"0x%" PRIX64 " to object map cache.",
+		PRAX64(object_id), PRAu64(node_number), PRAX64(node_number));
+
+	/* Ownership passed to the cache. */
+	insert_item = NULL;
+out:
+	if(cache_locked) {
+		sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&cache->cache_lock);
+	}
+
+	if(insert_item && insert_item_allocated) {
+		sys_free(sizeof(*insert_item), &insert_item);
+	}
+
+	return err;
+}
+
+static int refs_object_map_cache_search(
+		refs_object_map_cache *const cache,
+		const u64 object_id,
+		u64 *const out_node_number)
+{
+	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
+	refs_object_map_cache_item search_item;
+	refs_object_map_cache_item *cache_item = NULL;
+
+	memset(&search_item, 0, sizeof(search_item));
+	search_item.object_id = object_id;
+
+	err = sys_mutex_lock(
+		/* sys_mutex *mutex */
+		&cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_locked = SYS_TRUE;
+
+	cache_item = (refs_object_map_cache_item*) refs_rb_tree_find(
+		/* struct refs_rb_tree *self */
+		cache->object_id_tree,
+		/* void *value */
+		&search_item);
+	if(cache_item) {
+		/* A cache hit means we should put the item at the end of the
+		 * LRU list to avoid it being evicted next time the cache is
+		 * full. */
+
+		refs_object_map_cache_item_remove_from_lru(
+			/* refs_object_map_cache *cache */
+			cache,
+			/* refs_object_map_cache_item *item */
+			cache_item);
+
+		refs_object_map_cache_item_add_to_lru(
+			/* refs_object_map_cache *cache */
+			cache,
+			/* refs_object_map_cache_item *item */
+			cache_item);
+	}
+
+	*out_node_number = cache_item ? cache_item->node_number : 0;
+out:
+	if(cache_locked) {
+		sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&cache->cache_lock);
+	}
+
+	return err;
+}
+
+static void refs_object_map_cache_destroy(
+		refs_object_map_cache **const object_map_cachep)
+{
+	/* Iterate over cache items and free them. */
+	while((*object_map_cachep)->lru_list) {
+		refs_object_map_cache_item *item =
+			(*object_map_cachep)->lru_list;
+
+		if(!refs_object_map_cache_remove(
+			/* refs_object_map_cache *cache */
+			*object_map_cachep,
+			/* u64 object_id */
+			item->object_id))
+		{
+			sys_log_critical("Couldn't find object map cache item "
+				"%p in cache at destroy time.", item);
+		}
+
+		sys_free(sizeof(*item), &item);
+	}
+
+	sys_mutex_deinit(
+		/* sys_mutex *mutex */
+		&(*object_map_cachep)->cache_lock);
+
+	refs_rb_tree_dealloc(
+		/* struct refs_rb_tree *self */
+		(*object_map_cachep)->object_id_tree,
+		/* refs_rb_tree_node_f node_cb */
+		refs_rb_tree_node_dealloc_cb);
+
+	sys_free(sizeof(**object_map_cachep), object_map_cachep);
+}
+
 static int refs_node_cache_item_compare(
 		struct refs_rb_tree *const self,
 		struct refs_rb_node *const a_node,
@@ -161,6 +543,7 @@ int refs_node_cache_create(
 	int err = 0;
 	struct refs_rb_tree *node_tree = NULL;
 	refs_node_cache *cache = NULL;
+	refs_object_map_cache *object_map_cache = NULL;
 	sys_bool cache_lock_initialized = SYS_FALSE;
 
 	node_tree = refs_rb_tree_create(
@@ -176,6 +559,13 @@ int refs_node_cache_create(
 		goto out;
 	}
 
+	err = refs_object_map_cache_create(
+		/* refs_object_map_cache **out_object_map_cache */
+		&object_map_cache);
+	if(err) {
+		goto out;
+	}
+
 	err = sys_mutex_init(
 		/* sys_mutex *mutex */
 		&cache->cache_lock);
@@ -187,9 +577,11 @@ int refs_node_cache_create(
 
 	cache->node_size = node_size;
 	cache->node_tree = node_tree;
-	cache->max_node_count = max_node_count;
-	*out_cache = cache;
 	node_tree = NULL;
+	cache->max_node_count = max_node_count;
+	cache->object_map_cache = object_map_cache;
+	object_map_cache = NULL;
+	*out_cache = cache;
 	cache = NULL;
 	cache_lock_initialized = SYS_FALSE;
 out:
@@ -197,6 +589,12 @@ out:
 		sys_mutex_deinit(
 			/* sys_mutex *mutex */
 			&(*out_cache)->cache_lock);
+	}
+
+	if(object_map_cache) {
+		refs_object_map_cache_destroy(
+			/* refs_object_map_cache **object_map_cachep */
+			&object_map_cache);
 	}
 
 	if(cache) {
@@ -312,6 +710,10 @@ static sys_bool refs_node_cache_remove(
 void refs_node_cache_destroy(
 		refs_node_cache **const cachep)
 {
+	refs_object_map_cache_destroy(
+		/* refs_object_map_cache **object_map_cachep */
+		&(*cachep)->object_map_cache);
+
 	/* Iterate over cache items and free them. */
 	while((*cachep)->lru_list) {
 		refs_node_cache_item *item = (*cachep)->lru_list;
@@ -3421,6 +3823,7 @@ typedef struct {
 	sys_bool is_mapping;
 	u64 object_id;
 	refs_node_block_queue *level3_block_queue;
+	refs_node_cache *node_cache;
 } level2_0x2_leaf_parse_context;
 
 static sys_bool parse_level2_0x2_should_add_subnode(
@@ -3616,7 +4019,21 @@ static int parse_level2_0x2_leaf_value(
 			const u64 object_id =
 				(key_size >= 0x10) ? read_le64(&key[0x8]) : 0;
 
-			if(object_id && context->object_id == object_id) {
+			if(!object_id || context->object_id != object_id);
+			else if(context->node_cache &&
+				context->node_cache->object_map_cache &&
+				(err = refs_object_map_cache_insert(
+					/* refs_object_map_cache *cache */
+					context->node_cache->object_map_cache,
+					/* u64 object_id */
+					object_id,
+					/* u64 node_number */
+					block_numbers[0])))
+			{
+				sys_log_perror(err, "Error while adding "
+					"matching object ID mapping to cache");
+			}
+			else {
 				err = refs_node_block_queue_add(
 					/* refs_node_block_queue *block_queue */
 					context->level3_block_queue,
@@ -4963,6 +5380,7 @@ static int parse_level2_block(
 	}
 
 	context.level3_block_queue = level3_queue;
+	context.node_cache = crawl_context->node_cache;
 
 	err = parse_generic_block(
 		/* refs_node_crawl_context *crawl_context */
@@ -9192,6 +9610,7 @@ static int crawl_volume_metadata(
 	refs_block_map *mappings = NULL;
 	u64 primary_level1_block = 0;
 	u64 secondary_level1_block = 0;
+	u64 real_start_node = start_node ? *start_node : 0;
 	refs_node_block_queue_element *primary_level2_blocks = NULL;
 	size_t primary_level2_blocks_count = 0;
 	refs_node_block_queue_element *secondary_level2_blocks = NULL;
@@ -9794,10 +10213,35 @@ static int crawl_volume_metadata(
 
 	crawl_context.block_map = mappings;
 
+	if(!real_start_node && object_id && node_cache &&
+		node_cache->object_map_cache)
+	{
+		/* Check the object ID mappings cache first to see if we have
+		 * already resolved the node number of this object ID. */
+		err = refs_object_map_cache_search(
+			/* refs_object_map_cache *cache */
+			node_cache->object_map_cache,
+			/* u64 object_id */
+			*object_id,
+			/* u64 *out_node_number */
+			&real_start_node);
+		if(err) {
+			goto out;
+		}
+
+		if(real_start_node) {
+			sys_log_debug("Cache HIT for cached object ID mapping "
+				"0x%" PRIX64 " -> node %" PRIu64 " / "
+				"0x%" PRIX64,
+				PRAX64(*object_id), PRAu64(real_start_node),
+				PRAu64(real_start_node));
+		}
+	}
+
 	/* At this point the mappings are set up and we can look up a node by
 	 * node number. */
-	if(start_node) {
-		u64 logical_block_numbers[4] = { *start_node, 0, 0, 0 };
+	if(real_start_node) {
+		u64 logical_block_numbers[4] = { real_start_node, 0, 0, 0 };
 		u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 		u64 start_object_id = 0;
 		sys_bool is_valid = SYS_FALSE;
