@@ -260,6 +260,9 @@ void refs_volume_destroy(
 			&vol->block_map);
 	}
 
+	sys_free(vol->metadata_block_size, &vol->secondary_level1_node);
+	sys_free(vol->metadata_block_size, &vol->primary_level1_node);
+	sys_free(vol->metadata_block_size, &vol->sb);
 	sys_free(sizeof(*vol->bs), &vol->bs);
 	sys_free(sizeof(**out_vol), out_vol);
 }
