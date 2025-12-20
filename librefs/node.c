@@ -4886,6 +4886,7 @@ static int parse_level2_block(
 		goto out;
 	}
 
+#if SYS_LOG_DEBUG_ENABLED
 	{
 		size_t i = 0;
 		refs_node_block_queue_element *cur_element = NULL;
@@ -4919,6 +4920,7 @@ static int parse_level2_block(
 			cur_element = cur_element->next;
 		}
 	}
+#endif /* SYS_LOG_DEBUG_ENABLED */
 out:
 	return err;
 }
