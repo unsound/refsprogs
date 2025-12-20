@@ -44,7 +44,7 @@ typedef struct fsapi_volume fsapi_volume;
 typedef struct fsapi_node_path_element fsapi_node_path_element;
 typedef struct fsapi_node fsapi_node;
 
-static const size_t cached_nodes_max = 1024;
+static const size_t cached_nodes_max = 65536;
 
 struct fsapi_volume {
 	refs_volume *vol;
