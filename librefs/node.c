@@ -4842,7 +4842,7 @@ static int parse_level2_block(
 		/* u32 block_size */
 		block_size,
 		/* refs_node_block_queue *block_queue */
-		level2_queue,
+		(!object_id_mapping || object_id == 0x2) ? level2_queue : NULL,
 		/* sys_bool add_subnodes_in_offsets_order */
 		SYS_TRUE,
 		/* void *context */
