@@ -88,6 +88,7 @@ struct fsapi_node_path_element {
 struct fsapi_node {
 	u64 refcount;
 	fsapi_node_path_element *path;
+	u64 node_number;
 	u64 parent_directory_object_id;
 	u64 directory_object_id;
 	sys_bool is_short_entry;
@@ -452,6 +453,7 @@ out:
 static void fsapi_node_init(
 		fsapi_node *const node,
 		fsapi_node_path_element *const path,
+		const u64 node_number,
 		const u64 parent_directory_object_id,
 		const u64 directory_object_id,
 		const sys_bool is_short_entry,
@@ -463,17 +465,19 @@ static void fsapi_node_init(
 		fsapi_node *const prev,
 		fsapi_node *const next)
 {
-	sys_log_trace("%s(node=%p, path=%p, "
+	sys_log_trace("%s(node=%p, path=%p, node_number=%" PRIu64 ", "
 		"parent_directory_object_id=0x%" PRIX64 ", "
 		"directory_object_id=0x%" PRIX64 ", is_short_entry=%d, key=%p, "
 		"key_size=%" PRIuz ", record=%p, record_size=%" PRIuz ", "
 		"prev=%p, next=%p): Entering...",
-		__FUNCTION__, node, path, PRAX64(parent_directory_object_id),
-		PRAX64(directory_object_id), is_short_entry, key,
-		PRAuz(key_size), record, PRAuz(record_size), prev, next);
+		__FUNCTION__, node, path, PRAu64(node_number),
+		PRAX64(parent_directory_object_id), PRAX64(directory_object_id),
+		is_short_entry, key, PRAuz(key_size), record,
+		PRAuz(record_size), prev, next);
 
 	node->refcount = 0;
 	node->path = path;
+	node->node_number = node_number;
 	node->parent_directory_object_id = parent_directory_object_id;
 	node->directory_object_id = directory_object_id;
 	node->is_short_entry = is_short_entry;
@@ -1084,6 +1088,7 @@ static int fsapi_lookup_by_posix_path(
 		const char *cur_path = NULL;
 		size_t cur_path_length = 0;
 		char *dup_element = NULL;
+		u64 node_number = 0;
 		u64 parent_directory_object_id = 0;
 		u64 directory_object_id = 0;
 		sys_bool is_short_entry = 0;
@@ -1244,6 +1249,8 @@ static int fsapi_lookup_by_posix_path(
 				&directory_object_id,
 				/* sys_bool *out_is_short_entry */
 				&is_short_entry,
+				/* u64 *out_node_number */
+				&node_number,
 				/* u16 *out_entry_offset */
 				&entry_offset,
 				/* u8 **out_key */
@@ -1348,6 +1355,8 @@ static int fsapi_lookup_by_posix_path(
 				new_node,
 				/* fsapi_node_path_element *path */
 				new_path_element,
+				/* u64 node_number */
+				node_number,
 				/* u64 parent_directory_object_id */
 				parent_directory_object_id,
 				/* u64 directory_object_id */
@@ -1469,6 +1478,7 @@ static int fsapi_fill_attributes(
 		sys_bool is_directory,
 		u16 child_entry_offset,
 		u32 file_flags,
+		u64 node_number,
 		u64 parent_node_object_id,
 		u64 create_time,
 		u64 last_access_time,
@@ -1479,6 +1489,8 @@ static int fsapi_fill_attributes(
 {
 	static const s64 filetime_offset =
 		((s64) (369 * 365 + 89)) * 24 * 3600 * 10000000;
+
+	(void) parent_node_object_id;
 
 	attrs->valid = 0;
 	attrs->is_directory = is_directory;
@@ -1507,12 +1519,12 @@ static int fsapi_fill_attributes(
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
-		/* This count in theory truncate parent_node_object_id if it's
-		 * huge, but it's likely not an issue in practice. 128-bit inode
-		 * numbers would be needed to fix that properly, otherwise
-		 * hashing might be a good intermediate solution. */
+		/* This could in theory truncate node_number if it's huge, but
+		 * it's likely not an issue in practice. 128-bit inode numbers
+		 * would be needed to fix that properly, otherwise hashing might
+		 * be a good intermediate solution. */
 		attrs->inode_number =
-			(parent_node_object_id << 16) | child_entry_offset;
+			(node_number << 16) | child_entry_offset;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER;
 	}
 
@@ -1610,6 +1622,7 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
@@ -1647,6 +1660,8 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		child_entry_offset,
 		/* u32 file_flags */
 		file_flags & ~((u32) 0x10000000UL),
+		/* u64 node_number */
+		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
 		/* u64 create_time */
@@ -1706,6 +1721,7 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
@@ -1734,6 +1750,8 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 node_number */
+		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
 		/* u64 create_time */
@@ -1756,6 +1774,7 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		const u64 parent_id,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -1783,6 +1802,8 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 node_number */
+		node_number,
 		/* u64 parent_node_object_id */
 		parent_id,
 		/* u64 create_time */
@@ -1893,6 +1914,8 @@ static int fsapi_node_get_attributes_common(
 				REFS_FILE_ATTRIBUTE_SYSTEM |
 				REFS_FILE_ATTRIBUTE_DIRECTORY |
 				REFS_FILE_ATTRIBUTE_ARCHIVE,
+				/* u64 node_number */
+				0,
 				/* u64 parent_node_object_id */
 				0x600,
 				/* u64 create_time */
@@ -1922,6 +1945,8 @@ static int fsapi_node_get_attributes_common(
 				1,
 				/* u64 parent_node_object_id */
 				node->parent_directory_object_id,
+				/* u64 node_number */
+				node->node_number,
 				/* u16 entry_offset */
 				node->entry_offset,
 				/* const u8 *key */
@@ -1956,6 +1981,8 @@ static int fsapi_node_get_attributes_common(
 				1,
 				/* u64 parent_node_object_id */
 				node->parent_directory_object_id,
+				/* u64 node_number */
+				node->node_number,
 				/* u16 entry_offset */
 				node->entry_offset,
 				/* const u8 *key */
@@ -2224,6 +2251,8 @@ int fsapi_volume_mount(
 		NULL,
 		/* u64 parent_directory_object_id */
 		0x500, /* ? */
+		/* u64 node_number */
+		0,
 		/* u64 directory_object_id */
 		0x600,
 		/* sys_bool is_short_entry */
@@ -2623,6 +2652,7 @@ static int fsapi_node_list_filldir(
 		sys_bool is_directory,
 		u16 child_entry_offset,
 		u32 file_flags,
+		const u64 node_number,
 		u64 parent_node_object_id,
 		u64 create_time,
 		u64 last_access_time,
@@ -2665,6 +2695,8 @@ static int fsapi_node_list_filldir(
 			child_entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 node_number */
+			node_number,
 			/* u64 parent_node_object_id */
 			parent_node_object_id,
 			/* u64 create_time */
@@ -2731,6 +2763,7 @@ static int fsapi_node_list_visit_short_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
@@ -2773,6 +2806,8 @@ static int fsapi_node_list_visit_short_entry(
 		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 node_number */
+		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
 		/* u64 create_time */
@@ -2832,6 +2867,7 @@ static int fsapi_node_list_visit_long_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
@@ -2865,6 +2901,8 @@ static int fsapi_node_list_visit_long_entry(
 		child_entry_offset,
 		/* u32 file_flags */
 		file_flags,
+		/* u64 node_number */
+		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
 		/* u64 create_time */
@@ -3219,6 +3257,7 @@ static int fsapi_node_read_visit_long_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
@@ -3240,6 +3279,7 @@ static int fsapi_node_read_visit_long_entry(
 	(void) file_name_length;
 	(void) child_entry_offset;
 	(void) file_flags;
+	(void) node_number;
 	(void) parent_node_object_id;
 	(void) create_time;
 	(void) last_access_time;
@@ -3268,6 +3308,7 @@ static int fsapi_node_read_visit_hardlink_entry(
 		const u64 parent_id,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -3288,6 +3329,7 @@ static int fsapi_node_read_visit_hardlink_entry(
 	(void) parent_id;
 	(void) child_entry_offset;
 	(void) file_flags;
+	(void) node_number;
 	(void) create_time;
 	(void) last_access_time;
 	(void) last_write_time;
@@ -3506,6 +3548,8 @@ int fsapi_node_read(
 		1,
 		/* u64 parent_node_object_id */
 		node->parent_directory_object_id,
+		/* u64 node_number */
+		node->node_number,
 		/* u16 entry_offset */
 		node->entry_offset,
 		/* const u8 *key */
@@ -3922,6 +3966,8 @@ int fsapi_node_list_extended_attributes(
 		1,
 		/* u64 parent_node_object_id */
 		node->parent_directory_object_id,
+		/* u64 node_number */
+		node->node_number,
 		/* u16 entry_offset */
 		node->entry_offset,
 		/* const u8 *key */
@@ -4170,6 +4216,8 @@ int fsapi_node_read_extended_attribute(
 		1,
 		/* u64 parent_node_object_id */
 		node->parent_directory_object_id,
+		/* u64 node_number */
+		node->node_number,
 		/* u16 entry_offset */
 		node->entry_offset,
 		/* const u8 *key */
@@ -4219,6 +4267,8 @@ int fsapi_node_read_extended_attribute(
 			"",
 			/* size_t indent */
 			1,
+			/* u64 node_number */
+			node->node_number,
 			/* u64 parent_node_object_id */
 			node->parent_directory_object_id,
 			/* u16 entry_offset */

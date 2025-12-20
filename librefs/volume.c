@@ -275,6 +275,7 @@ typedef struct {
 	u64 hard_link_id;
 	u64 hard_link_parent_object_id;
 	u64 directory_object_id;
+	u64 node_number;
 	u16 *entry_offset;
 	u8 **key;
 	size_t *key_size;
@@ -288,6 +289,7 @@ static int refs_volume_lookup_node_long_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
@@ -325,6 +327,7 @@ static int refs_volume_lookup_node_long_entry(
 	context->is_short_entry = SYS_FALSE;
 	context->is_directory = SYS_FALSE;
 
+	context->node_number = node_number;
 	if(context->entry_offset) {
 		*context->entry_offset = child_entry_offset;
 	}
@@ -366,6 +369,7 @@ static int refs_volume_lookup_node_short_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
@@ -414,6 +418,7 @@ static int refs_volume_lookup_node_short_entry(
 		context->directory_object_id =
 			context->is_directory ? object_id : 0;
 
+		context->node_number = node_number;
 		if(context->entry_offset) {
 			*context->entry_offset = child_entry_offset;
 		}
@@ -456,6 +461,7 @@ static int refs_volume_lookup_node_hardlink_entry(
 		const u64 parent_id,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -497,6 +503,7 @@ static int refs_volume_lookup_node_hardlink_entry(
 	context->is_directory = SYS_FALSE;
 	context->directory_object_id = 0;
 
+	context->node_number = node_number;
 	if(context->entry_offset) {
 		*context->entry_offset = child_entry_offset;
 	}
@@ -642,6 +649,7 @@ static int refs_volume_lookup(
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
+		u64 *const out_node_number,
 		u16 *const out_entry_offset,
 		u8 **const out_key,
 		size_t *const out_key_size,
@@ -832,6 +840,10 @@ static int refs_volume_lookup(
 
 		if(!cur_path_length) {
 			/* Last element. */
+			if(out_node_number) {
+				*out_node_number = context.node_number;
+			}
+
 			if(out_parent_directory_object_id) {
 				*out_parent_directory_object_id = cur_object_id;
 			}
@@ -872,6 +884,7 @@ int refs_volume_lookup_by_posix_path(
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
+		u64 *const out_node_number,
 		u16 *const out_entry_offset,
 		u8 **const out_key,
 		size_t *const out_key_size,
@@ -898,6 +911,10 @@ int refs_volume_lookup_by_posix_path(
 			*out_directory_object_id = 0x600;
 		}
 
+		if(out_node_number) {
+			*out_node_number = 0;
+		}
+
 		if(out_record) {
 			*out_record = NULL;
 		}
@@ -916,6 +933,10 @@ int refs_volume_lookup_by_posix_path(
 
 		if(out_directory_object_id) {
 			*out_directory_object_id = 0;
+		}
+
+		if(out_node_number) {
+			*out_node_number = 0;
 		}
 
 		if(out_record) {
@@ -944,6 +965,8 @@ int refs_volume_lookup_by_posix_path(
 		out_directory_object_id,
 		/* sys_bool *out_is_short_entry */
 		out_is_short_entry,
+		/* u64 *out_node_number */
+		out_node_number,
 		/* u16 *out_entry_offset */
 		out_entry_offset,
 		/* u8 **out_key */

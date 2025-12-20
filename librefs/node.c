@@ -99,6 +99,7 @@ static int parse_attribute_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -115,6 +116,7 @@ static int parse_level3_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -2548,6 +2550,7 @@ static int parse_unknown_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -2565,6 +2568,7 @@ static int parse_unknown_leaf_value(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
+	(void) node_number;
 	(void) object_id;
 	(void) block_index_unit;
 	(void) is_v3;
@@ -2587,6 +2591,7 @@ static int parse_generic_entry(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u32 block_index_unit,
 		const sys_bool is_v3,
@@ -2620,6 +2625,7 @@ static int parse_generic_entry(
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
+			u64 node_number,
 			u64 object_id,
 			const u8 *key,
 			u16 key_offset,
@@ -2773,6 +2779,8 @@ static int parse_generic_entry(
 			prefix,
 			/* size_t indent */
 			indent + 2,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -2838,6 +2846,7 @@ static int parse_generic_block(
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
+			u64 node_number,
 			u64 object_id,
 			const u8 *key,
 			u16 key_offset,
@@ -3115,6 +3124,8 @@ static int parse_generic_block(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			block_number,
 			/* u64 object_id */
 			object_id,
 			/* u32 block_index_unit */
@@ -3160,6 +3171,7 @@ static int parse_generic_block(
 			 *      refs_node_walk_visitor *visitor,
 			 *      const char *prefix,
 			 *      size_t indent,
+			 *      u64 node_number,
 			 *      u64 object_id,
 			 *      const u8 *key,
 			 *      u16 key_offset,
@@ -3267,6 +3279,8 @@ static int parse_generic_block(
 				prefix,
 				/* size_t indent */
 				indent,
+				/* u64 node_number */
+				block_number,
 				/* u64 object_id */
 				object_id,
 				/* u32 block_index_unit */
@@ -3310,6 +3324,7 @@ static int parse_generic_block(
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
 				 *      const size_t indent,
+				 *      u64 node_number,
 				 *      u64 object_id,
 				 *      u16 entry_offset,
 				 *      u32 block_index_unit,
@@ -3945,6 +3960,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -3960,6 +3976,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 
 	int err = 0;
 
+	(void) node_number;
 	(void) object_id;
 	(void) key;
 	(void) key_offset;
@@ -3996,6 +4013,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -4012,6 +4030,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 	int err = 0;
 	block_range leaf_range;
 
+	(void) node_number;
 	(void) object_id;
 	(void) key;
 	(void) key_offset;
@@ -4549,6 +4568,7 @@ static int parse_level2_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -4658,6 +4678,8 @@ static int parse_level2_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -4689,6 +4711,8 @@ static int parse_level2_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -4846,6 +4870,8 @@ static int parse_level2_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -4982,6 +5008,7 @@ static int parse_level2_block(
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
+		 *      u64 node_number,
 		 *      u64 object_id,
 		 *      const u8 *key,
 		 *      u16 key_size,
@@ -7028,6 +7055,7 @@ static int parse_non_resident_attribute_list_value(
 			 *      refs_node_walk_visitor *visitor,
 			 *      const char *prefix,
 			 *      size_t indent,
+			 *      u64 node_number,
 			 *      u64 object_id,
 			 *      const u8 *key,
 			 *      u16 key_size,
@@ -7068,6 +7096,7 @@ static int parse_attribute_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -7095,6 +7124,7 @@ static int parse_attribute_leaf_value(
 	char *cstr = NULL;
 	size_t cstr_length = 0;
 
+	(void) node_number;
 	(void) object_id;
 	(void) value_offset;
 	(void) entry_offset;
@@ -7616,6 +7646,7 @@ int parse_level3_long_value(
 		const char *const prefix,
 		const size_t indent,
 		const u64 parent_node_object_id,
+		const u64 node_number,
 		const u16 entry_offset,
 		const u8 *const key,
 		const u16 key_size,
@@ -7667,9 +7698,9 @@ int parse_level3_long_value(
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Entering...",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Entering...",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
@@ -7677,6 +7708,7 @@ int parse_level3_long_value(
 		prefix ? "\"" : "",
 		PRAuz(indent),
 		PRAu64(parent_node_object_id),
+		PRAu64(node_number),
 		PRAu16(entry_offset),
 		key,
 		PRAu16(key_size),
@@ -7700,6 +7732,8 @@ int parse_level3_long_value(
 			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 node_number */
+			node_number,
 			/* u64 parent_node_object_id */
 			parent_node_object_id,
 			/* u64 create_time */
@@ -7743,6 +7777,8 @@ int parse_level3_long_value(
 			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 node_number */
+			node_number,
 			/* u64 create_time */
 			creation_time,
 			/* u64 last_access_time */
@@ -8614,15 +8650,16 @@ out:
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Leaving",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Leaving",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
 		prefix ? "\"" : "", prefix ? prefix : "NULL",
 		prefix ? "\"" : "",
 		PRAuz(indent),
+		PRAu64(node_number),
 		PRAu64(parent_node_object_id),
 		PRAu16(entry_offset),
 		key,
@@ -8650,6 +8687,7 @@ int parse_level3_short_value(
 		const char *const prefix,
 		const size_t indent,
 		const u64 parent_node_object_id,
+		const u64 node_number,
 		const u16 entry_offset,
 		const u8 *const key,
 		const u16 key_size,
@@ -8687,9 +8725,9 @@ int parse_level3_short_value(
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Entering...",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Entering...",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
@@ -8697,6 +8735,7 @@ int parse_level3_short_value(
 		prefix ? "\"" : "",
 		PRAuz(indent),
 		PRAu64(parent_node_object_id),
+		PRAu64(node_number),
 		PRAu16(entry_offset),
 		key,
 		PRAu16(key_size),
@@ -8720,6 +8759,8 @@ int parse_level3_short_value(
 			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 node_number */
+			node_number,
 			/* u64 parent_node_object_id */
 			parent_node_object_id,
 			/* u64 object_id */
@@ -8796,9 +8837,9 @@ int parse_level3_short_value(
 out:
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Leaving.",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Leaving.",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
@@ -8806,6 +8847,7 @@ out:
 		prefix ? "\"" : "",
 		PRAuz(indent),
 		PRAu64(parent_node_object_id),
+		PRAu64(node_number),
 		PRAu16(entry_offset),
 		key,
 		PRAu16(key_size),
@@ -8891,6 +8933,7 @@ static int parse_level3_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -8928,6 +8971,8 @@ static int parse_level3_leaf_value(
 			indent,
 			/* u64 parent_node_object_id */
 			object_id,
+			/* u64 node_number */
+			node_number,
 			/* u16 entry_offset */
 			entry_offset,
 			/* const u8 *key */
@@ -8959,6 +9004,8 @@ static int parse_level3_leaf_value(
 			indent,
 			/* u64 parent_node_object_id */
 			object_id,
+			/* u64 node_number */
+			node_number,
 			/* u16 entry_offset */
 			entry_offset,
 			/* const u8 *key */
@@ -9068,6 +9115,7 @@ static int parse_level3_block(
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
+		 *      u64 node_number,
 		 *      u64 object_id,
 		 *      const u8 *key,
 		 *      u16 key_size,
@@ -9674,6 +9722,7 @@ static int crawl_volume_metadata(
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
 				 *      size_t indent,
+				 *      u64 node_number,
 				 *      u64 object_id,
 				 *      const u8 *key,
 				 *      u16 key_size,
