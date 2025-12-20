@@ -3486,6 +3486,7 @@ typedef struct {
 	sys_bool is_sparse;
 	u64 cur_offset;
 	u64 start_offset;
+	size_t bytes_read_in_iteration;
 } fsapi_node_read_context;
 
 static int fsapi_node_read_zeroes(
@@ -3675,9 +3676,10 @@ static int fsapi_node_read_visit_file_extent(
 	int err = 0;
 	size_t copy_offset_in_buffer = 0;
 	u64 remaining_bytes = 0;
+	u64 offset_in_extent = 0;
+	u64 remaining_extent_size = 0;
 	u64 valid_extent_size = 0;
 	u64 cur_pos = 0;
-	u64 bytes_remaining = 0;
 	size_t bytes_to_read = 0;
 
 	sys_log_debug("Visiting file extent: [%" PRIu64 " - %" PRIu64 "] -> "
@@ -3691,7 +3693,10 @@ static int fsapi_node_read_visit_file_extent(
 		PRAu64(block_count), PRAu64(context->cur_offset),
 		PRAu64(context->start_offset), PRAuz(context->size));
 
-	if(extent_logical_start + extent_size <= context->start_offset) {
+	if(extent_logical_start + extent_size <= context->cur_offset) {
+		goto out;
+	}
+	else if(extent_logical_start + extent_size <= context->start_offset) {
 		sys_log_debug("Skipping extent that precedes the start offset "
 			"of the read: %" PRIu64 " <= %" PRIu64,
 			PRAu64(context->cur_offset + extent_size),
@@ -3700,23 +3705,32 @@ static int fsapi_node_read_visit_file_extent(
 		goto out;
 	}
 	else if(extent_logical_start > context->cur_offset) {
-		/* We have encountered a hole. Return zeroes until we reach
-		 * context->cur_offset or until the end of the read. */
-		const u64 bytes_to_extent =
-			extent_logical_start - context->cur_offset;
-		const size_t bytes_to_zero =
-			(size_t) sys_min(bytes_to_extent, context->size);
+		if(context->is_sparse) {
+			/* We have encountered a hole. Return zeroes until we
+			 * reach context->cur_offset or until the end of the
+			 * read. */
+			const u64 bytes_to_extent =
+				extent_logical_start - context->cur_offset;
+			const size_t bytes_to_zero =
+				(size_t) sys_min(bytes_to_extent,
+				context->size);
 
-		err = fsapi_node_read_zeroes(
-			/* fsapi_node_read_context *context */
-			context,
-			/* size_t bytes_to_zero */
-			bytes_to_zero);
-		if(err) {
-			goto out;
+			err = fsapi_node_read_zeroes(
+				/* fsapi_node_read_context *context */
+				context,
+				/* size_t bytes_to_zero */
+				bytes_to_zero);
+			if(err) {
+				goto out;
+			}
+
+			if(!context->size) {
+				goto out;
+			}
 		}
-
-		if(!context->size) {
+		else {
+			/* Ignore extent. We'll get back to it in the next
+			 * iteration. */
 			goto out;
 		}
 	}
@@ -3725,15 +3739,16 @@ static int fsapi_node_read_visit_file_extent(
 		((context->cur_offset < context->start_offset) ?
 		context->start_offset - context->cur_offset : 0);
 	remaining_bytes = copy_offset_in_buffer + context->size;
-	valid_extent_size = sys_min(extent_size, remaining_bytes);
+	offset_in_extent = context->cur_offset - extent_logical_start;
+	remaining_extent_size = extent_size - offset_in_extent;
+	valid_extent_size = sys_min(remaining_extent_size, remaining_bytes);
 	valid_extent_size =
 		/* Round up to the nearest sector boundary (this assumes that
 		 * sector size is a power of 2!). */
 		(valid_extent_size + (context->vol->sector_size - 1)) &
 		~((u64) (context->vol->sector_size - 1));
 	cur_pos = first_physical_block * block_index_unit;
-	bytes_remaining = valid_extent_size;
-	bytes_to_read = (size_t) sys_min(bytes_remaining, context->size);
+	bytes_to_read = (size_t) sys_min(valid_extent_size, context->size);
 
 	sys_log_debug("Reading %" PRIuz " bytes...",
 		PRAuz(bytes_to_read));
@@ -3759,6 +3774,7 @@ static int fsapi_node_read_visit_file_extent(
 
 	context->cur_offset += bytes_to_read;
 	context->size -= bytes_to_read;
+	context->bytes_read_in_iteration += bytes_to_read;
 out:
 	return err;
 }
@@ -3774,7 +3790,10 @@ static int fsapi_node_read_visit_file_data(
 	int err = 0;
 	size_t bytes_to_copy = 0;
 
-	if(context->start_offset >= size) {
+	if(context->cur_offset >= size) {
+		goto out;
+	}
+	else if(context->start_offset >= size) {
 		context->cur_offset = size;
 		goto out;
 	}
@@ -3801,6 +3820,7 @@ static int fsapi_node_read_visit_file_data(
 
 	context->size -= bytes_to_copy;
 	context->cur_offset = context->start_offset + bytes_to_copy;
+	context->bytes_read_in_iteration += bytes_to_copy;
 out:
 	return err;
 }
@@ -3828,7 +3848,7 @@ int fsapi_node_read(
 	context.vol = vol->vol;
 	context.iohandler = iohandler;
 	context.size = size;
-	context.cur_offset = 0;
+	context.cur_offset = offset;
 	context.start_offset = offset;
 
 	if(is_short_entry) {
@@ -3846,39 +3866,48 @@ int fsapi_node_read(
 	visitor.node_file_extent = fsapi_node_read_visit_file_extent;
 	visitor.node_file_data = fsapi_node_read_visit_file_data;
 
-	err = parse_level3_long_value(
-		/* refs_node_crawl_context *crawl_context */
-		&crawl_context,
-		/* refs_node_walk_visitor *visitor */
-		&visitor,
-		/* const char *prefix */
-		"",
-		/* size_t indent */
-		1,
-		/* u64 parent_node_object_id */
-		node->parent_directory_object_id,
-		/* u64 node_number */
-		node->node_number,
-		/* u16 entry_offset */
-		node->entry_offset,
-		/* const u8 *key */
-		node->key,
-		/* u16 key_size */
-		node->key_size,
-		/* const u8 *value */
-		node->record,
-		/* u16 value_offset */
-		0,
-		/* u16 value_size */
-		node->record_size,
-		/* void *context */
-		NULL);
-	if(err == -1) {
-		err = 0;
-	}
-	else if(err) {
-		goto out;
-	}
+	do {
+		context.bytes_read_in_iteration = 0;
+		err = parse_level3_long_value(
+			/* refs_node_crawl_context *crawl_context */
+			&crawl_context,
+			/* refs_node_walk_visitor *visitor */
+			&visitor,
+			/* const char *prefix */
+			"",
+			/* size_t indent */
+			1,
+			/* u64 parent_node_object_id */
+			node->parent_directory_object_id,
+			/* u64 node_number */
+			node->node_number,
+			/* u16 entry_offset */
+			node->entry_offset,
+			/* const u8 *key */
+			node->key,
+			/* u16 key_size */
+			node->key_size,
+			/* const u8 *value */
+			node->record,
+			/* u16 value_offset */
+			0,
+			/* u16 value_size */
+			node->record_size,
+			/* void *context */
+			NULL);
+		if(err == -1) {
+			err = 0;
+		}
+		else if(err) {
+			goto out;
+		}
+
+		/* Clear the long entry/hard link entry callback on repeated
+		 * iterations since we already have gathered the needed data
+		 * from the file/hardlink entry. */
+		visitor.node_long_entry = NULL;
+		visitor.node_hardlink_entry = NULL;
+	} while(context.bytes_read_in_iteration && context.size);
 
 	if(context.size) {
 		if(!context.is_sparse) {
