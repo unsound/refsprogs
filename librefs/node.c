@@ -8975,7 +8975,7 @@ void refs_block_map_destroy(
 static int crawl_volume_metadata(
 		refs_node_walk_visitor *const visitor,
 		sys_device *const dev,
-		REFS_BOOT_SECTOR *const bs,
+		const REFS_BOOT_SECTOR *const bs,
 		REFS_SUPERBLOCK_HEADER **const sb,
 		REFS_LEVEL1_NODE **const primary_level1_node,
 		REFS_LEVEL1_NODE **const secondary_level1_node,
@@ -9060,7 +9060,7 @@ static int crawl_volume_metadata(
 	crawl_context = refs_node_crawl_context_init(
 		/* sys_device *dev */
 		dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		bs,
 		/* refs_block_map *block_map */
 		NULL,
@@ -9877,7 +9877,7 @@ out:
 
 int refs_node_walk(
 		sys_device *const dev,
-		REFS_BOOT_SECTOR *const bs,
+		const REFS_BOOT_SECTOR *const bs,
 		REFS_SUPERBLOCK_HEADER **const sb,
 		REFS_LEVEL1_NODE **const primary_level1_node,
 		REFS_LEVEL1_NODE **const secondary_level1_node,
@@ -9893,7 +9893,7 @@ int refs_node_walk(
 		visitor,
 		/* sys_device *dev */
 		dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		bs,
 		/* REFS_SUPERBLOCK_HEADER **sb */
 		sb,
@@ -9913,7 +9913,7 @@ int refs_node_walk(
 
 int refs_node_scan(
 		sys_device *const dev,
-		REFS_BOOT_SECTOR *const bs,
+		const REFS_BOOT_SECTOR *const bs,
 		refs_node_scan_visitor *const visitor)
 {
 	/* Scan the whole volume length for metadata nodes. Until our tree

@@ -468,7 +468,7 @@ static int print_node_number_info(
 	err = refs_node_walk(
 		/* sys_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* REFS_SUPERBLOCK **bs */
 		NULL,
@@ -581,7 +581,7 @@ static int print_object_id_info(
 	err = refs_node_walk(
 		/* sys_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* REFS_SUPERBLOCK **bs */
 		NULL,

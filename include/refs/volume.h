@@ -81,7 +81,7 @@ static inline refs_node_crawl_context refs_volume_init_node_crawl_context(
 	return refs_node_crawl_context_init(
 		/* sys_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* refs_block_map *block_map */
 		vol->block_map,
