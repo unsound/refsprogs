@@ -2180,9 +2180,20 @@ int main(int argc, char **argv)
 		fuse_daemonize(0);
 	}
 
-	err = fuse_session_loop(
+	err = fuse_session_loop_mt(
 		/* struct fuse_session *se */
-		ses);
+		ses
+#if FUSE_VERSION >= 30
+		,
+#if FUSE_VERSION >= 32
+		/* struct fuse_loop_config *config */
+		NULL
+#elif FUSE_VERSION >= 30
+		/* int clone_fd */
+		0
+#endif /* FUSE_VERSION >= 32 */
+#endif /* FUSE_VERSION >= 30 */
+		);
 
 #if FUSE_VERSION < 30
 	fuse_session_remove_chan(
@@ -2191,12 +2202,12 @@ int main(int argc, char **argv)
 #endif /* FUSE_VERSION < 30 */
 #else
 	/* Shuffle arguments around for 'fuse_main'. The mountpoint should be
-	 * the first non-option argument and the device should not be passed on,
-	 * but we add the '-s' switch to enforce single-threaded operation. */
+	 * the first non-option argument and the device should not be passed on
+	 * to 'fuse_main'. */
 	argv[1] = argv[2];
-	argv[2] = "-s";
+	argv[2] = NULL;
 
-	if(fuse_main(argc, argv, &refs_fuse_operations, vol)) {
+	if(fuse_main(argc - 1, argv, &refs_fuse_operations, vol)) {
 		err = EIO;
 	}
 #endif /* REFS_FUSE_USE_LOWLEVEL_API ... */

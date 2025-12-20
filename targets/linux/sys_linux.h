@@ -23,6 +23,7 @@
 #define _REFS_SYS_LINUX_H
 
 #include <linux/fs.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
 
 #ifndef REFS_SYS_MEMORY_LOGGING
@@ -43,6 +44,8 @@ typedef struct {
 	u64 tv_sec;
 	u32 tv_nsec;
 } sys_timespec;
+
+typedef struct mutex sys_mutex;
 
 #define PRIdz "zd"
 #define PRIuz "zu"
@@ -400,6 +403,46 @@ static inline int sys_strndup(const char *str, size_t len, char **dupstr)
 			PRAuz(len + 1), *dupstr, new_bytes_allocated);
 #endif /* REFS_SYS_MEMORY_LOGGING */
 	}
+
+	return err;
+}
+
+static inline int sys_mutex_init(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+	mutex_init(mutex);
+
+	return err;
+}
+
+static inline int sys_mutex_deinit(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+	mutex_destroy(mutex);
+
+	return err;
+}
+
+static inline int sys_mutex_lock(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+	mutex_lock(mutex);
+
+	return err;
+}
+
+static inline int sys_mutex_unlock(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+	mutex_unlock(mutex);
 
 	return err;
 }

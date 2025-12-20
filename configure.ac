@@ -150,6 +150,13 @@ AC_CHECK_HEADERS([ \
 	sys/stat.h \
 ])
 
+AC_CHECK_HEADERS(
+	[pthread.h],
+	[LDFLAGS="${LDFLAGS} -pthread"],
+	[],
+	[]
+)
+
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_INLINE

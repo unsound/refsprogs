@@ -57,6 +57,10 @@
 #include <windows.h>
 #endif
 
+#ifdef HAVE_PTHREAD_H
+#include <pthread.h>
+#endif
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -77,6 +81,8 @@ typedef struct {
 	u64 tv_sec;
 	u32 tv_nsec;
 } sys_timespec;
+
+typedef pthread_mutex_t sys_mutex;
 
 static inline u16 le16_to_cpup(const le16 *const value)
 {
@@ -415,6 +421,73 @@ static inline void sys_strndup(const char *str, size_t len, char **dupstr)
 #else
 int sys_strndup(const char *str, size_t len, char **dupstr);
 #endif /* defined(HAVE_STRNDUP) ... */
+
+static inline int sys_mutex_init(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	pthread_mutexattr_t mutexattr;
+
+	err = pthread_mutexattr_init(&mutexattr);
+	if(err) {
+		goto out;
+	}
+
+	err = pthread_mutex_init(mutex, &mutexattr);
+	if(!err) {
+		sys_log_debug("Initialized mutex %p.", mutex);
+	}
+out:
+	pthread_mutexattr_destroy(&mutexattr);
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
+
+static inline int sys_mutex_deinit(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	err = pthread_mutex_destroy(mutex);
+	if(!err) {
+		sys_log_debug("Deinitialized mutex %p.", mutex);
+	}
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
+
+static inline int sys_mutex_lock(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	err = pthread_mutex_lock(mutex);
+	if(!err) {
+		sys_log_debug("Locked mutex %p.", mutex);
+	}
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
+
+static inline int sys_mutex_unlock(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	sys_log_debug("Unlocking mutex %p...", mutex);
+	err = pthread_mutex_unlock(mutex);
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
 
 #ifndef _WIN32
 #define PRIdz "zd"

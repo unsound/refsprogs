@@ -83,6 +83,7 @@ struct refs_node_cache_item {
 };
 
 struct refs_node_cache {
+	sys_mutex cache_lock;
 	size_t node_size;
 	struct refs_rb_tree *node_tree;
 	refs_node_cache_item *lru_list;
@@ -157,6 +158,8 @@ int refs_node_cache_create(
 {
 	int err = 0;
 	struct refs_rb_tree *node_tree = NULL;
+	refs_node_cache *cache = NULL;
+	sys_bool cache_lock_initialized = SYS_FALSE;
 
 	node_tree = refs_rb_tree_create(
 		/* refs_rb_tree_node_cmp_f cmp */
@@ -166,15 +169,46 @@ int refs_node_cache_create(
 		goto out;
 	}
 
-	err = sys_calloc(sizeof(refs_node_cache), out_cache);
+	err = sys_calloc(sizeof(refs_node_cache), &cache);
 	if(err) {
 		goto out;
 	}
 
-	(*out_cache)->node_size = node_size;
-	(*out_cache)->node_tree = node_tree;
-	(*out_cache)->max_node_count = max_node_count;
+	err = sys_mutex_init(
+		/* sys_mutex *mutex */
+		&cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_lock_initialized = SYS_TRUE;
+
+	cache->node_size = node_size;
+	cache->node_tree = node_tree;
+	cache->max_node_count = max_node_count;
+	*out_cache = cache;
+	node_tree = NULL;
+	cache = NULL;
+	cache_lock_initialized = SYS_FALSE;
 out:
+	if(cache_lock_initialized) {
+		sys_mutex_deinit(
+			/* sys_mutex *mutex */
+			&(*out_cache)->cache_lock);
+	}
+
+	if(cache) {
+		sys_free(sizeof(refs_node_cache), &cache);
+	}
+
+	if(node_tree) {
+		refs_rb_tree_dealloc(
+			/* struct refs_rb_tree *self */
+			node_tree,
+			/* refs_rb_tree_node_f node_cb */
+			refs_rb_tree_node_dealloc_cb);
+	}
+
 	return err;
 }
 
@@ -296,6 +330,11 @@ void refs_node_cache_destroy(
 
 		sys_free(sizeof(*item), &item);
 	}
+
+	sys_mutex_deinit(
+		/* sys_mutex *mutex */
+		&(*cachep)->cache_lock);
+
 
 	sys_free(sizeof(**cachep), cachep);
 }
@@ -660,6 +699,7 @@ static int refs_node_get_node_data(
 		sys_min(crawl_context->cluster_size, node_size);
 
 	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
 	const u8 *cached_data = NULL;
 	u8 *data = NULL;
 	size_t bytes_read = 0;
@@ -685,6 +725,15 @@ static int refs_node_get_node_data(
 	}
 
 	if(crawl_context->node_cache) {
+		err = sys_mutex_lock(
+			/* sys_mutex *const mutex */
+			&crawl_context->node_cache->cache_lock);
+		if(err) {
+			goto out;
+		}
+
+		cache_locked = SYS_TRUE;
+
 		cached_data = refs_node_cache_search(
 			/* refs_node_cache *cache */
 			crawl_context->node_cache,
@@ -775,6 +824,15 @@ static int refs_node_get_node_data(
 
 	*out_data = data;
 out:
+	if(cache_locked) {
+		err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&crawl_context->node_cache->cache_lock);
+		if(err) {
+			goto out;
+		}
+	}
+
 	return err;
 }
 

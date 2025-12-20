@@ -54,6 +54,7 @@ struct fsapi_volume {
 	char *volume_label_cstr;
 	size_t volume_label_cstr_length;
 
+	sys_mutex cache_lock;
 	struct refs_rb_tree *cache_tree;
 	size_t cached_nodes_count;
 	fsapi_node *cached_nodes_list;
@@ -819,6 +820,7 @@ static int fsapi_lookup_by_posix_path(
 		fsapi_node **out_node)
 {
 	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
 	size_t i;
 	u64 start_object_id = 0;
 	size_t subpath_depth = 0;
@@ -916,6 +918,15 @@ static int fsapi_lookup_by_posix_path(
 		sys_log_debug("  name: \"%" PRIbs "\"",
 			PRAbs(search_path_element.name_length,
 			search_path_element.name.ro));
+
+		err = sys_mutex_lock(
+			/* sys_mutex *mutex */
+			&vol->cache_lock);
+		if(err) {
+			goto out;
+		}
+
+		cache_locked = SYS_TRUE;
 
 		cached_node = refs_rb_tree_find(
 			/* struct refs_rb_tree *self */
@@ -1049,6 +1060,15 @@ static int fsapi_lookup_by_posix_path(
 			sys_log_debug("Cache miss for path \"%" PRIbs "\".",
 				PRAbs(path_length, path));
 		}
+
+		err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&vol->cache_lock);
+		if(err) {
+			goto out;
+		}
+
+		cache_locked = SYS_FALSE;
 	}
 
 	if(cached_node) {
@@ -1110,8 +1130,9 @@ static int fsapi_lookup_by_posix_path(
 		sys_log_debug("final_depth: %" PRIuz, PRAuz(final_depth));
 
 		if(cur_node_depth >= final_depth) {
-			sys_log_critical("Internal error: Attempted to find root node which should "
-				"have been found earlier.");
+			sys_log_critical("Internal error: Attempted to find "
+				"root node which should have been found "
+				"earlier.");
 			err = ENXIO;
 			goto out;
 		}
@@ -1143,11 +1164,23 @@ static int fsapi_lookup_by_posix_path(
 			cur_path_length -= cur_element_length;
 
 			if(new_node) {
+				/* Put previously looked up node back in the
+				 * cache. */
 				fsapi_node_cache_put(
 					/* fsapi_volume *vol */
 					vol,
 					/* fsapi_node *node */
 					new_node);
+
+				err = sys_mutex_unlock(
+					/* sys_mutex *mutex */
+					&vol->cache_lock);
+				if(err) {
+					goto out;
+				}
+
+				cache_locked = SYS_FALSE;
+
 				new_node = NULL;
 			}
 
@@ -1167,6 +1200,15 @@ static int fsapi_lookup_by_posix_path(
 			search_path_element.name.ro = cur_element;
 
 			search_node.path = &search_path_element;
+
+			err = sys_mutex_lock(
+				/* sys_mutex *mutex */
+				&vol->cache_lock);
+			if(err) {
+				goto out;
+			}
+
+			cache_locked = SYS_TRUE;
 
 			cached_node = refs_rb_tree_find(
 				/* struct refs_rb_tree *self */
@@ -1361,6 +1403,17 @@ static int fsapi_lookup_by_posix_path(
 		new_node = NULL;
 	}
 
+	if(!cache_locked) {
+		err = sys_mutex_lock(
+			/* sys_mutex *mutex */
+			&vol->cache_lock);
+		if(err) {
+			goto out;
+		}
+
+		cache_locked = SYS_TRUE;
+	}
+
 	if(out_node) {
 		if(cached_node->next) {
 			/* The node came from the node cache and needs to be
@@ -1379,13 +1432,25 @@ static int fsapi_lookup_by_posix_path(
 	}
 	else if(!cached_node->refcount && !cached_node->next) {
 		sys_log_debug("Putting node %p in the cache...", cached_node);
-		fsapi_node_cache_put(
+		err = fsapi_node_cache_put(
 			/* fsapi_volume *vol */
 			vol,
 			/* fsapi_node *node */
 			cached_node);
 	}
 out:
+	if(cache_locked) {
+		int unlock_err = 0;
+
+		unlock_err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&vol->cache_lock);
+		if(unlock_err) {
+			err = err ? err : unlock_err;
+			goto out;
+		}
+	}
+
 	if(new_path_element) {
 		sys_free(sizeof(*new_path_element), &new_path_element);
 	}
@@ -2107,6 +2172,7 @@ int fsapi_volume_mount(
 	int err = 0;
 	fsapi_volume *vol = NULL;
 	fsapi_node *root_node = NULL;
+	sys_bool cache_lock_initialized = SYS_FALSE;
 	refs_volume *rvol = NULL;
 
 	fsapi_log_enter("dev=%p, read_only=%u, custom_mount_options=%p, "
@@ -2131,6 +2197,15 @@ int fsapi_volume_mount(
 	if(err) {
 		goto out;
 	}
+
+	err = sys_mutex_init(
+		/* sys_mutex *mutex */
+		&vol->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_lock_initialized = SYS_TRUE;
 
 	err = refs_volume_create(
 		/* sys_device *dev */
@@ -2203,6 +2278,12 @@ out:
 			refs_volume_destroy(
 				/* refs_volume **out_vol */
 				&rvol);
+		}
+
+		if(cache_lock_initialized) {
+			sys_mutex_deinit(
+				/* sys_mutex *mutex */
+				&vol->cache_lock);
 		}
 
 		if(root_node) {
@@ -2346,6 +2427,10 @@ int fsapi_volume_unmount(
 		/* refs_volume **out_vol */
 		&(*vol)->vol);
 
+	sys_mutex_deinit(
+		/* sys_mutex *mutex */
+		&(*vol)->cache_lock);
+
 	sys_free(sizeof(*(*vol)->root_node), &(*vol)->root_node);
 	sys_free(sizeof(**vol), vol);
 
@@ -2451,6 +2536,7 @@ int fsapi_node_release(
 		size_t release_count)
 {
 	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
 
 	fsapi_log_enter("vol=%p, node=%p (->%p), release_count=%" PRIuz,
 		vol, node, node ? *node : NULL, PRAuz(release_count));
@@ -2461,6 +2547,15 @@ int fsapi_node_release(
 		*node = NULL;
 		goto out;
 	}
+
+	err = sys_mutex_lock(
+		/* sys_mutex *mutex */
+		&vol->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_locked = SYS_TRUE;
 
 	if(!(*node)->refcount) {
 		sys_log_critical("Attempted to release node with 0 refcount!");
@@ -2490,6 +2585,18 @@ int fsapi_node_release(
 	}
 	*node = NULL;
 out:
+	if(cache_locked) {
+		int unlock_err = 0;
+
+		unlock_err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&vol->cache_lock);
+		if(unlock_err) {
+			err = err ? err : unlock_err;
+			goto out;
+		}
+	}
+
 	fsapi_log_leave(err, "vol=%p, node=%p (->%p), release_count=%" PRIuz,
 		vol, node, node ? *node : NULL, PRAuz(release_count));
 
