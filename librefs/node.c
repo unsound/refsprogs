@@ -9142,6 +9142,18 @@ static int crawl_volume_metadata(
 		if(err) {
 			goto out;
 		}
+
+		if(sb) {
+			u8 *new_block = NULL;
+
+			err = sys_malloc(block_allocated_size, &new_block);
+			if(err) {
+				goto out;
+			}
+
+			*sb = (REFS_SUPERBLOCK_HEADER*) block;
+			block = new_block;
+		}
 	}
 
 	emit("", 0, "Superblock (physical block %" PRIu64 " / 0x%" PRIX64 "):",
@@ -9213,6 +9225,20 @@ static int crawl_volume_metadata(
 			if(err) {
 				goto out;
 			}
+
+			if(primary_level1_node) {
+				u8 *new_block = NULL;
+
+				err = sys_malloc(block_allocated_size,
+					&new_block);
+				if(err) {
+					goto out;
+				}
+
+				*primary_level1_node =
+					(REFS_LEVEL1_NODE*) block;
+				block = new_block;
+			}
 		}
 
 		err = parse_level1_block(
@@ -9268,6 +9294,20 @@ static int crawl_volume_metadata(
 				&block);
 			if(err) {
 				goto out;
+			}
+
+			if(secondary_level1_node) {
+				u8 *new_block = NULL;
+
+				err = sys_malloc(block_allocated_size,
+					&new_block);
+				if(err) {
+					goto out;
+				}
+
+				*secondary_level1_node =
+					(REFS_LEVEL1_NODE*) block;
+				block = new_block;
 			}
 		}
 
