@@ -333,6 +333,12 @@ void refs_node_cache_destroy(
 		sys_free(sizeof(*item), &item);
 	}
 
+	refs_rb_tree_dealloc(
+		/* struct refs_rb_tree *self */
+		(*cachep)->node_tree,
+		/* refs_rb_tree_node_f node_cb */
+		refs_rb_tree_node_dealloc_cb);
+
 	sys_mutex_deinit(
 		/* sys_mutex *mutex */
 		&(*cachep)->cache_lock);
