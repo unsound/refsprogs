@@ -6004,9 +6004,11 @@ static int parse_attribute_non_resident_data_value(
 		u64 first_logical_block = 0;
 		u64 block_count = 0;
 
-		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 ":",
+		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 " @ "
+			"%" PRIuz " / 0x%" PRIXz ":",
 			PRAu32(k + 1),
-			PRAu32(number_of_extents));
+			PRAu32(number_of_extents),
+			PRAuz(j), PRAuz(j));
 
 		if(is_v3);
 		else if(value_end - j >= 4) {
@@ -6832,8 +6834,10 @@ static int parse_attribute_named_stream_extent_value(
 			}
 		}
 
-		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 ":",
-			PRAu32(k + 1), PRAu32(num_extents));
+		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 " @ "
+			"%" PRIuz " / 0x%" PRIXz ":",
+			PRAu32(k + 1), PRAu32(num_extents),
+			PRAuz(j), PRAuz(j));
 
 		if(!is_v3) {
 			/* v1: 0x110 */
