@@ -55,11 +55,9 @@
 #endif
 #ifdef _WIN32
 #include <windows.h>
-#endif
-
-#ifdef HAVE_PTHREAD_H
+#elif defined(HAVE_PTHREAD_H)
 #include <pthread.h>
-#endif
+#endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -82,7 +80,11 @@ typedef struct {
 	u32 tv_nsec;
 } sys_timespec;
 
+#ifdef _WIN32
+typedef HANDLE sys_mutex;
+#elif defined(HAVE_PTHREAD_H)
 typedef pthread_mutex_t sys_mutex;
+#endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
 
 static inline u16 le16_to_cpup(const le16 *const value)
 {
@@ -427,7 +429,18 @@ static inline int sys_mutex_init(
 {
 	int err = 0;
 
-#ifdef HAVE_PTHREAD_H
+#ifdef _WIN32
+	*mutex = CreateMutex(
+		/* LPSECURITY_ATTRIBUTES lpMutexAttributes */
+		NULL,
+		/* BOOL bInitialOwner */
+		FALSE,
+		/* LPCTSTR lpName */
+		NULL);
+	if(!*mutex) {
+		err = ENOMEM;
+	}
+#elif defined(HAVE_PTHREAD_H)
 	pthread_mutexattr_t mutexattr;
 
 	err = pthread_mutexattr_init(&mutexattr);
@@ -436,12 +449,14 @@ static inline int sys_mutex_init(
 	}
 
 	err = pthread_mutex_init(mutex, &mutexattr);
+#endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
 	if(!err) {
 		sys_log_debug("Initialized mutex %p.", mutex);
 	}
 out:
+#if !defined(_WIN32) && defined(HAVE_PTHREAD_H)
 	pthread_mutexattr_destroy(&mutexattr);
-#endif /* HAVE_PTHREAD_H */
+#endif /* !defined(_WIN32) && defined(HAVE_PTHREAD_H) */
 
 	return err;
 }
@@ -451,12 +466,19 @@ static inline int sys_mutex_deinit(
 {
 	int err = 0;
 
-#ifdef HAVE_PTHREAD_H
+#ifdef _WIN32
+	if(!CloseHandle(
+		/* HANDLE hObject */
+		*mutex))
+	{
+		err = EINVAL;
+	}
+#elif defined(HAVE_PTHREAD_H)
 	err = pthread_mutex_destroy(mutex);
+#endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
 	if(!err) {
 		sys_log_debug("Deinitialized mutex %p.", mutex);
 	}
-#endif /* HAVE_PTHREAD_H */
 
 	return err;
 }
@@ -466,12 +488,21 @@ static inline int sys_mutex_lock(
 {
 	int err = 0;
 
-#ifdef HAVE_PTHREAD_H
+#ifdef _WIN32
+	if(WaitForSingleObject(
+		/* HANDLE hHandle */
+		*mutex,
+		/* DWORD  dwMilliseconds */
+		INFINITE) != WAIT_OBJECT_0)
+	{
+		err = EINVAL;
+	}
+#elif defined(HAVE_PTHREAD_H)
 	err = pthread_mutex_lock(mutex);
+#endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
 	if(!err) {
 		sys_log_debug("Locked mutex %p.", mutex);
 	}
-#endif /* HAVE_PTHREAD_H */
 
 	return err;
 }
@@ -481,10 +512,18 @@ static inline int sys_mutex_unlock(
 {
 	int err = 0;
 
-#ifdef HAVE_PTHREAD_H
 	sys_log_debug("Unlocking mutex %p...", mutex);
+
+#ifdef _WIN32
+	if(!ReleaseMutex(
+		/* HANDLE hMutex */
+		*mutex))
+	{
+		err = EINVAL;
+	}
+#elif defined(HAVE_PTHREAD_H)
 	err = pthread_mutex_unlock(mutex);
-#endif /* HAVE_PTHREAD_H */
+#endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
 
 	return err;
 }
