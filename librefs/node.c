@@ -72,6 +72,23 @@ typedef struct {
 	size_t block_queue_length;
 } refs_node_block_queue;
 
+typedef struct refs_object_map_cache_item refs_object_map_cache_item;
+
+struct refs_object_map_cache_item {
+	u64 object_id;
+	u64 node_number;
+	refs_object_map_cache_item *lru_list_prev;
+	refs_object_map_cache_item *lru_list_next;
+};
+
+typedef struct {
+	sys_mutex cache_lock;
+	struct refs_rb_tree *object_id_tree;
+	refs_object_map_cache_item *lru_list;
+	size_t cur_node_count;
+	size_t max_node_count;
+} refs_object_map_cache;
+
 typedef struct refs_node_cache_item refs_node_cache_item;
 
 struct refs_node_cache_item {
@@ -83,11 +100,13 @@ struct refs_node_cache_item {
 };
 
 struct refs_node_cache {
+	sys_mutex cache_lock;
 	size_t node_size;
 	struct refs_rb_tree *node_tree;
 	refs_node_cache_item *lru_list;
 	size_t cur_node_count;
 	size_t max_node_count;
+	refs_object_map_cache *object_map_cache;
 };
 
 
@@ -98,6 +117,7 @@ static int parse_attribute_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -114,6 +134,7 @@ static int parse_level3_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -127,6 +148,370 @@ static int parse_level3_leaf_value(
 
 
 /* Function defintions. */
+
+static int refs_object_map_cache_item_compare(
+		struct refs_rb_tree *const self,
+		struct refs_rb_node *const a_node,
+		struct refs_rb_node *const b_node)
+{
+	const refs_object_map_cache_item *const a =
+		(const refs_object_map_cache_item*) a_node->value;
+	const refs_object_map_cache_item *const b =
+		(const refs_object_map_cache_item*) b_node->value;
+
+	(void) self;
+
+	if(a->object_id < b->object_id) {
+		return -1;
+	}
+	else if(a->object_id > b->object_id) {
+		return 1;
+	}
+
+	return 0;
+}
+
+
+static void refs_object_map_cache_item_add_to_lru(
+		refs_object_map_cache *const cache,
+		refs_object_map_cache_item *const item)
+{
+	if(!cache->lru_list) {
+		item->lru_list_next = item;
+		item->lru_list_prev = item;
+		cache->lru_list = item;
+	}
+	else {
+		/* We insert the new item at the previous location from
+		 * the head, i.e. at the tail of the list. Then we pop
+		 * off the least recently used item from the head. */
+		item->lru_list_prev = cache->lru_list->lru_list_prev;
+		cache->lru_list->lru_list_prev->lru_list_next = item;
+		cache->lru_list->lru_list_prev = item;
+		item->lru_list_next = cache->lru_list;
+	}
+
+	sys_log_debug("Add to LRU: %p (next: %p, prev: %p)",
+		item, item->lru_list_next, item->lru_list_prev);
+
+	++cache->cur_node_count;
+}
+
+static void refs_object_map_cache_item_remove_from_lru(
+		refs_object_map_cache *const cache,
+		refs_object_map_cache_item *const item)
+{
+	sys_log_debug("Remove from LRU: %p", item);
+
+	if(item->lru_list_next != item) {
+		/* Connect the next and previous item bypassing the item that is
+		 * being removed. */
+		refs_object_map_cache_item *const next =
+			item->lru_list_next;
+		refs_object_map_cache_item *const prev =
+			item->lru_list_prev;
+		next->lru_list_prev = item->lru_list_prev;
+		prev->lru_list_next = item->lru_list_next;
+	}
+
+	if(cache->lru_list == item) {
+		/* If this is the head of the list, replace the head if there
+		 * are more items or set it to NULL if there aren't. */
+		cache->lru_list =
+			(item->lru_list_next != item) ? item->lru_list_next :
+			NULL;
+	}
+
+	item->lru_list_next = NULL;
+	item->lru_list_prev = NULL;
+}
+
+static int refs_object_map_cache_create(
+		refs_object_map_cache **const out_object_map_cache)
+{
+	int err = 0;
+	refs_object_map_cache *object_map_cache = NULL;
+	sys_bool cache_lock_initialized = SYS_FALSE;
+
+	err = sys_calloc(sizeof(*object_map_cache), &object_map_cache);
+	if(err) {
+		goto out;
+	}
+
+	object_map_cache->object_id_tree = refs_rb_tree_create(
+		/* refs_rb_tree_node_cmp_f cmp */
+		refs_object_map_cache_item_compare);
+	if(!object_map_cache->object_id_tree) {
+		err = ENOMEM;
+		goto out;
+	}
+
+	err = sys_mutex_init(
+		/* sys_mutex *mutex */
+		&object_map_cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_lock_initialized = SYS_TRUE;
+
+	object_map_cache->object_id_tree->info = object_map_cache;
+	object_map_cache->max_node_count = 1024;
+
+	*out_object_map_cache = object_map_cache;
+	object_map_cache = NULL;
+out:
+	if(object_map_cache) {
+		if(cache_lock_initialized) {
+			sys_mutex_deinit(
+				/* sys_mutex *mutex */
+				&object_map_cache->cache_lock);
+		}
+
+		if(object_map_cache->object_id_tree) {
+			refs_rb_tree_dealloc(
+				/* struct refs_rb_tree *self */
+				object_map_cache->object_id_tree,
+				/* refs_rb_tree_node_f node_cb */
+				refs_rb_tree_node_dealloc_cb);
+		}
+
+		sys_free(sizeof(*object_map_cache), &object_map_cache);
+	}
+
+	return err;
+}
+
+static void refs_object_map_cache_remove_rb_tree_callback(
+		struct refs_rb_tree *const self,
+		struct refs_rb_node *node)
+{
+	refs_object_map_cache_item *const item =
+		(refs_object_map_cache_item*) node->value;
+
+	refs_object_map_cache_item_remove_from_lru(
+		/* refs_object_map_cache *cache */
+		(refs_object_map_cache*) self->info,
+		/* refs_object_map_cache_item *item */
+		item);
+
+	sys_free(sizeof(*node), &node);
+}
+
+static sys_bool refs_object_map_cache_remove(
+		refs_object_map_cache *const cache,
+		const u64 object_id)
+{
+	sys_bool res;
+	refs_object_map_cache_item search_item;
+
+	memset(&search_item, 0, sizeof(search_item));
+	search_item.object_id = object_id;
+
+	if(refs_rb_tree_remove_with_cb(
+		/* struct refs_rb_tree *self */
+		cache->object_id_tree,
+		/* void *value */
+		&search_item,
+		/* refs_rb_tree_node_f node_cb) */
+		refs_object_map_cache_remove_rb_tree_callback))
+	{
+		--cache->cur_node_count;
+		res = SYS_TRUE;
+	}
+	else {
+		res = SYS_FALSE;
+	}
+
+	return res;
+}
+
+static int refs_object_map_cache_insert(
+		refs_object_map_cache *const cache,
+		const u64 object_id,
+		const u64 node_number)
+{
+	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
+	refs_object_map_cache_item *insert_item = NULL;
+	sys_bool insert_item_allocated = SYS_FALSE;
+
+	err = sys_mutex_lock(
+		/* sys_mutex *const mutex */
+		&cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_locked = SYS_TRUE;
+
+	sys_log_debug("Checking if we need to evict a cache item. Current node "
+		"count: %" PRIuz " Max node count: %" PRIuz,
+		PRAuz(cache->cur_node_count), PRAuz(cache->max_node_count));
+
+	if(cache->cur_node_count == cache->max_node_count) {
+		sys_log_debug("    Reusing least recently used cache object ID "
+			"%" PRIu64 " (%p) because the cache is full.",
+			PRAu64(cache->lru_list->object_id),
+			cache->lru_list);
+
+		/* Reuse the least recently used item. */
+		insert_item = cache->lru_list;
+
+		if(!refs_object_map_cache_remove(
+			/* refs_object_map_cache *cache */
+			cache,
+			/* u64 object_id */
+			cache->lru_list->object_id))
+		{
+			sys_log_critical("Couldn't find the head to the list "
+				"in the cache tree: %" PRIu64,
+				PRAu64(cache->lru_list->object_id));
+			err = ENXIO;
+			goto out;
+		}
+
+		memset(insert_item, 0, sizeof(*insert_item));
+	}
+	else {
+		sys_log_debug("    No, cache is not full.");
+
+		err = sys_calloc(sizeof(*insert_item), &insert_item);
+		if(err) {
+			goto out;
+		}
+
+		insert_item_allocated = SYS_TRUE;
+	}
+
+	insert_item->object_id = object_id;
+	insert_item->node_number = node_number;
+
+	if(!refs_rb_tree_insert(
+		/* struct refs_rb_tree *self */
+		cache->object_id_tree,
+		/* void *value */
+		insert_item))
+	{
+		err = ENOMEM;
+		goto out;
+	}
+
+	refs_object_map_cache_item_add_to_lru(
+		/* refs_object_map_cache *cache */
+		cache,
+		/* refs_object_map_cache_item *item */
+		insert_item);
+
+	sys_log_debug("Added object ID mapping 0x%" PRIX64 " -> %" PRIu64 " / "
+		"0x%" PRIX64 " to object map cache.",
+		PRAX64(object_id), PRAu64(node_number), PRAX64(node_number));
+
+	/* Ownership passed to the cache. */
+	insert_item = NULL;
+out:
+	if(cache_locked) {
+		sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&cache->cache_lock);
+	}
+
+	if(insert_item && insert_item_allocated) {
+		sys_free(sizeof(*insert_item), &insert_item);
+	}
+
+	return err;
+}
+
+static int refs_object_map_cache_search(
+		refs_object_map_cache *const cache,
+		const u64 object_id,
+		u64 *const out_node_number)
+{
+	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
+	refs_object_map_cache_item search_item;
+	refs_object_map_cache_item *cache_item = NULL;
+
+	memset(&search_item, 0, sizeof(search_item));
+	search_item.object_id = object_id;
+
+	err = sys_mutex_lock(
+		/* sys_mutex *mutex */
+		&cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_locked = SYS_TRUE;
+
+	cache_item = (refs_object_map_cache_item*) refs_rb_tree_find(
+		/* struct refs_rb_tree *self */
+		cache->object_id_tree,
+		/* void *value */
+		&search_item);
+	if(cache_item) {
+		/* A cache hit means we should put the item at the end of the
+		 * LRU list to avoid it being evicted next time the cache is
+		 * full. */
+
+		refs_object_map_cache_item_remove_from_lru(
+			/* refs_object_map_cache *cache */
+			cache,
+			/* refs_object_map_cache_item *item */
+			cache_item);
+
+		refs_object_map_cache_item_add_to_lru(
+			/* refs_object_map_cache *cache */
+			cache,
+			/* refs_object_map_cache_item *item */
+			cache_item);
+	}
+
+	*out_node_number = cache_item ? cache_item->node_number : 0;
+out:
+	if(cache_locked) {
+		sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&cache->cache_lock);
+	}
+
+	return err;
+}
+
+static void refs_object_map_cache_destroy(
+		refs_object_map_cache **const object_map_cachep)
+{
+	/* Iterate over cache items and free them. */
+	while((*object_map_cachep)->lru_list) {
+		refs_object_map_cache_item *item =
+			(*object_map_cachep)->lru_list;
+
+		if(!refs_object_map_cache_remove(
+			/* refs_object_map_cache *cache */
+			*object_map_cachep,
+			/* u64 object_id */
+			item->object_id))
+		{
+			sys_log_critical("Couldn't find object map cache item "
+				"%p in cache at destroy time.", item);
+		}
+
+		sys_free(sizeof(*item), &item);
+	}
+
+	sys_mutex_deinit(
+		/* sys_mutex *mutex */
+		&(*object_map_cachep)->cache_lock);
+
+	refs_rb_tree_dealloc(
+		/* struct refs_rb_tree *self */
+		(*object_map_cachep)->object_id_tree,
+		/* refs_rb_tree_node_f node_cb */
+		refs_rb_tree_node_dealloc_cb);
+
+	sys_free(sizeof(**object_map_cachep), object_map_cachep);
+}
 
 static int refs_node_cache_item_compare(
 		struct refs_rb_tree *const self,
@@ -157,6 +542,9 @@ int refs_node_cache_create(
 {
 	int err = 0;
 	struct refs_rb_tree *node_tree = NULL;
+	refs_node_cache *cache = NULL;
+	refs_object_map_cache *object_map_cache = NULL;
+	sys_bool cache_lock_initialized = SYS_FALSE;
 
 	node_tree = refs_rb_tree_create(
 		/* refs_rb_tree_node_cmp_f cmp */
@@ -166,15 +554,61 @@ int refs_node_cache_create(
 		goto out;
 	}
 
-	err = sys_calloc(sizeof(refs_node_cache), out_cache);
+	err = sys_calloc(sizeof(refs_node_cache), &cache);
 	if(err) {
 		goto out;
 	}
 
-	(*out_cache)->node_size = node_size;
-	(*out_cache)->node_tree = node_tree;
-	(*out_cache)->max_node_count = max_node_count;
+	err = refs_object_map_cache_create(
+		/* refs_object_map_cache **out_object_map_cache */
+		&object_map_cache);
+	if(err) {
+		goto out;
+	}
+
+	err = sys_mutex_init(
+		/* sys_mutex *mutex */
+		&cache->cache_lock);
+	if(err) {
+		goto out;
+	}
+
+	cache_lock_initialized = SYS_TRUE;
+
+	cache->node_size = node_size;
+	cache->node_tree = node_tree;
+	node_tree = NULL;
+	cache->max_node_count = max_node_count;
+	cache->object_map_cache = object_map_cache;
+	object_map_cache = NULL;
+	*out_cache = cache;
+	cache = NULL;
+	cache_lock_initialized = SYS_FALSE;
 out:
+	if(cache_lock_initialized) {
+		sys_mutex_deinit(
+			/* sys_mutex *mutex */
+			&(*out_cache)->cache_lock);
+	}
+
+	if(object_map_cache) {
+		refs_object_map_cache_destroy(
+			/* refs_object_map_cache **object_map_cachep */
+			&object_map_cache);
+	}
+
+	if(cache) {
+		sys_free(sizeof(refs_node_cache), &cache);
+	}
+
+	if(node_tree) {
+		refs_rb_tree_dealloc(
+			/* struct refs_rb_tree *self */
+			node_tree,
+			/* refs_rb_tree_node_f node_cb */
+			refs_rb_tree_node_dealloc_cb);
+	}
+
 	return err;
 }
 
@@ -276,6 +710,10 @@ static sys_bool refs_node_cache_remove(
 void refs_node_cache_destroy(
 		refs_node_cache **const cachep)
 {
+	refs_object_map_cache_destroy(
+		/* refs_object_map_cache **object_map_cachep */
+		&(*cachep)->object_map_cache);
+
 	/* Iterate over cache items and free them. */
 	while((*cachep)->lru_list) {
 		refs_node_cache_item *item = (*cachep)->lru_list;
@@ -296,6 +734,17 @@ void refs_node_cache_destroy(
 
 		sys_free(sizeof(*item), &item);
 	}
+
+	refs_rb_tree_dealloc(
+		/* struct refs_rb_tree *self */
+		(*cachep)->node_tree,
+		/* refs_rb_tree_node_f node_cb */
+		refs_rb_tree_node_dealloc_cb);
+
+	sys_mutex_deinit(
+		/* sys_mutex *mutex */
+		&(*cachep)->cache_lock);
+
 
 	sys_free(sizeof(**cachep), cachep);
 }
@@ -660,6 +1109,7 @@ static int refs_node_get_node_data(
 		sys_min(crawl_context->cluster_size, node_size);
 
 	int err = 0;
+	sys_bool cache_locked = SYS_FALSE;
 	const u8 *cached_data = NULL;
 	u8 *data = NULL;
 	size_t bytes_read = 0;
@@ -685,6 +1135,15 @@ static int refs_node_get_node_data(
 	}
 
 	if(crawl_context->node_cache) {
+		err = sys_mutex_lock(
+			/* sys_mutex *const mutex */
+			&crawl_context->node_cache->cache_lock);
+		if(err) {
+			goto out;
+		}
+
+		cache_locked = SYS_TRUE;
+
 		cached_data = refs_node_cache_search(
 			/* refs_node_cache *cache */
 			crawl_context->node_cache,
@@ -775,6 +1234,15 @@ static int refs_node_get_node_data(
 
 	*out_data = data;
 out:
+	if(cache_locked) {
+		err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&crawl_context->node_cache->cache_lock);
+		if(err) {
+			goto out;
+		}
+	}
+
 	return err;
 }
 
@@ -2369,6 +2837,7 @@ static int parse_index_value(
 		const char *const prefix,
 		const size_t indent,
 		const sys_bool is_v3,
+		const sys_bool add_to_queue,
 		const u8 *const value,
 		const u16 value_offset,
 		const u16 value_size,
@@ -2405,7 +2874,7 @@ static int parse_index_value(
 			/* const u8 *data */
 			&value[j]);
 
-		if(block_queue) {
+		if(block_queue && add_to_queue) {
 			/* Add the next level block number parsed from the value
 			 * to the block queue. */
 			const le64 *const value_le64 = (const le64*) &value[j];
@@ -2489,6 +2958,7 @@ static int parse_unknown_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -2506,6 +2976,7 @@ static int parse_unknown_leaf_value(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 
+	(void) node_number;
 	(void) object_id;
 	(void) block_index_unit;
 	(void) is_v3;
@@ -2528,6 +2999,7 @@ static int parse_generic_entry(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u32 block_index_unit,
 		const sys_bool is_v3,
@@ -2551,11 +3023,17 @@ static int parse_generic_entry(
 			u16 key_size,
 			u32 entry_size,
 			void *context),
+		sys_bool (*const should_add_subnode)(
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_size,
+			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
+			u64 node_number,
 			u64 object_id,
 			const u8 *key,
 			u16 key_offset,
@@ -2566,7 +3044,8 @@ static int parse_generic_entry(
 			u16 entry_offset,
 			u32 entry_size,
 			void *context),
-		refs_node_block_queue *const block_queue)
+		refs_node_block_queue *const block_queue,
+		sys_bool *const out_added_subnode)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -2578,6 +3057,7 @@ static int parse_generic_entry(
 	const u8 *key = NULL;
 	u16 value_offset = 0;
 	u16 value_size = 0;
+	sys_bool add_subnode = SYS_FALSE;
 
 	(void) block_index_unit;
 
@@ -2671,6 +3151,11 @@ static int parse_generic_entry(
 	if(is_index && value_offset < entry_size &&
 		value_size <= entry_size - value_offset)
 	{
+		add_subnode =
+			(!should_add_subnode ||
+			should_add_subnode(is_v3, key, key_size, context)) ?
+			SYS_TRUE : SYS_FALSE;
+
 		err = parse_index_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
@@ -2680,6 +3165,8 @@ static int parse_generic_entry(
 			indent + 2,
 			/* sys_bool is_v3 */
 			is_v3,
+			/* sys_bool add_to_queue */
+			add_subnode,
 			/* const u8 *value */
 			&entry[value_offset],
 			/* u16 value_offset */
@@ -2700,6 +3187,8 @@ static int parse_generic_entry(
 			prefix,
 			/* size_t indent */
 			indent + 2,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -2720,6 +3209,10 @@ static int parse_generic_entry(
 			entry_size,
 			/* void *context */
 			context);
+	}
+
+	if(out_added_subnode) {
+		*out_added_subnode = add_subnode;
 	}
 out:
 	return err;
@@ -2751,11 +3244,17 @@ static int parse_generic_block(
 			u16 key_size,
 			u32 entry_size,
 			void *context),
+		sys_bool (*const should_add_subnode)(
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_size,
+			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
 			refs_node_walk_visitor *visitor,
 			const char *prefix,
 			size_t indent,
+			u64 node_number,
 			u64 object_id,
 			const u8 *key,
 			u16 key_offset,
@@ -2796,18 +3295,21 @@ static int parse_generic_block(
 	u32 value_offsets_start_real = 0;
 	u32 value_offsets_end_real = 0;
 	u32 j = 0;
+	sys_bool added_subnode = SYS_FALSE;
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
 		"cluster_number=%" PRIu64 ", block_number=%" PRIu64 ", "
 		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
 		"block_size=%" PRIu32 ", block_queue=%p, "
 		"add_subnodes_in_offsets_order=%d, context=%p, parse_key=%p, "
-		"parse_leaf_value=%p, leaf_entry_handler=%p): Entering...",
+		"should_add_subnode=%p, parse_leaf_value=%p, "
+		"leaf_entry_handler=%p): Entering...",
 		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
 		PRAu64(cluster_number), PRAu64(block_number),
 		PRAu64(block_queue_index), PRAu8(level), block,
 		PRAu32(block_size), block_queue, add_subnodes_in_offsets_order,
-		context, parse_key, parse_leaf_value, leaf_entry_handler);
+		context, parse_key, should_add_subnode, parse_leaf_value,
+		leaf_entry_handler);
 
 	if(block_size < 512) {
 		/* It doesn't make sense to have blocks less than a sector, and
@@ -3030,6 +3532,8 @@ static int parse_generic_block(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			block_number,
 			/* u64 object_id */
 			object_id,
 			/* u32 block_index_unit */
@@ -3063,11 +3567,19 @@ static int parse_generic_block(
 			 *      u16 key_size,
 			 *      void *context) */
 			parse_key,
+			/* sys_bool (*should_add_subnode)(
+			 *     sys_bool is_v3,
+			 *     const u8 *key,
+			 *     u16 key_size,
+			 *     void *context) */
+			(should_add_subnode && !added_subnode) ?
+				should_add_subnode : NULL,
 			/* int (*parse_leaf_value)(
 			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
 			 *      const char *prefix,
 			 *      size_t indent,
+			 *      u64 node_number,
 			 *      u64 object_id,
 			 *      const u8 *key,
 			 *      u16 key_offset,
@@ -3081,7 +3593,9 @@ static int parse_generic_block(
 			parse_leaf_value,
 			/* refs_node_block_queue *block_queue */
 			(!is_index_node || !add_subnodes_in_offsets_order) ?
-			NULL : block_queue);
+			NULL : block_queue,
+			/* sys_bool *out_added_subnode */
+			&added_subnode);
 		if(err) {
 			goto out;
 		}
@@ -3124,7 +3638,6 @@ static int parse_generic_block(
 	{
 		/* We have already read the value offsets, now read each
 		 * value in the order that it appears and advance pointer. */
-
 		for(j = 0; j < values_count; ++j) {
 			/* Look up the next offset in the value offsets
 			 * array. */
@@ -3174,6 +3687,8 @@ static int parse_generic_block(
 				prefix,
 				/* size_t indent */
 				indent,
+				/* u64 node_number */
+				block_number,
 				/* u64 object_id */
 				object_id,
 				/* u32 block_index_unit */
@@ -3207,10 +3722,17 @@ static int parse_generic_block(
 				 *      u32 entry_size,
 				 *      void *context) */
 				parse_key,
+				/* sys_bool (*should_add_subnode)(
+				 *     sys_bool is_v3,
+				 *     const u8 *key,
+				 *     u16 key_size,
+				 *     void *context) */
+				NULL,
 				/* int (*parse_leaf_value)(
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
 				 *      const size_t indent,
+				 *      u64 node_number,
 				 *      u64 object_id,
 				 *      u16 entry_offset,
 				 *      u32 block_index_unit,
@@ -3225,7 +3747,9 @@ static int parse_generic_block(
 				/* refs_node_block_queue *block_queue */
 				(!is_index_node ||
 				add_subnodes_in_offsets_order) ? NULL :
-				block_queue);
+				block_queue,
+				/* sys_bool *out_added_subnode */
+				NULL);
 			if(err) {
 				goto out;
 			}
@@ -3283,14 +3807,88 @@ out:
 		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
 		"block_size=%" PRIu32 ", block_queue=%p, "
 		"add_subnodes_in_offsets_order=%d, context=%p, parse_key=%p, "
-		"parse_leaf_value=%p, leaf_entry_handler=%p): Leaving.",
+		"should_add_subnode=%p, parse_leaf_value=%p, "
+		"leaf_entry_handler=%p): Leaving.",
 		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
 		PRAu64(cluster_number), PRAu64(block_number),
 		PRAu64(block_queue_index), PRAu8(level), block,
 		PRAu32(block_size), block_queue, add_subnodes_in_offsets_order,
-		context, parse_key, parse_leaf_value, leaf_entry_handler);
+		context, parse_key, should_add_subnode, parse_leaf_value,
+		leaf_entry_handler);
 
 	return err;
+}
+
+typedef struct {
+	sys_bool is_mapping;
+	u64 object_id;
+	refs_node_block_queue *level3_block_queue;
+	refs_node_cache *node_cache;
+} level2_0x2_leaf_parse_context;
+
+static sys_bool parse_level2_0x2_should_add_subnode(
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		void *const _context)
+{
+	level2_0x2_leaf_parse_context *const context =
+		(level2_0x2_leaf_parse_context*) _context;
+
+	sys_bool res = SYS_TRUE;
+
+	(void) is_v3;
+
+	if(!context->is_mapping) {
+		/* If we aren't doing object ID mapping then add all
+		 * subnodes. */
+		goto out;
+	}
+
+	if(key_size >= 2) {
+		const u16 key_type = read_le16(&key[0x0]);
+
+		/* Observed value for this field is 0x0. Reject unknown values
+		 * since we don't know the significance of this field. */
+		if(key_type != 0x0) {
+			res = SYS_FALSE;
+		}
+	}
+	if(key_size >= 4) {
+		const u16 reserved = read_le16(&key[0x2]);
+
+		/* Observed value for this field is 0x0. Reject unknown values
+		 * since we don't know the significance of this field. */
+		if(reserved != 0x0) {
+			res = SYS_FALSE;
+		}
+	}
+	if(key_size >= 8) {
+		const u32 reserved = read_le32(&key[0x4]);
+
+		/* Observed value for this field is 0x0. Reject unknown values
+		 * since we don't know the significance of this field. */
+		if(reserved != 0x0) {
+			res = SYS_FALSE;
+		}
+	}
+	if(key_size >= 16) {
+		const u64 object_id = read_le64(&key[0x8]);
+
+		/* If the object ID in the key is less than the requested object
+		 * ID, then we reject the key. This is because indices in ReFS
+		 * specify the last key of the child node, not the first key as
+		 * is usually the case in other filesystems. */
+		sys_log_debug("%s: %" PRIu64 " < %" PRIu64, __FUNCTION__,
+			PRAu64(object_id), PRAu64(context->object_id));
+		if(object_id < context->object_id) {
+			res = SYS_FALSE;
+		}
+	}
+out:
+	sys_log_debug("%s: %s", __FUNCTION__, res ? "Yes" : "No");
+
+	return res;
 }
 
 static int parse_level2_0x2_key(
@@ -3319,12 +3917,6 @@ static int parse_level2_0x2_key(
 
 	return 0;
 }
-
-typedef struct {
-	sys_bool is_mapping;
-	u64 object_id;
-	refs_node_block_queue *level3_block_queue;
-} level2_0x2_leaf_parse_context;
 
 static int parse_level2_0x2_leaf_value(
 		refs_node_walk_visitor *const visitor,
@@ -3427,7 +4019,21 @@ static int parse_level2_0x2_leaf_value(
 			const u64 object_id =
 				(key_size >= 0x10) ? read_le64(&key[0x8]) : 0;
 
-			if(object_id && context->object_id == object_id) {
+			if(!object_id || context->object_id != object_id);
+			else if(context->node_cache &&
+				context->node_cache->object_map_cache &&
+				(err = refs_object_map_cache_insert(
+					/* refs_object_map_cache *cache */
+					context->node_cache->object_map_cache,
+					/* u64 object_id */
+					object_id,
+					/* u64 node_number */
+					block_numbers[0])))
+			{
+				sys_log_perror(err, "Error while adding "
+					"matching object ID mapping to cache");
+			}
+			else {
 				err = refs_node_block_queue_add(
 					/* refs_node_block_queue *block_queue */
 					context->level3_block_queue,
@@ -3777,6 +4383,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -3792,6 +4399,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 
 	int err = 0;
 
+	(void) node_number;
 	(void) object_id;
 	(void) key;
 	(void) key_offset;
@@ -3828,6 +4436,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -3844,6 +4453,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 	int err = 0;
 	block_range leaf_range;
 
+	(void) node_number;
 	(void) object_id;
 	(void) key;
 	(void) key_offset;
@@ -4381,6 +4991,7 @@ static int parse_level2_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -4490,6 +5101,8 @@ static int parse_level2_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -4521,6 +5134,8 @@ static int parse_level2_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -4678,6 +5293,8 @@ static int parse_level2_leaf_value(
 			prefix,
 			/* size_t indent */
 			indent,
+			/* u64 node_number */
+			node_number,
 			/* u64 object_id */
 			object_id,
 			/* const u8 *key */
@@ -4763,6 +5380,7 @@ static int parse_level2_block(
 	}
 
 	context.level3_block_queue = level3_queue;
+	context.node_cache = crawl_context->node_cache;
 
 	err = parse_generic_block(
 		/* refs_node_crawl_context *crawl_context */
@@ -4784,7 +5402,7 @@ static int parse_level2_block(
 		/* u32 block_size */
 		block_size,
 		/* refs_node_block_queue *block_queue */
-		level2_queue,
+		(!object_id_mapping || object_id == 0x2) ? level2_queue : NULL,
 		/* sys_bool add_subnodes_in_offsets_order */
 		SYS_TRUE,
 		/* void *context */
@@ -4803,11 +5421,18 @@ static int parse_level2_block(
 		 *      u32 entry_size,
 		 *      void *context) */
 		parse_level2_key,
+		/* sys_bool (*should_add_subnode)(
+		 *     sys_bool is_v3,
+		 *     const u8 *key,
+		 *     u16 key_size,
+		 *     void *context) */
+		(object_id == 0x2) ? parse_level2_0x2_should_add_subnode : NULL,
 		/* int (*parse_leaf_value)(
 		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
+		 *      u64 node_number,
 		 *      u64 object_id,
 		 *      const u8 *key,
 		 *      u16 key_size,
@@ -4828,6 +5453,7 @@ static int parse_level2_block(
 		goto out;
 	}
 
+#if SYS_LOG_DEBUG_ENABLED
 	{
 		size_t i = 0;
 		refs_node_block_queue_element *cur_element = NULL;
@@ -4861,6 +5487,7 @@ static int parse_level2_block(
 			cur_element = cur_element->next;
 		}
 	}
+#endif /* SYS_LOG_DEBUG_ENABLED */
 out:
 	return err;
 }
@@ -5795,9 +6422,11 @@ static int parse_attribute_non_resident_data_value(
 		u64 first_logical_block = 0;
 		u64 block_count = 0;
 
-		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 ":",
+		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 " @ "
+			"%" PRIuz " / 0x%" PRIXz ":",
 			PRAu32(k + 1),
-			PRAu32(number_of_extents));
+			PRAu32(number_of_extents),
+			PRAuz(j), PRAuz(j));
 
 		if(is_v3);
 		else if(value_end - j >= 4) {
@@ -6623,8 +7252,10 @@ static int parse_attribute_named_stream_extent_value(
 			}
 		}
 
-		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 ":",
-			PRAu32(k + 1), PRAu32(num_extents));
+		emit(prefix, indent, "Extent %" PRIu32 "/%" PRIu32 " @ "
+			"%" PRIuz " / 0x%" PRIXz ":",
+			PRAu32(k + 1), PRAu32(num_extents),
+			PRAuz(j), PRAuz(j));
 
 		if(!is_v3) {
 			/* v1: 0x110 */
@@ -6841,11 +7472,18 @@ static int parse_non_resident_attribute_list_value(
 			 *      u32 entry_size,
 			 *      void *context) */
 			parse_attribute_key,
+			/* sys_bool (*should_add_subnode)(
+			 *     sys_bool is_v3,
+			 *     const u8 *key,
+			 *     u16 key_size,
+			 *     void *context) */
+			NULL,
 			/* int (*parse_leaf_value)(
 			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
 			 *      const char *prefix,
 			 *      size_t indent,
+			 *      u64 node_number,
 			 *      u64 object_id,
 			 *      const u8 *key,
 			 *      u16 key_size,
@@ -6886,6 +7524,7 @@ static int parse_attribute_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -6913,6 +7552,7 @@ static int parse_attribute_leaf_value(
 	char *cstr = NULL;
 	size_t cstr_length = 0;
 
+	(void) node_number;
 	(void) object_id;
 	(void) value_offset;
 	(void) entry_offset;
@@ -7434,6 +8074,7 @@ int parse_level3_long_value(
 		const char *const prefix,
 		const size_t indent,
 		const u64 parent_node_object_id,
+		const u64 node_number,
 		const u16 entry_offset,
 		const u8 *const key,
 		const u16 key_size,
@@ -7485,9 +8126,9 @@ int parse_level3_long_value(
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Entering...",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Entering...",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
@@ -7495,6 +8136,7 @@ int parse_level3_long_value(
 		prefix ? "\"" : "",
 		PRAuz(indent),
 		PRAu64(parent_node_object_id),
+		PRAu64(node_number),
 		PRAu16(entry_offset),
 		key,
 		PRAu16(key_size),
@@ -7518,6 +8160,8 @@ int parse_level3_long_value(
 			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 node_number */
+			node_number,
 			/* u64 parent_node_object_id */
 			parent_node_object_id,
 			/* u64 create_time */
@@ -7561,6 +8205,8 @@ int parse_level3_long_value(
 			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 node_number */
+			node_number,
 			/* u64 create_time */
 			creation_time,
 			/* u64 last_access_time */
@@ -8432,15 +9078,16 @@ out:
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Leaving",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Leaving",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
 		prefix ? "\"" : "", prefix ? prefix : "NULL",
 		prefix ? "\"" : "",
 		PRAuz(indent),
+		PRAu64(node_number),
 		PRAu64(parent_node_object_id),
 		PRAu16(entry_offset),
 		key,
@@ -8468,6 +9115,7 @@ int parse_level3_short_value(
 		const char *const prefix,
 		const size_t indent,
 		const u64 parent_node_object_id,
+		const u64 node_number,
 		const u16 entry_offset,
 		const u8 *const key,
 		const u16 key_size,
@@ -8505,9 +9153,9 @@ int parse_level3_short_value(
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Entering...",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Entering...",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
@@ -8515,6 +9163,7 @@ int parse_level3_short_value(
 		prefix ? "\"" : "",
 		PRAuz(indent),
 		PRAu64(parent_node_object_id),
+		PRAu64(node_number),
 		PRAu16(entry_offset),
 		key,
 		PRAu16(key_size),
@@ -8538,6 +9187,8 @@ int parse_level3_short_value(
 			entry_offset,
 			/* u32 file_flags */
 			file_flags,
+			/* u64 node_number */
+			node_number,
 			/* u64 parent_node_object_id */
 			parent_node_object_id,
 			/* u64 object_id */
@@ -8614,9 +9265,9 @@ int parse_level3_short_value(
 out:
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, prefix=%s%s%s, "
 		"indent=%" PRIuz ", parent_node_object_id=%" PRIu64 ", "
-		"entry_offset=%" PRIu16 ", key=%p, key_size=%" PRIu16 ", "
-		"value=%p, value_offset=%" PRIu16 ", value_size=%" PRIu16 ", "
-		"context=%p): Leaving.",
+		"node_number=%" PRIu64 ", entry_offset=%" PRIu16 ", key=%p, "
+		"key_size=%" PRIu16 ", value=%p, value_offset=%" PRIu16 ", "
+		"value_size=%" PRIu16 ", context=%p): Leaving.",
 		__FUNCTION__,
 		crawl_context,
 		visitor,
@@ -8624,6 +9275,7 @@ out:
 		prefix ? "\"" : "",
 		PRAuz(indent),
 		PRAu64(parent_node_object_id),
+		PRAu64(node_number),
 		PRAu16(entry_offset),
 		key,
 		PRAu16(key_size),
@@ -8709,6 +9361,7 @@ static int parse_level3_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
+		const u64 node_number,
 		const u64 object_id,
 		const u8 *const key,
 		const u16 key_offset,
@@ -8746,6 +9399,8 @@ static int parse_level3_leaf_value(
 			indent,
 			/* u64 parent_node_object_id */
 			object_id,
+			/* u64 node_number */
+			node_number,
 			/* u16 entry_offset */
 			entry_offset,
 			/* const u8 *key */
@@ -8777,6 +9432,8 @@ static int parse_level3_leaf_value(
 			indent,
 			/* u64 parent_node_object_id */
 			object_id,
+			/* u64 node_number */
+			node_number,
 			/* u16 entry_offset */
 			entry_offset,
 			/* const u8 *key */
@@ -8875,11 +9532,18 @@ static int parse_level3_block(
 		 *      u32 entry_size,
 		 *      void *context) */
 		parse_level3_key,
+		/* sys_bool (*should_add_subnode)(
+		 *     sys_bool is_v3,
+		 *     const u8 *key,
+		 *     u16 key_size,
+		 *     void *context) */
+		NULL,
 		/* int (*parse_leaf_value)(
 		 *      refs_node_crawl_context *crawl_context,
 		 *      refs_node_walk_visitor *visitor,
 		 *      const char *prefix,
 		 *      size_t indent,
+		 *      u64 node_number,
 		 *      u64 object_id,
 		 *      const u8 *key,
 		 *      u16 key_size,
@@ -8917,7 +9581,7 @@ void refs_block_map_destroy(
 static int crawl_volume_metadata(
 		refs_node_walk_visitor *const visitor,
 		sys_device *const dev,
-		REFS_BOOT_SECTOR *const bs,
+		const REFS_BOOT_SECTOR *const bs,
 		REFS_SUPERBLOCK_HEADER **const sb,
 		REFS_LEVEL1_NODE **const primary_level1_node,
 		REFS_LEVEL1_NODE **const secondary_level1_node,
@@ -8946,6 +9610,7 @@ static int crawl_volume_metadata(
 	refs_block_map *mappings = NULL;
 	u64 primary_level1_block = 0;
 	u64 secondary_level1_block = 0;
+	u64 real_start_node = start_node ? *start_node : 0;
 	refs_node_block_queue_element *primary_level2_blocks = NULL;
 	size_t primary_level2_blocks_count = 0;
 	refs_node_block_queue_element *secondary_level2_blocks = NULL;
@@ -9002,7 +9667,7 @@ static int crawl_volume_metadata(
 	crawl_context = refs_node_crawl_context_init(
 		/* sys_device *dev */
 		dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		bs,
 		/* refs_block_map *block_map */
 		NULL,
@@ -9082,6 +9747,18 @@ static int crawl_volume_metadata(
 		if(err) {
 			goto out;
 		}
+
+		if(sb) {
+			u8 *new_block = NULL;
+
+			err = sys_malloc(block_allocated_size, &new_block);
+			if(err) {
+				goto out;
+			}
+
+			*sb = (REFS_SUPERBLOCK_HEADER*) block;
+			block = new_block;
+		}
 	}
 
 	emit("", 0, "Superblock (physical block %" PRIu64 " / 0x%" PRIX64 "):",
@@ -9153,6 +9830,20 @@ static int crawl_volume_metadata(
 			if(err) {
 				goto out;
 			}
+
+			if(primary_level1_node) {
+				u8 *new_block = NULL;
+
+				err = sys_malloc(block_allocated_size,
+					&new_block);
+				if(err) {
+					goto out;
+				}
+
+				*primary_level1_node =
+					(REFS_LEVEL1_NODE*) block;
+				block = new_block;
+			}
 		}
 
 		err = parse_level1_block(
@@ -9208,6 +9899,20 @@ static int crawl_volume_metadata(
 				&block);
 			if(err) {
 				goto out;
+			}
+
+			if(secondary_level1_node) {
+				u8 *new_block = NULL;
+
+				err = sys_malloc(block_allocated_size,
+					&new_block);
+				if(err) {
+					goto out;
+				}
+
+				*secondary_level1_node =
+					(REFS_LEVEL1_NODE*) block;
+				block = new_block;
 			}
 		}
 
@@ -9435,11 +10140,18 @@ static int crawl_volume_metadata(
 				 *      u16 key_size,
 				 *      void *context) */
 				NULL,
+				/* sys_bool (*should_add_subnode)(
+				 *     sys_bool is_v3,
+				 *     const u8 *key,
+				 *     u16 key_size,
+				 *     void *context) */
+				NULL,
 				/* int (*parse_leaf_value)(
 				 *      refs_node_crawl_context *crawl_context,
 				 *      refs_node_walk_visitor *visitor,
 				 *      const char *prefix,
 				 *      size_t indent,
+				 *      u64 node_number,
 				 *      u64 object_id,
 				 *      const u8 *key,
 				 *      u16 key_size,
@@ -9501,10 +10213,35 @@ static int crawl_volume_metadata(
 
 	crawl_context.block_map = mappings;
 
+	if(!real_start_node && object_id && node_cache &&
+		node_cache->object_map_cache)
+	{
+		/* Check the object ID mappings cache first to see if we have
+		 * already resolved the node number of this object ID. */
+		err = refs_object_map_cache_search(
+			/* refs_object_map_cache *cache */
+			node_cache->object_map_cache,
+			/* u64 object_id */
+			*object_id,
+			/* u64 *out_node_number */
+			&real_start_node);
+		if(err) {
+			goto out;
+		}
+
+		if(real_start_node) {
+			sys_log_debug("Cache HIT for cached object ID mapping "
+				"0x%" PRIX64 " -> node %" PRIu64 " / "
+				"0x%" PRIX64,
+				PRAX64(*object_id), PRAu64(real_start_node),
+				PRAu64(real_start_node));
+		}
+	}
+
 	/* At this point the mappings are set up and we can look up a node by
 	 * node number. */
-	if(start_node) {
-		u64 logical_block_numbers[4] = { *start_node, 0, 0, 0 };
+	if(real_start_node) {
+		u64 logical_block_numbers[4] = { real_start_node, 0, 0, 0 };
 		u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 		u64 start_object_id = 0;
 		sys_bool is_valid = SYS_FALSE;
@@ -9819,7 +10556,7 @@ out:
 
 int refs_node_walk(
 		sys_device *const dev,
-		REFS_BOOT_SECTOR *const bs,
+		const REFS_BOOT_SECTOR *const bs,
 		REFS_SUPERBLOCK_HEADER **const sb,
 		REFS_LEVEL1_NODE **const primary_level1_node,
 		REFS_LEVEL1_NODE **const secondary_level1_node,
@@ -9835,7 +10572,7 @@ int refs_node_walk(
 		visitor,
 		/* sys_device *dev */
 		dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		bs,
 		/* REFS_SUPERBLOCK_HEADER **sb */
 		sb,
@@ -9855,7 +10592,7 @@ int refs_node_walk(
 
 int refs_node_scan(
 		sys_device *const dev,
-		REFS_BOOT_SECTOR *const bs,
+		const REFS_BOOT_SECTOR *const bs,
 		refs_node_scan_visitor *const visitor)
 {
 	/* Scan the whole volume length for metadata nodes. Until our tree

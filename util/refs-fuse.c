@@ -783,40 +783,7 @@ out:
 
 	return -err;
 }
-#endif /* !REFS_FUSE_USE_LOWLEVEL_API */
 
-typedef struct {
-	const char *name;
-	size_t name_length;
-	size_t size;
-} refs_fuse_getxattr_context;
-
-static int refs_fuse_op_getxattr_xattr_handler(
-		void *const _context,
-		const char *const name,
-		const size_t name_length,
-		const size_t size)
-{
-	refs_fuse_getxattr_context *const context =
-		(refs_fuse_getxattr_context*) _context;
-
-	int err = 0;
-
-	if(name_length != context->name_length ||
-		memcmp(name, context->name, name_length))
-	{
-		/* Not the xattr that we are looking for. Move on to the
-		 * next one. */
-		goto out;
-	}
-
-	context->size = size;
-	err = -1;
-out:
-	return err;
-}
-
-#if !REFS_FUSE_USE_LOWLEVEL_API
 #ifdef __APPLE__
 static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		size_t size, uint32_t position)
@@ -834,11 +801,12 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 
 	int err = 0;
 	fsapi_node *node = NULL;
-	refs_fuse_getxattr_context context;
 	fsapi_iohandler_buffer_context buffer_context;
+	fsapi_iohandler iohandler;
+	u64 xattr_size = 0;
 
-	memset(&context, 0, sizeof(context));
 	memset(&buffer_context, 0, sizeof(buffer_context));
+	memset(&iohandler, 0, sizeof(iohandler));
 
 	sys_log_debug("%s(path=\"%s\", name=\"%s\", buf=%p, "
 		"size=%" PRIuz ", position=%" PRIu32 ")",
@@ -865,38 +833,7 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		goto out;
 	}
 
-	if(!buf) {
-		context.name = name;
-		context.name_length = strlen(name);
-
-		err = fsapi_node_list_extended_attributes(
-			/* fsapi_volume *vol */
-			vol,
-			/* fsapi_node *node */
-			node,
-			/* void *context */
-			&context,
-			/* int (*xattr_handler)(
-			 *     void *context,
-			 *     const char *name,
-			 *     size_t name_length,
-			 *     size_t size) */
-			refs_fuse_op_getxattr_xattr_handler);
-		if(err == -1) {
-			err = 0;
-		}
-		else if(err) {
-			goto out;
-		}
-		else {
-			err = ENOENT;
-		}
-	}
-	else {
-		fsapi_iohandler iohandler;
-
-		memset(&iohandler, 0, sizeof(iohandler));
-
+	if(size) {
 		buffer_context.buf.rw = buf;
 		buffer_context.remaining_size = bytes_to_read;
 		buffer_context.is_read = SYS_TRUE;
@@ -904,23 +841,25 @@ static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		iohandler.context = &buffer_context;
 		iohandler.handle_io = fsapi_iohandler_buffer_handle_io;
 		iohandler.copy_data = fsapi_iohandler_buffer_copy_data;
-
-		err = fsapi_node_read_extended_attribute(
-			/* fsapi_volume *vol */
-			vol,
-			/* fsapi_node *node */
-			node,
-			/* const char *xattr_name */
-			name,
-			/* size_t xattr_name_length */
-			strlen(name),
-			/* u64 offset */
-			position,
-			/* size_t size */
-			bytes_to_read,
-			/* fsapi_iohandler *iohandler */
-			&iohandler);
 	}
+
+	err = fsapi_node_read_extended_attribute(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* const char *xattr_name */
+		name,
+		/* size_t xattr_name_length */
+		strlen(name),
+		/* u64 offset */
+		position,
+		/* size_t size */
+		bytes_to_read,
+		/* fsapi_iohandler *iohandler */
+		size ? &iohandler : NULL,
+		/* u64 *out_xattr_size */
+		size ? NULL : &xattr_size);
 	if(err == ENOENT) {
 		/* Transform to ENOATTR (macOS/BSD) / ENODATA (Linux,
 		 * ...?). */
@@ -944,7 +883,7 @@ out:
 
 	return err ? -err :
 		(buf ? (int) (bytes_to_read - buffer_context.remaining_size) :
-		((context.size > INT_MAX) ? INT_MAX : (int) context.size));
+		((xattr_size > INT_MAX) ? INT_MAX : (int) xattr_size));
 }
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API */
 
@@ -1898,49 +1837,19 @@ static void refs_fuse_ll_op_getxattr(
 
 	int err = 0;
 	void *buf = NULL;
-	refs_fuse_getxattr_context context;
 	fsapi_iohandler_buffer_context buffer_context;
+	fsapi_iohandler iohandler;
+	u64 xattr_size = 0;
 
-	memset(&context, 0, sizeof(context));
 	memset(&buffer_context, 0, sizeof(buffer_context));
+	memset(&iohandler, 0, sizeof(iohandler));
 
 	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", name=\"%s\", "
 		"size=%" PRIuz ", position=%" PRIu32 ")",
 		__FUNCTION__, req, PRAX64(ino), name, PRAuz(size),
 		PRAu32(position));
 
-	if(!size) {
-		context.name = name;
-		context.name_length = strlen(name);
-
-		err = fsapi_node_list_extended_attributes(
-			/* fsapi_volume *vol */
-			vol,
-			/* fsapi_node *node */
-			node,
-			/* void *context */
-			&context,
-			/* int (*xattr_handler)(
-			 *     void *context,
-			 *     const char *name,
-			 *     size_t name_length,
-			 *     size_t size) */
-			refs_fuse_op_getxattr_xattr_handler);
-		if(err == -1) {
-			err = 0;
-		}
-		else if(err) {
-			goto out;
-		}
-		else {
-			err = ENOENT;
-		}
-	}
-	else {
-		fsapi_iohandler iohandler;
-
-		memset(&iohandler, 0, sizeof(iohandler));
-
+	if(size) {
 		err = sys_malloc(size, &buf);
 		if(err) {
 			goto out;
@@ -1953,23 +1862,25 @@ static void refs_fuse_ll_op_getxattr(
 		iohandler.context = &buffer_context;
 		iohandler.handle_io = fsapi_iohandler_buffer_handle_io;
 		iohandler.copy_data = fsapi_iohandler_buffer_copy_data;
-
-		err = fsapi_node_read_extended_attribute(
-			/* fsapi_volume *vol */
-			vol,
-			/* fsapi_node *node */
-			node,
-			/* const char *xattr_name */
-			name,
-			/* size_t xattr_name_length */
-			strlen(name),
-			/* u64 offset */
-			position,
-			/* size_t size */
-			size,
-			/* fsapi_iohandler *iohandler */
-			&iohandler);
 	}
+
+	err = fsapi_node_read_extended_attribute(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* const char *xattr_name */
+		name,
+		/* size_t xattr_name_length */
+		strlen(name),
+		/* u64 offset */
+		position,
+		/* size_t size */
+		size,
+		/* fsapi_iohandler *iohandler */
+		buf ? &iohandler : NULL,
+		/* u64 *out_xattr_size */
+		buf ? NULL : &xattr_size);
 	if(err == ENOENT) {
 		/* Transform to ENOATTR (macOS/BSD) / ENODATA (Linux,
 		 * ...?). */
@@ -1988,7 +1899,7 @@ out:
 		fuse_reply_buf(req, buf, size - buffer_context.remaining_size);
 	}
 	else {
-		fuse_reply_xattr(req, context.size);
+		fuse_reply_xattr(req, xattr_size);
 	}
 
 	if(buf) {
@@ -2269,9 +2180,20 @@ int main(int argc, char **argv)
 		fuse_daemonize(0);
 	}
 
-	err = fuse_session_loop(
+	err = fuse_session_loop_mt(
 		/* struct fuse_session *se */
-		ses);
+		ses
+#if FUSE_VERSION >= 30
+		,
+#if FUSE_VERSION >= 32
+		/* struct fuse_loop_config *config */
+		NULL
+#elif FUSE_VERSION >= 30
+		/* int clone_fd */
+		0
+#endif /* FUSE_VERSION >= 32 */
+#endif /* FUSE_VERSION >= 30 */
+		);
 
 #if FUSE_VERSION < 30
 	fuse_session_remove_chan(
@@ -2280,12 +2202,12 @@ int main(int argc, char **argv)
 #endif /* FUSE_VERSION < 30 */
 #else
 	/* Shuffle arguments around for 'fuse_main'. The mountpoint should be
-	 * the first non-option argument and the device should not be passed on,
-	 * but we add the '-s' switch to enforce single-threaded operation. */
+	 * the first non-option argument and the device should not be passed on
+	 * to 'fuse_main'. */
 	argv[1] = argv[2];
-	argv[2] = "-s";
+	argv[2] = NULL;
 
-	if(fuse_main(argc, argv, &refs_fuse_operations, vol)) {
+	if(fuse_main(argc - 1, argv, &refs_fuse_operations, vol)) {
 		err = EIO;
 	}
 #endif /* REFS_FUSE_USE_LOWLEVEL_API ... */

@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 	err = refs_node_walk(
 		/* sys_device *dev */
 		dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* REFS_SUPERBLOCK_HEADER **sb */
 		NULL,
