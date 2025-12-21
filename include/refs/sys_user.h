@@ -57,6 +57,10 @@
 #include <windows.h>
 #endif
 
+#ifdef HAVE_PTHREAD_H
+#include <pthread.h>
+#endif
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -77,6 +81,8 @@ typedef struct {
 	u64 tv_sec;
 	u32 tv_nsec;
 } sys_timespec;
+
+typedef pthread_mutex_t sys_mutex;
 
 static inline u16 le16_to_cpup(const le16 *const value)
 {
@@ -286,7 +292,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_ERROR_ENABLED
 #define sys_log_perror(err, fmt, ...) \
-	fprintf(stderr, "[ERROR] " fmt ": %s\n", ##__VA_ARGS__, strerror(err))
+	fprintf(stderr, "[ERROR] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		strerror(err), (err))
 #else
 #define sys_log_perror sys_log_pnoop
 #endif
@@ -300,7 +307,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_WARNING_ENABLED
 #define sys_log_pwarning(err, fmt, ...) \
-	fprintf(stderr, "[WARNING] " fmt ": %s\n", ##__VA_ARGS__, strerror(err))
+	fprintf(stderr, "[WARNING] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		strerror(err), (err))
 #else
 #define sys_log_pwarning sys_log_pnoop
 #endif
@@ -314,7 +322,7 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_INFO_ENABLED
 #define sys_log_pinfo(err, fmt, ...) \
-	fprintf(stderr, fmt ": %s\n", ##__VA_ARGS__, strerror(err))
+	fprintf(stderr, fmt ": %s (%d)\n", ##__VA_ARGS__, strerror(err), (err))
 #else
 #define sys_log_pinfo sys_log_pnoop
 #endif
@@ -328,7 +336,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_DEBUG_ENABLED
 #define sys_log_pdebug(err, fmt, ...) \
-	fprintf(stderr, "[DEBUG] " fmt ": %s\n", ##__VA_ARGS__, strerror(err))
+	fprintf(stderr, "[DEBUG] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		strerror(err), (err))
 #else
 #define sys_log_pdebug sys_log_pnoop
 #endif
@@ -342,7 +351,8 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_TRACE_ENABLED
 #define sys_log_ptrace(err, fmt, ...) \
-	fprintf(stderr, "[TRACE] " fmt ": %s\n", ##__VA_ARGS__, strerror(err))
+	fprintf(stderr, "[TRACE] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
+		strerror(err), (err))
 #else
 #define sys_log_ptrace sys_log_pnoop
 #endif
@@ -411,6 +421,73 @@ static inline void sys_strndup(const char *str, size_t len, char **dupstr)
 #else
 int sys_strndup(const char *str, size_t len, char **dupstr);
 #endif /* defined(HAVE_STRNDUP) ... */
+
+static inline int sys_mutex_init(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	pthread_mutexattr_t mutexattr;
+
+	err = pthread_mutexattr_init(&mutexattr);
+	if(err) {
+		goto out;
+	}
+
+	err = pthread_mutex_init(mutex, &mutexattr);
+	if(!err) {
+		sys_log_debug("Initialized mutex %p.", mutex);
+	}
+out:
+	pthread_mutexattr_destroy(&mutexattr);
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
+
+static inline int sys_mutex_deinit(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	err = pthread_mutex_destroy(mutex);
+	if(!err) {
+		sys_log_debug("Deinitialized mutex %p.", mutex);
+	}
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
+
+static inline int sys_mutex_lock(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	err = pthread_mutex_lock(mutex);
+	if(!err) {
+		sys_log_debug("Locked mutex %p.", mutex);
+	}
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
+
+static inline int sys_mutex_unlock(
+		sys_mutex *const mutex)
+{
+	int err = 0;
+
+#ifdef HAVE_PTHREAD_H
+	sys_log_debug("Unlocking mutex %p...", mutex);
+	err = pthread_mutex_unlock(mutex);
+#endif /* HAVE_PTHREAD_H */
+
+	return err;
+}
 
 #ifndef _WIN32
 #define PRIdz "zd"

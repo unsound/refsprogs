@@ -1,7 +1,7 @@
 obj-m := refs.o
 
 ccflags-y := \
-	-DVERSION=\"2025.11.15\"
+	-DVERSION=\"2025.12.21\"
 
 refs-y := \
 	refs_init.o \
