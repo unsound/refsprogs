@@ -49,6 +49,7 @@ static int __init init_refs(void)
 {
 	int err;
 
+#if 0
 	sys_log_trace("Testing trace logging.");
 	sys_log_ptrace(EINVAL, "Testing ptrace logging");
 	sys_log_debug("Testing debug logging.");
@@ -60,6 +61,7 @@ static int __init init_refs(void)
 	sys_log_error("Testing error logging.");
 	sys_log_perror(EIO, "Testing perror logging");
 	sys_log_critical("Testing critical logging.");
+#endif /* 0 */
 
 	err = fsapi_linux_register_filesystem("refs");
 	if(err) {

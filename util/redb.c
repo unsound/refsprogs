@@ -297,7 +297,7 @@ int main(int argc, char **argv)
 			err = refs_node_scan(
 				/* sys_device *dev */
 				dev,
-				/* REFS_BOOT_SECTOR *bs */
+				/* const REFS_BOOT_SECTOR *bs */
 				&bs,
 				/* refs_node_walk_visitor *visitor */
 				&visitor);
@@ -316,7 +316,7 @@ int main(int argc, char **argv)
 			err = refs_node_walk(
 				/* sys_device *dev */
 				dev,
-				/* REFS_BOOT_SECTOR *bs */
+				/* const REFS_BOOT_SECTOR *bs */
 				&bs,
 				/* REFS_SUPERBLOCK **bs */
 				NULL,

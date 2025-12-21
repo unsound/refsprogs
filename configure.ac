@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.12.14],[catacombae@gmail.com])
-LIBREFS_VERSION="11"
+AC_INIT([refsprogs],[2025.12.21],[catacombae@gmail.com])
+LIBREFS_VERSION="12"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -149,6 +149,13 @@ AC_CHECK_HEADERS([ \
 	sys/ioctl.h \
 	sys/stat.h \
 ])
+
+AC_CHECK_HEADERS(
+	[pthread.h],
+	[LDFLAGS="${LDFLAGS} -pthread"],
+	[],
+	[]
+)
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST

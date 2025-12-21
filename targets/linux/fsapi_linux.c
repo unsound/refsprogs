@@ -33,6 +33,10 @@
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)) */
 #include <linux/iversion.h>
 #include <linux/fs.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+#include <linux/fs_context.h>
+#include <linux/fs_parser.h>
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)) */
 #include <linux/slab.h>
 #include <linux/statfs.h>
 #include <linux/xattr.h>
@@ -211,6 +215,14 @@
 #else
 #define FSAPI_IF_LINUX_6_17(...)
 #define FSAPI_NOT_LINUX_6_17(...) __VA_ARGS__
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+#define FSAPI_IF_LINUX_6_18(...) __VA_ARGS__
+#define FSAPI_NOT_LINUX_6_18(...)
+#else
+#define FSAPI_IF_LINUX_6_18(...)
+#define FSAPI_NOT_LINUX_6_18(...) __VA_ARGS__
 #endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0))
@@ -2885,7 +2897,11 @@ static int fsapi_linux_super_op_drop_inode(
 	(void) vol;
 	(void) node;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+	ret = inode_generic_drop(inode);
+#else
 	ret = generic_drop_inode(inode);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)) ... */
 
 	fsapi_linux_op_log_leave(ret, "inode=%p", inode);
 
@@ -4141,7 +4157,11 @@ static int fsapi_linux_dir_op_iterate(
 		 *     size_t name_length,
 		 *     fsapi_node_attributes *attributes) */
 		fsapi_linux_readdir_handle_dirent);
-	if(err) {
+	if(err == -1) {
+		/* Break code when the buffer is full, not an error. */
+		err = 0;
+	}
+	else if(err) {
 		sys_log_perror(err, "handle_dirent callback returned error for "
 			"offset %" PRIu64, PRAu64(offset));
 		ret = -err;
@@ -6553,8 +6573,13 @@ out:
 
 static int fsapi_linux_fill_super(
 		struct super_block *sb,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+		struct fs_context *fs_context
+#else
 		void *opt,
-		const int silent)
+		const int silent
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)) ... */
+		)
 {
 	int ret = 0;
 	int err = 0;
@@ -6568,8 +6593,12 @@ static int fsapi_linux_fill_super(
 
 	memset(&attributes, 0, sizeof(attributes));
 
-	fsapi_linux_op_log_enter("sb=%p, opt=%p, silent=%d",
-		sb, opt, silent);
+	fsapi_linux_op_log_enter("sb=%p, "
+		FSAPI_IF_LINUX_6_18("fs_context=%p")
+		FSAPI_NOT_LINUX_6_18("opt=%p, silent=%d"),
+		sb,
+		FSAPI_IF_LINUX_6_18(fs_context)
+		FSAPI_NOT_LINUX_6_18(opt, silent));
 
 	err = sys_device_open(
 		/* sys_device **dev */
@@ -6584,7 +6613,10 @@ static int fsapi_linux_fill_super(
 	/* Allocate a new fsapi_linux_context and place it in sb->s_fs_info. */
 	ctx = kmalloc(sizeof(fsapi_linux_context), GFP_NOFS);
 	if(!ctx) {
-		if(!silent) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0))
+		if(!silent)
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
+		{
 			sys_log_error("Allocation of fsapi volume structure "
 				"failed.");
 		}
@@ -6633,7 +6665,10 @@ static int fsapi_linux_fill_super(
 
 	inode = new_inode(sb);
 	if(unlikely(!inode)) {
-		if(!silent) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0))
+		if(!silent)
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
+		{
 			sys_log_error("Error allocating root directory node.");
 		}
 
@@ -6740,7 +6775,10 @@ static int fsapi_linux_fill_super(
 	ihold(inode);
 	sb->s_root = d_make_root(inode);
 	if (unlikely(!sb->s_root)) {
-		if(!silent) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0))
+		if(!silent)
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
+		{
 			sys_log_error("Failed to allocate root directory.");
 		}
 
@@ -6784,12 +6822,112 @@ out:
 		}
 	}
 
-	fsapi_linux_op_log_leave(ret, "sb=%p, opt=%p, silent=%d",
-		sb, opt, silent);
+	fsapi_linux_op_log_leave(ret, "sb=%p, "
+		FSAPI_IF_LINUX_6_18("fs_context=%p")
+		FSAPI_NOT_LINUX_6_18("opt=%p, silent=%d"),
+		sb,
+		FSAPI_IF_LINUX_6_18(fs_context)
+		FSAPI_NOT_LINUX_6_18(opt, silent));
 
 	return ret;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+enum {
+	Opt_uid,
+	Opt_gid,
+};
+
+static const struct fs_parameter_spec fsapi_linux_param_specs[] = {
+	fsparam_uid("uid", Opt_uid),
+	fsparam_gid("gid", Opt_gid),
+	{}
+};
+
+static int fsapi_linux_context_op_parse_param(
+		struct fs_context *fc,
+		struct fs_parameter *param)
+{
+	int ret = 0;
+	struct fs_parse_result result;
+
+	memset(&result, 0, sizeof(result));
+
+	fsapi_linux_op_log_enter("fc=%p, param=%p", fc, param);
+
+	ret = fs_parse(fc, fsapi_linux_param_specs, param, &result);
+	if(ret < 0) {
+		goto out;
+	}
+
+	switch(ret) {
+	case Opt_uid:
+		/* ... = result.uid; */
+                break;
+	case Opt_gid:
+		/* ... = result.gid; */
+                break;
+	}
+out:
+	fsapi_linux_op_log_leave(ret, "fc=%p, param=%p", fc, param);
+
+	return ret;
+}
+
+static int fsapi_linux_context_op_get_tree(struct fs_context *fc)
+{
+	int ret = 0;
+
+	fsapi_linux_op_log_enter("fc=%p", fc);
+
+	ret = get_tree_bdev(fc, fsapi_linux_fill_super);
+
+	fsapi_linux_op_log_leave(ret, "fc=%p", fc);
+
+	return ret;
+}
+
+static int fsapi_linux_context_op_reconfigure(struct fs_context *fc)
+{
+	int ret = 0;
+
+	fsapi_linux_op_log_enter("fc=%p", fc);
+
+	/* TODO */
+
+	fsapi_linux_op_log_leave(ret, "fc=%p", fc);
+
+	return ret;
+}
+
+static void fsapi_linux_context_op_fc_free(struct fs_context *fc)
+{
+	fsapi_linux_op_log_enter("fc=%p", fc);
+
+	fsapi_linux_op_log_leave(0, "fc=%p", fc);
+}
+
+static const struct fs_context_operations fsapi_linux_context_ops = {
+	.parse_param = fsapi_linux_context_op_parse_param,
+	.get_tree = fsapi_linux_context_op_get_tree,
+	.reconfigure = fsapi_linux_context_op_reconfigure,
+	.free = fsapi_linux_context_op_fc_free,
+};
+
+static int fsapi_init_fs_context(struct fs_context *fc)
+{
+	int ret = 0;
+
+	fsapi_linux_op_log_enter("fc=%p", fc);
+
+	fc->fs_private = NULL;
+	fc->ops = &fsapi_linux_context_ops;
+
+	fsapi_linux_op_log_leave(ret, "fc=%p", fc);
+
+	return ret;
+}
+#else
 static struct dentry* fsapi_linux_mount(
 		struct file_system_type *fs_type,
 		int flags,
@@ -6820,6 +6958,7 @@ static struct dentry* fsapi_linux_mount(
 
 	return ret;
 }
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)) ... */
 
 static void fsapi_linux_kill_sb(
 		struct super_block *sb)
@@ -6861,7 +7000,11 @@ out:
 static struct file_system_type fsapi_type = {
 	.owner = THIS_MODULE,
 	.name = NULL,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+	.init_fs_context = fsapi_init_fs_context,
+#else
 	.mount = fsapi_linux_mount,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)) ... */
 	.kill_sb = fsapi_linux_kill_sb,
 	.fs_flags = FS_REQUIRES_DEV FSAPI_IF_LINUX_5_12(| FS_ALLOW_IDMAP),
 };
