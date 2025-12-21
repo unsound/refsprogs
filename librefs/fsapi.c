@@ -91,7 +91,10 @@ struct fsapi_node {
 	u64 node_number;
 	u64 parent_directory_object_id;
 	u64 directory_object_id;
+	u64 hard_link_parent_object_id;
+	u64 hard_link_id;
 	sys_bool is_short_entry;
+	sys_bool is_unresolved_hard_link;
 	u16 entry_offset;
 	u8 *key;
 	size_t key_size;
@@ -456,7 +459,10 @@ static void fsapi_node_init(
 		const u64 node_number,
 		const u64 parent_directory_object_id,
 		const u64 directory_object_id,
+		const u64 hard_link_parent_object_id,
+		const u64 hard_link_id,
 		const sys_bool is_short_entry,
+		const sys_bool is_unresolved_hard_link,
 		const u16 entry_offset,
 		u8 *const key,
 		const size_t key_size,
@@ -467,20 +473,27 @@ static void fsapi_node_init(
 {
 	sys_log_trace("%s(node=%p, path=%p, node_number=%" PRIu64 ", "
 		"parent_directory_object_id=0x%" PRIX64 ", "
-		"directory_object_id=0x%" PRIX64 ", is_short_entry=%d, key=%p, "
+		"directory_object_id=0x%" PRIX64 " "
+		"hard_link_parent_object_id=0x%" PRIX64 ", "
+		"hard_link_id=0x%" PRIX64 ", is_short_entry=%d, "
+		"is_unresolved_hard_link=%d, key=%p, "
 		"key_size=%" PRIuz ", record=%p, record_size=%" PRIuz ", "
 		"prev=%p, next=%p): Entering...",
 		__FUNCTION__, node, path, PRAu64(node_number),
 		PRAX64(parent_directory_object_id), PRAX64(directory_object_id),
-		is_short_entry, key, PRAuz(key_size), record,
-		PRAuz(record_size), prev, next);
+		PRAX64(hard_link_parent_object_id), PRAX64(hard_link_id),
+		is_short_entry, is_unresolved_hard_link, key, PRAuz(key_size),
+		record, PRAuz(record_size), prev, next);
 
 	node->refcount = 0;
 	node->path = path;
 	node->node_number = node_number;
 	node->parent_directory_object_id = parent_directory_object_id;
 	node->directory_object_id = directory_object_id;
+	node->hard_link_parent_object_id = hard_link_parent_object_id;
+	node->hard_link_id = hard_link_id;
 	node->is_short_entry = is_short_entry;
+	node->is_unresolved_hard_link = is_unresolved_hard_link;
 	node->entry_offset = entry_offset;
 	node->key = key;
 	node->key_size = key_size;
@@ -826,7 +839,10 @@ static int fsapi_node_cache_enter(
 		const u64 node_number,
 		const u64 parent_directory_object_id,
 		const u64 directory_object_id,
+		const u64 hard_link_parent_object_id,
+		const u64 hard_link_id,
 		const sys_bool is_short_entry,
+		const sys_bool is_unresolved_hard_link,
 		const u16 entry_offset,
 		u8 *const key,
 		const size_t key_size,
@@ -907,8 +923,14 @@ static int fsapi_node_cache_enter(
 		parent_directory_object_id,
 		/* u64 directory_object_id */
 		directory_object_id,
+		/* u64 hard_link_parent_object_id */
+		hard_link_parent_object_id,
+		/* u64 hard_link_id */
+		hard_link_id,
 		/* sys_bool is_short_entry */
 		is_short_entry,
+		/* sys_bool is_unresolved_hard_link */
+		is_unresolved_hard_link,
 		/* u16 entry_offset */
 		entry_offset,
 		/* u8 *key */
@@ -1229,6 +1251,86 @@ static int fsapi_lookup_by_posix_path(
 				PRAbs(path_length, path));
 		}
 
+		if(cached_node && cached_node->is_unresolved_hard_link) {
+			u64 parent_directory_object_id = 0;
+			u64 directory_object_id = 0;
+			sys_bool is_short_entry = 0;
+			u64 node_number = 0;
+			u16 entry_offset = 0;
+			u8 *key = NULL;
+			size_t key_size = 0;
+			u8 *record = NULL;
+			size_t record_size = 0;
+
+			sys_log_debug("Resolving unresolved hard link of "
+				"cached node %p with parent object ID "
+				"%" PRIu64 ", hard link ID %" PRIu64 "...",
+				cached_node,
+				PRAu64(cached_node->hard_link_parent_object_id),
+				PRAu64(cached_node->hard_link_id));
+
+			err = refs_volume_resolve_hard_link_target(
+				/* refs_volume *vol */
+				vol->vol,
+				/* u64 hard_link_parent_object_id */
+				cached_node->hard_link_parent_object_id,
+				/* u64 hard_link_id */
+				cached_node->hard_link_id,
+				/* u64 *out_parent_directory_object_id */
+				&parent_directory_object_id,
+				/* u64 *out_directory_object_id */
+				&directory_object_id,
+				/* sys_bool *out_is_short_entry */
+				&is_short_entry,
+				/* u64 *out_node_number */
+				&node_number,
+				/* u16 *out_entry_offset */
+				&entry_offset,
+				/* u8 **out_key */
+				&key,
+				/* size_t *out_key_size */
+				&key_size,
+				/* u8 **out_record */
+				&record,
+				/* size_t *out_record_size */
+				&record_size);
+			if(err) {
+				goto out;
+			}
+
+			sys_log_debug("Resolved unresolved hard link of cached "
+				"node %p to node number %" PRIu64 ", entry "
+				"offset %" PRIu16 ".",
+				cached_node, PRAu64(node_number),
+				PRAu16(entry_offset));
+
+			cached_node->parent_directory_object_id =
+				parent_directory_object_id;
+			cached_node->directory_object_id = directory_object_id;
+			cached_node->is_short_entry = is_short_entry;
+			cached_node->node_number = node_number;
+			cached_node->entry_offset = entry_offset;
+			if(cached_node->key) {
+				sys_free(cached_node->key_size,
+					&cached_node->key);
+			}
+			cached_node->key = key;
+			cached_node->key_size = key_size;
+			if(cached_node->record) {
+				sys_free(cached_node->record_size,
+					&cached_node->record);
+			}
+			cached_node->record = record;
+			cached_node->record_size = record_size;
+
+			/* Reset the unresolved hard link fields to match a
+			 * normal lookup, so that the next lookup doesn't
+			 * re-resolve the hard link. */
+			cached_node->is_unresolved_hard_link = SYS_FALSE;
+			cached_node->hard_link_id = 0;
+			cached_node->hard_link_parent_object_id = 0;
+		}
+
 		err = sys_mutex_unlock(
 			/* sys_mutex *mutex */
 			&vol->cache_lock);
@@ -1465,8 +1567,14 @@ static int fsapi_lookup_by_posix_path(
 				parent_directory_object_id,
 				/* u64 directory_object_id */
 				directory_object_id,
+				/* u64 hard_link_parent_object_id */
+				0,
+				/* u64 hard_link_id */
+				0,
 				/* sys_bool is_short_entry */
 				is_short_entry,
+				/* sys_bool is_unresolved_hard_link */
+				SYS_FALSE,
 				/* u16 entry_offset */
 				entry_offset,
 				/* u8 *key */
@@ -2333,8 +2441,14 @@ int fsapi_volume_mount(
 		0,
 		/* u64 directory_object_id */
 		0x600,
+		/* u64 hard_link_parent_object_id */
+		0,
+		/* u64 hard_link_id */
+		0,
 		/* sys_bool is_short_entry */
 		SYS_TRUE, /* Technically no entry, maybe? */
+		/* sys_bool is_unresolved_hard_link */
+		0,
 		/* u16 entry_offset */
 		0,
 		/* u8 *key */
@@ -2743,9 +2857,12 @@ static int fsapi_node_list_cache_node(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const sys_bool is_short_entry,
+		const sys_bool is_unresolved_hard_link,
 		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 directory_object_id,
+		const u64 hard_link_parent_object_id,
+		const u64 hard_link_id,
 		const u8 *const key,
 		const size_t key_size,
 		const u8 *const record,
@@ -2844,8 +2961,14 @@ static int fsapi_node_list_cache_node(
 		parent_node_object_id,
 		/* u64 directory_object_id */
 		directory_object_id,
+		/* u64 hard_link_parent_object_id */
+		hard_link_parent_object_id,
+		/* u64 hard_link_id */
+		hard_link_id,
 		/* sys_bool is_short_entry */
 		is_short_entry,
+		/* sys_bool is_unresolved_hard_link */
+		is_unresolved_hard_link,
 		/* u16 entry_offset */
 		child_entry_offset,
 		/* const u8 *key */
@@ -3031,6 +3154,7 @@ static int fsapi_node_list_visit_short_entry(
 		(fsapi_readdir_context*) _context;
 
 	int err = 0;
+	sys_bool is_hard_link = SYS_FALSE;
 
 	(void) hard_link_id;
 
@@ -3106,6 +3230,10 @@ static int fsapi_node_list_visit_short_entry(
 		}
 	}
 
+	is_hard_link =
+		(!(file_flags & 0x10000000UL) && hard_link_id) ? SYS_TRUE :
+		SYS_FALSE;
+
 	err = fsapi_node_list_cache_node(
 		/* fsapi_readdir_context *context */
 		context,
@@ -3117,12 +3245,18 @@ static int fsapi_node_list_visit_short_entry(
 		child_entry_offset,
 		/* sys_bool is_short_entry */
 		SYS_TRUE,
+		/* sys_bool is_unresolved_hard_link */
+		is_hard_link,
 		/* u64 node_number */
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
 		/* u64 directory_object_id */
-		object_id,
+		is_hard_link ? 0 : object_id,
+		/* u64 hard_link_parent_object_id */
+		is_hard_link ? object_id : 0,
+		/* u64 hard_link_id */
+		is_hard_link ? hard_link_id : 0,
 		/* const u8 *key */
 		key,
 		/* size_t key_size */
@@ -3206,11 +3340,17 @@ static int fsapi_node_list_visit_long_entry(
 		child_entry_offset,
 		/* sys_bool is_short_entry */
 		SYS_FALSE,
+		/* sys_bool is_unresolved_hard_link */
+		SYS_FALSE,
 		/* u64 node_number */
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
 		/* u64 directory_object_id */
+		0,
+		/* u64 hard_link_parent_object_id */
+		0,
+		/* u64 hard_link_id */
 		0,
 		/* const u8 *key */
 		key,
@@ -3833,7 +3973,6 @@ int fsapi_node_read(
 		fsapi_iohandler *iohandler)
 {
 	int err = 0;
-	sys_bool is_short_entry = SYS_FALSE;
 	fsapi_node_read_context context;
 	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
@@ -3851,7 +3990,7 @@ int fsapi_node_read(
 	context.cur_offset = offset;
 	context.start_offset = offset;
 
-	if(is_short_entry) {
+	if(node->is_short_entry) {
 		/* Don't know how to find extents for short entries yet. These
 		 * may be hard links and might need resolving in other ways. */
 		goto out;

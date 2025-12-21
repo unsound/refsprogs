@@ -51,6 +51,20 @@ int refs_volume_create(
 void refs_volume_destroy(
 		refs_volume **out_vol);
 
+int refs_volume_resolve_hard_link_target(
+		refs_volume *vol,
+		u64 hard_link_parent_object_id,
+		u64 hard_link_id,
+		u64 *out_parent_directory_object_id,
+		u64 *out_directory_object_id,
+		sys_bool *out_is_short_entry,
+		u64 *out_node_number,
+		u16 *out_entry_offset,
+		u8 **out_key,
+		size_t *out_key_size,
+		u8 **out_record,
+		size_t *out_record_size);
+
 int refs_volume_lookup_by_posix_path(
 		refs_volume *vol,
 		const char *path,

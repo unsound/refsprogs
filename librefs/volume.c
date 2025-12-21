@@ -542,6 +542,152 @@ out:
 	return err;
 }
 
+static int refs_volume_resolve_hard_link_target_internal(
+		refs_volume *const vol,
+		refs_volume_lookup_context *const context)
+{
+	int err = 0;
+	refs_node_walk_visitor visitor;
+
+	memset(&visitor, 0, sizeof(visitor));
+
+	visitor.context = context;
+	visitor.node_hardlink_entry = refs_volume_lookup_node_hardlink_entry;
+
+	sys_log_debug("Resolving hard link entry to parent 0x%" PRIX64 " / id "
+		"%" PRIX64 " in leaf.",
+		PRAX64(context->hard_link_parent_object_id),
+		PRAX64(context->hard_link_id));
+
+	err = refs_node_walk(
+		/* refs_device *dev */
+		vol->dev,
+		/* const REFS_BOOT_SECTOR *bs */
+		vol->bs,
+		/* REFS_SUPERBLOCK **sb */
+		&vol->sb,
+		/* REFS_LEVEL1_NODE **primary_level1_node */
+		&vol->primary_level1_node,
+		/* REFS_LEVEL1_NODE **secondary_level1_node */
+		&vol->secondary_level1_node,
+		/* refs_block_map **block_map */
+		&vol->block_map,
+		/* refs_node_cache **node_cache */
+		&vol->node_cache,
+		/* const u64 *start_node */
+		NULL,
+		/* const u64 *object_id */
+		&context->hard_link_parent_object_id,
+		/* refs_node_walk_visitor *visitor */
+		&visitor);
+	if(err == -1) {
+		err = 0;
+	}
+	else if(err) {
+		goto out;
+	}
+
+	if(!context->hard_link_found) {
+		sys_log_error("Couldn't find hard link target with parent "
+			"0x%" PRIX64 " / id 0x%" PRIX64 ".",
+			PRAX64(context->hard_link_parent_object_id),
+			PRAX64(context->hard_link_id));
+		err = EIO;
+		goto out;
+	}
+
+	sys_log_debug("Hard link to parent 0x%" PRIX64 " / id 0x%" PRIX64 " "
+		"resolved to: key=%p, key_size=%" PRIuz ", record=%p, "
+		"record_size=%" PRIuz,
+		PRAX64(context->hard_link_parent_object_id),
+		PRAX64(context->hard_link_id),
+		context->key ? *context->key : NULL,
+		PRAuz(context->key_size ? *context->key_size : 0),
+		context->record ? *context->record : NULL,
+		PRAuz(context->record_size ? *context->record_size : 0));
+out:
+	return err;
+}
+
+int refs_volume_resolve_hard_link_target(
+		refs_volume *const vol,
+		const u64 hard_link_parent_object_id,
+		const u64 hard_link_id,
+		u64 *const out_parent_directory_object_id,
+		u64 *const out_directory_object_id,
+		sys_bool *const out_is_short_entry,
+		u64 *const out_node_number,
+		u16 *const out_entry_offset,
+		u8 **const out_key,
+		size_t *const out_key_size,
+		u8 **const out_record,
+		size_t *const out_record_size)
+{
+	int err = 0;
+	refs_volume_lookup_context context;
+
+	memset(&context, 0, sizeof(context));
+	context.is_hard_link = SYS_TRUE;
+	context.hard_link_parent_object_id = hard_link_parent_object_id;
+	context.hard_link_id = hard_link_id;
+
+	if(out_entry_offset) {
+		*out_entry_offset = 0;
+		context.entry_offset = out_entry_offset;
+	}
+
+	if(out_key) {
+		*out_key = NULL;
+		context.key = out_key;
+	}
+
+	if(out_key_size) {
+		*out_key_size = 0;
+		context.key_size = out_key_size;
+	}
+
+	if(out_record) {
+		*out_record = NULL;
+		context.record = out_record;
+	}
+
+	if(out_record_size) {
+		*out_record_size = 0;
+		context.record_size = out_record_size;
+	}
+
+	err = refs_volume_resolve_hard_link_target_internal(
+		/* refs_volume *vol */
+		vol,
+		/* refs_volume_lookup_context *context */
+		&context);
+	if(err) {
+		goto out;
+	}
+
+	if(out_node_number) {
+		*out_node_number = context.node_number;
+	}
+
+	if(out_parent_directory_object_id) {
+		*out_parent_directory_object_id =
+			context.hard_link_parent_object_id;
+	}
+
+	if(out_directory_object_id) {
+		*out_directory_object_id =
+			context.is_directory ?
+			context.directory_object_id : 0;
+	}
+
+	if(out_is_short_entry) {
+		*out_is_short_entry = context.is_short_entry;
+	}
+
+out:
+	return err;
+}
+
 static int next_path_element(const void **const path,
 		const size_t path_size,
 		void *const out_element, size_t *const out_element_length)
@@ -777,66 +923,14 @@ static int refs_volume_lookup(
 		if(!cur_path_length && context.is_hard_link) {
 			/* Last element and this is a hard link. Look up the
 			 * hard link target. */
-			visitor.node_long_entry = NULL;
-			visitor.node_short_entry = NULL;
-			visitor.node_hardlink_entry =
-				refs_volume_lookup_node_hardlink_entry;
-
-			sys_log_debug("Resolving hard link entry to parent "
-				"0x%" PRIX64 " / id %" PRIX64 " in leaf.",
-				PRAX64(context.hard_link_parent_object_id),
-				PRAX64(context.hard_link_id));
-
-			err = refs_node_walk(
-				/* refs_device *dev */
-				vol->dev,
-				/* const REFS_BOOT_SECTOR *bs */
-				vol->bs,
-				/* REFS_SUPERBLOCK **sb */
-				&vol->sb,
-				/* REFS_LEVEL1_NODE **primary_level1_node */
-				&vol->primary_level1_node,
-				/* REFS_LEVEL1_NODE **secondary_level1_node */
-				&vol->secondary_level1_node,
-				/* refs_block_map **block_map */
-				&vol->block_map,
-				/* refs_node_cache **node_cache */
-				&vol->node_cache,
-				/* const u64 *start_node */
-				NULL,
-				/* const u64 *object_id */
-				&context.hard_link_parent_object_id,
-				/* refs_node_walk_visitor *visitor */
-				&visitor);
-			if(err == -1) {
-				err = 0;
-			}
-			else if(err) {
+			err = refs_volume_resolve_hard_link_target_internal(
+				/* refs_volume *vol */
+				vol,
+				/* refs_volume_lookup_context *context */
+				&context);
+			if(err) {
 				goto out;
 			}
-
-			if(!context.hard_link_found) {
-				sys_log_error("Couldn't find hard link target "
-					"with parent 0x%" PRIX64 " / id "
-					"0x%" PRIX64 ".",
-					PRAX64(context.
-					hard_link_parent_object_id),
-					PRAX64(context.hard_link_id));
-				err = EIO;
-				goto out;
-			}
-
-			sys_log_debug("Hard link to parent 0x%" PRIX64 " / id "
-				"0x%" PRIX64 " resolved to: key=%p, "
-				"key_size=%" PRIuz ", record=%p, "
-				"record_size=%" PRIuz,
-				PRAX64(context.hard_link_parent_object_id),
-				PRAX64(context.hard_link_id),
-				context.key ? *context.key : NULL,
-				PRAuz(context.key_size ? *context.key_size : 0),
-				context.record ? *context.record : NULL,
-				PRAuz(context.record_size ?
-					*context.record_size : 0));
 
 			cur_object_id = context.hard_link_parent_object_id;
 		}
