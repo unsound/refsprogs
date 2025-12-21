@@ -29,6 +29,33 @@
 #include "layout.h"
 #include "node.h"
 
+static int refs_volume_create_visit_node_header(
+		void *context,
+		u64 node_number,
+		u64 node_first_cluster,
+		u64 object_id,
+		const u8 *data,
+		const size_t data_size,
+		const size_t header_offset,
+		size_t header_size)
+{
+	(void) context;
+	(void) node_number;
+	(void) node_first_cluster;
+	(void) data;
+	(void) data_size;
+	(void) header_offset;
+	(void) header_size;
+
+	sys_log_debug("%sreaking at node header with node number %" PRIu64 ", "
+		"first cluster %" PRIu64 ", object ID %" PRIu64 ".",
+		object_id ? "B" : "Not b", PRAu64(node_number),
+		PRAu64(node_first_cluster), PRAu64(object_id));
+
+	/* Break at first level 2 node header. */
+	return object_id ? -1 : 0;
+}
+
 int refs_volume_create(
 		sys_device *const dev,
 		refs_volume **const out_vol)
@@ -41,6 +68,9 @@ int refs_volume_create(
 	u32 sectors_per_cluster = 0;
 	u32 cluster_size = 0;
 	REFS_BOOT_SECTOR *bs = NULL;
+	refs_node_walk_visitor visitor;
+
+	memset(&visitor, 0, sizeof(visitor));
 
 	err = sys_malloc(sizeof(*vol), &vol);
 	if(err) {
@@ -163,6 +193,40 @@ int refs_volume_create(
 	vol->sector_count = le64_to_cpu(bs->num_sectors);
 	vol->cluster_count =
 		vol->sector_count / le32_to_cpu(bs->sectors_per_cluster);
+
+	visitor.node_header =
+		refs_volume_create_visit_node_header;
+
+	/* Preload all the necessary metadata by walking the tree and stopping
+	 * at the first node. */
+	err = refs_node_walk(
+		/* refs_device *dev */
+		vol->dev,
+		/* const REFS_BOOT_SECTOR *bs */
+		vol->bs,
+		/* REFS_SUPERBLOCK **sb */
+		&vol->sb,
+		/* REFS_LEVEL1_NODE **primary_level1_node */
+		&vol->primary_level1_node,
+		/* REFS_LEVEL1_NODE **secondary_level1_node */
+		&vol->secondary_level1_node,
+		/* refs_block_map **block_map */
+		&vol->block_map,
+		/* refs_node_cache **node_cache */
+		&vol->node_cache,
+		/* const u64 *start_node */
+		NULL,
+		/* const u64 *object_id */
+		NULL,
+		/* refs_node_walk_visitor *visitor */
+		&visitor);
+	if(err == -1) {
+		err = 0;
+	}
+	else if(err) {
+		goto out;
+	}
+
 	bs = NULL;
 
 	*out_vol = vol;
@@ -196,6 +260,9 @@ void refs_volume_destroy(
 			&vol->block_map);
 	}
 
+	sys_free(vol->metadata_block_size, &vol->secondary_level1_node);
+	sys_free(vol->metadata_block_size, &vol->primary_level1_node);
+	sys_free(vol->metadata_block_size, &vol->sb);
 	sys_free(sizeof(*vol->bs), &vol->bs);
 	sys_free(sizeof(**out_vol), out_vol);
 }
@@ -211,6 +278,7 @@ typedef struct {
 	u64 hard_link_id;
 	u64 hard_link_parent_object_id;
 	u64 directory_object_id;
+	u64 node_number;
 	u16 *entry_offset;
 	u8 **key;
 	size_t *key_size;
@@ -224,6 +292,7 @@ static int refs_volume_lookup_node_long_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 create_time,
 		const u64 last_access_time,
@@ -261,6 +330,7 @@ static int refs_volume_lookup_node_long_entry(
 	context->is_short_entry = SYS_FALSE;
 	context->is_directory = SYS_FALSE;
 
+	context->node_number = node_number;
 	if(context->entry_offset) {
 		*context->entry_offset = child_entry_offset;
 	}
@@ -302,6 +372,7 @@ static int refs_volume_lookup_node_short_entry(
 		const u16 file_name_length,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 parent_node_object_id,
 		const u64 object_id,
 		const u64 hard_link_id,
@@ -350,6 +421,7 @@ static int refs_volume_lookup_node_short_entry(
 		context->directory_object_id =
 			context->is_directory ? object_id : 0;
 
+		context->node_number = node_number;
 		if(context->entry_offset) {
 			*context->entry_offset = child_entry_offset;
 		}
@@ -392,6 +464,7 @@ static int refs_volume_lookup_node_hardlink_entry(
 		const u64 parent_id,
 		const u16 child_entry_offset,
 		const u32 file_flags,
+		const u64 node_number,
 		const u64 create_time,
 		const u64 last_access_time,
 		const u64 last_write_time,
@@ -433,6 +506,7 @@ static int refs_volume_lookup_node_hardlink_entry(
 	context->is_directory = SYS_FALSE;
 	context->directory_object_id = 0;
 
+	context->node_number = node_number;
 	if(context->entry_offset) {
 		*context->entry_offset = child_entry_offset;
 	}
@@ -464,6 +538,152 @@ static int refs_volume_lookup_node_hardlink_entry(
 	}
 
 	err = -1;
+out:
+	return err;
+}
+
+static int refs_volume_resolve_hard_link_target_internal(
+		refs_volume *const vol,
+		refs_volume_lookup_context *const context)
+{
+	int err = 0;
+	refs_node_walk_visitor visitor;
+
+	memset(&visitor, 0, sizeof(visitor));
+
+	visitor.context = context;
+	visitor.node_hardlink_entry = refs_volume_lookup_node_hardlink_entry;
+
+	sys_log_debug("Resolving hard link entry to parent 0x%" PRIX64 " / id "
+		"%" PRIX64 " in leaf.",
+		PRAX64(context->hard_link_parent_object_id),
+		PRAX64(context->hard_link_id));
+
+	err = refs_node_walk(
+		/* refs_device *dev */
+		vol->dev,
+		/* const REFS_BOOT_SECTOR *bs */
+		vol->bs,
+		/* REFS_SUPERBLOCK **sb */
+		&vol->sb,
+		/* REFS_LEVEL1_NODE **primary_level1_node */
+		&vol->primary_level1_node,
+		/* REFS_LEVEL1_NODE **secondary_level1_node */
+		&vol->secondary_level1_node,
+		/* refs_block_map **block_map */
+		&vol->block_map,
+		/* refs_node_cache **node_cache */
+		&vol->node_cache,
+		/* const u64 *start_node */
+		NULL,
+		/* const u64 *object_id */
+		&context->hard_link_parent_object_id,
+		/* refs_node_walk_visitor *visitor */
+		&visitor);
+	if(err == -1) {
+		err = 0;
+	}
+	else if(err) {
+		goto out;
+	}
+
+	if(!context->hard_link_found) {
+		sys_log_error("Couldn't find hard link target with parent "
+			"0x%" PRIX64 " / id 0x%" PRIX64 ".",
+			PRAX64(context->hard_link_parent_object_id),
+			PRAX64(context->hard_link_id));
+		err = EIO;
+		goto out;
+	}
+
+	sys_log_debug("Hard link to parent 0x%" PRIX64 " / id 0x%" PRIX64 " "
+		"resolved to: key=%p, key_size=%" PRIuz ", record=%p, "
+		"record_size=%" PRIuz,
+		PRAX64(context->hard_link_parent_object_id),
+		PRAX64(context->hard_link_id),
+		context->key ? *context->key : NULL,
+		PRAuz(context->key_size ? *context->key_size : 0),
+		context->record ? *context->record : NULL,
+		PRAuz(context->record_size ? *context->record_size : 0));
+out:
+	return err;
+}
+
+int refs_volume_resolve_hard_link_target(
+		refs_volume *const vol,
+		const u64 hard_link_parent_object_id,
+		const u64 hard_link_id,
+		u64 *const out_parent_directory_object_id,
+		u64 *const out_directory_object_id,
+		sys_bool *const out_is_short_entry,
+		u64 *const out_node_number,
+		u16 *const out_entry_offset,
+		u8 **const out_key,
+		size_t *const out_key_size,
+		u8 **const out_record,
+		size_t *const out_record_size)
+{
+	int err = 0;
+	refs_volume_lookup_context context;
+
+	memset(&context, 0, sizeof(context));
+	context.is_hard_link = SYS_TRUE;
+	context.hard_link_parent_object_id = hard_link_parent_object_id;
+	context.hard_link_id = hard_link_id;
+
+	if(out_entry_offset) {
+		*out_entry_offset = 0;
+		context.entry_offset = out_entry_offset;
+	}
+
+	if(out_key) {
+		*out_key = NULL;
+		context.key = out_key;
+	}
+
+	if(out_key_size) {
+		*out_key_size = 0;
+		context.key_size = out_key_size;
+	}
+
+	if(out_record) {
+		*out_record = NULL;
+		context.record = out_record;
+	}
+
+	if(out_record_size) {
+		*out_record_size = 0;
+		context.record_size = out_record_size;
+	}
+
+	err = refs_volume_resolve_hard_link_target_internal(
+		/* refs_volume *vol */
+		vol,
+		/* refs_volume_lookup_context *context */
+		&context);
+	if(err) {
+		goto out;
+	}
+
+	if(out_node_number) {
+		*out_node_number = context.node_number;
+	}
+
+	if(out_parent_directory_object_id) {
+		*out_parent_directory_object_id =
+			context.hard_link_parent_object_id;
+	}
+
+	if(out_directory_object_id) {
+		*out_directory_object_id =
+			context.is_directory ?
+			context.directory_object_id : 0;
+	}
+
+	if(out_is_short_entry) {
+		*out_is_short_entry = context.is_short_entry;
+	}
+
 out:
 	return err;
 }
@@ -578,6 +798,7 @@ static int refs_volume_lookup(
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
+		u64 *const out_node_number,
 		u16 *const out_entry_offset,
 		u8 **const out_key,
 		size_t *const out_key_size,
@@ -666,7 +887,7 @@ static int refs_volume_lookup(
 		err = refs_node_walk(
 			/* refs_device *dev */
 			vol->dev,
-			/* REFS_BOOT_SECTOR *bs */
+			/* const REFS_BOOT_SECTOR *bs */
 			vol->bs,
 			/* REFS_SUPERBLOCK **sb */
 			&vol->sb,
@@ -702,72 +923,24 @@ static int refs_volume_lookup(
 		if(!cur_path_length && context.is_hard_link) {
 			/* Last element and this is a hard link. Look up the
 			 * hard link target. */
-			visitor.node_long_entry = NULL;
-			visitor.node_short_entry = NULL;
-			visitor.node_hardlink_entry =
-				refs_volume_lookup_node_hardlink_entry;
-
-			sys_log_debug("Resolving hard link entry to parent "
-				"0x%" PRIX64 " / id %" PRIX64 " in leaf.",
-				PRAX64(context.hard_link_parent_object_id),
-				PRAX64(context.hard_link_id));
-
-			err = refs_node_walk(
-				/* refs_device *dev */
-				vol->dev,
-				/* REFS_BOOT_SECTOR *bs */
-				vol->bs,
-				/* REFS_SUPERBLOCK **sb */
-				&vol->sb,
-				/* REFS_LEVEL1_NODE **primary_level1_node */
-				&vol->primary_level1_node,
-				/* REFS_LEVEL1_NODE **secondary_level1_node */
-				&vol->secondary_level1_node,
-				/* refs_block_map **block_map */
-				&vol->block_map,
-				/* refs_node_cache **node_cache */
-				&vol->node_cache,
-				/* const u64 *start_node */
-				NULL,
-				/* const u64 *object_id */
-				&context.hard_link_parent_object_id,
-				/* refs_node_walk_visitor *visitor */
-				&visitor);
-			if(err == -1) {
-				err = 0;
-			}
-			else if(err) {
+			err = refs_volume_resolve_hard_link_target_internal(
+				/* refs_volume *vol */
+				vol,
+				/* refs_volume_lookup_context *context */
+				&context);
+			if(err) {
 				goto out;
 			}
-
-			if(!context.hard_link_found) {
-				sys_log_error("Couldn't find hard link target "
-					"with parent 0x%" PRIX64 " / id "
-					"0x%" PRIX64 ".",
-					PRAX64(context.
-					hard_link_parent_object_id),
-					PRAX64(context.hard_link_id));
-				err = EIO;
-				goto out;
-			}
-
-			sys_log_debug("Hard link to parent 0x%" PRIX64 " / id "
-				"0x%" PRIX64 " resolved to: key=%p, "
-				"key_size=%" PRIuz ", record=%p, "
-				"record_size=%" PRIuz,
-				PRAX64(context.hard_link_parent_object_id),
-				PRAX64(context.hard_link_id),
-				context.key ? *context.key : NULL,
-				PRAuz(context.key_size ? *context.key_size : 0),
-				context.record ? *context.record : NULL,
-				PRAuz(context.record_size ?
-					*context.record_size : 0));
 
 			cur_object_id = context.hard_link_parent_object_id;
 		}
 
 		if(!cur_path_length) {
 			/* Last element. */
+			if(out_node_number) {
+				*out_node_number = context.node_number;
+			}
+
 			if(out_parent_directory_object_id) {
 				*out_parent_directory_object_id = cur_object_id;
 			}
@@ -808,6 +981,7 @@ int refs_volume_lookup_by_posix_path(
 		u64 *const out_parent_directory_object_id,
 		u64 *const out_directory_object_id,
 		sys_bool *const out_is_short_entry,
+		u64 *const out_node_number,
 		u16 *const out_entry_offset,
 		u8 **const out_key,
 		size_t *const out_key_size,
@@ -834,6 +1008,10 @@ int refs_volume_lookup_by_posix_path(
 			*out_directory_object_id = 0x600;
 		}
 
+		if(out_node_number) {
+			*out_node_number = 0;
+		}
+
 		if(out_record) {
 			*out_record = NULL;
 		}
@@ -852,6 +1030,10 @@ int refs_volume_lookup_by_posix_path(
 
 		if(out_directory_object_id) {
 			*out_directory_object_id = 0;
+		}
+
+		if(out_node_number) {
+			*out_node_number = 0;
 		}
 
 		if(out_record) {
@@ -880,6 +1062,8 @@ int refs_volume_lookup_by_posix_path(
 		out_directory_object_id,
 		/* sys_bool *out_is_short_entry */
 		out_is_short_entry,
+		/* u64 *out_node_number */
+		out_node_number,
 		/* u16 *out_entry_offset */
 		out_entry_offset,
 		/* u8 **out_key */
@@ -907,7 +1091,7 @@ int refs_volume_lookup_by_object_id(
 	err = refs_node_walk(
 		/* refs_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* REFS_SUPERBLOCK **sb */
 		&vol->sb,
@@ -1068,7 +1252,7 @@ int refs_volume_generate_metadata_bitmap(
 	err = refs_node_scan(
 		/* refs_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* refs_node_walk_visitor *visitor */
 		&visitor);

@@ -231,6 +231,7 @@ static int print_leaf_by_path(
 	u64 parent_directory_object_id = 0;
 	u64 directory_object_id = 0;
 	sys_bool is_short_entry = SYS_FALSE;
+	u64 node_number = 0;
 	u8 *record = NULL;
 	size_t record_size = 0;
 	u8 *key = NULL;
@@ -262,6 +263,8 @@ static int print_leaf_by_path(
 		&directory_object_id,
 		/* sys_bool *out_is_short_entry */
 		&is_short_entry,
+		/* u64 *out_node_number */
+		&node_number,
 		/* u16 *out_entry_offset */
 		NULL,
 		/* u8 *key */
@@ -310,6 +313,8 @@ static int print_leaf_by_path(
 			1,
 			/* u64 parent_node_object_id */
 			parent_directory_object_id,
+			/* u64 node_number */
+			node_number,
 			/* u16 entry_offset */
 			0,
 			/* const u8 *key */
@@ -342,6 +347,8 @@ static int print_leaf_by_path(
 			1,
 			/* u64 parent_node_object_id */
 			parent_directory_object_id,
+			/* u64 node_number */
+			node_number,
 			/* u16 entry_offset */
 			0,
 			/* const u8 *key */
@@ -468,7 +475,7 @@ static int print_node_number_info(
 	err = refs_node_walk(
 		/* sys_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* REFS_SUPERBLOCK **bs */
 		NULL,
@@ -581,7 +588,7 @@ static int print_object_id_info(
 	err = refs_node_walk(
 		/* sys_device *dev */
 		vol->dev,
-		/* REFS_BOOT_SECTOR *bs */
+		/* const REFS_BOOT_SECTOR *bs */
 		vol->bs,
 		/* REFS_SUPERBLOCK **bs */
 		NULL,
