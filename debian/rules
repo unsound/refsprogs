@@ -18,7 +18,7 @@ CONFIGURE_FLAGS = --enable-posix-acls
 endif
 
 upstream:
-	lynx -dump http://jp-andre.pagesperso-orange.fr/changelog.html > debian/local/changelog
+	lynx -dump http://github.com/unsound/refsprogs/releases > debian/local/changelog
 
 %:
 	dh ${@}
