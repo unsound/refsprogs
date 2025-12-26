@@ -72,8 +72,8 @@ struct refs_node_walk_visitor {
 		u64 node_first_cluster,
 		u64 object_id,
 		const u8 *data,
-		const size_t data_size,
-		const size_t header_offset,
+		size_t data_size,
+		size_t header_offset,
 		size_t header_size);
 	int (*node_header_entry)(
 		void *context,
@@ -123,8 +123,8 @@ struct refs_node_walk_visitor {
 		u64 last_access_time,
 		u64 last_write_time,
 		u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
+		u64 file_size,
+		u64 allocated_size,
 		const u8 *key,
 		size_t key_size,
 		const u8 *record,
