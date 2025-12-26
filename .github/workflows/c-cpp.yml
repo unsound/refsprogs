@@ -186,6 +186,25 @@ jobs:
           make check
           make distcheck
 
+  build-openindiana:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in OpenIndiana
+      id: build
+      uses: vmactions/openindiana-vm@v0
+      with:
+        usesh: true
+        prepare: |
+          pkg install gcc-14 make autoconf automake libtool pkg-config library/libfuse
+        run: |
+          ./autogen.sh
+          chmod a+x install-sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
+
   build-omnios:
     runs-on: ubuntu-latest
     steps:
