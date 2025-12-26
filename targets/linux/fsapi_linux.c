@@ -6589,7 +6589,6 @@ static int fsapi_linux_fill_super(
 	fsapi_linux_context *ctx = NULL;
 	struct inode *inode = NULL;
 	fsapi_node_attributes attributes;
-	dev_t rdev = 0;
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -6710,64 +6709,11 @@ static int fsapi_linux_fill_super(
 		goto out;
 	}
 
-	inode->i_size = attributes.size;
-	inode->i_flags = 0;
-	inode->i_generation = 0;
-	set_nlink(inode, attributes.link_count);
-	inode->i_mode = S_IFDIR | 0777;
-	inode->i_uid = KUIDT_INIT(attributes.uid);
-	inode->i_gid = KGIDT_INIT(attributes.gid);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
-	inode_set_atime(inode, attributes.last_data_access_time.tv_sec,
-		attributes.last_data_access_time.tv_nsec);
-	inode_set_mtime(inode, attributes.last_data_change_time.tv_sec,
-		attributes.last_data_change_time.tv_nsec);
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0) */
-	inode->i_atime.tv_sec = attributes.last_data_access_time.tv_sec;
-	inode->i_atime.tv_nsec = attributes.last_data_access_time.tv_nsec;
-	inode->i_mtime.tv_sec = attributes.last_data_change_time.tv_sec;
-	inode->i_mtime.tv_nsec = attributes.last_data_change_time.tv_nsec;
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0) ... */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
-	inode_set_ctime(inode, attributes.last_status_change_time.tv_sec,
-		attributes.last_status_change_time.tv_nsec);
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0) */
-	inode->i_ctime.tv_sec =
-		attributes.last_status_change_time.tv_sec;
-	inode->i_ctime.tv_nsec =
-		attributes.last_status_change_time.tv_nsec;
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0) ... */
-#if 0
-	inode->i_blkbits = ffs(attributes.allocation_block_size);
-#endif
-#if 0
-	inode->i_mapping->a_ops = &fsapi_linux_address_space_operations;
-#endif
-	inode->i_size = attributes.size;
-	inode->i_blocks = attributes.allocated_size / 512;
-#if 0
-	rdev = MKDEV(attributes.device_number_major,
-		attributes.device_number_minor);
-#endif
-
-	/* TODO: Realistically if this isn't a directory we have a problem... */
-	if(S_ISREG(inode->i_mode)) {
-		inode->i_op = &fsapi_linux_file_inode_operations;
-		inode->i_fop = &fsapi_linux_file_operations;
-	}
-	else if(S_ISDIR(inode->i_mode)) {
-		inode->i_op = &fsapi_linux_dir_inode_operations;
-		inode->i_fop = &fsapi_linux_dir_operations;
-	}
-	else if(S_ISLNK(inode->i_mode)) {
-		inode->i_op = &fsapi_linux_symlink_inode_operations;
-		inode->i_fop = &fsapi_linux_null_file_operations;
-	}
-	else {
-		inode->i_blkbits = inode->i_sb->s_blocksize_bits;
-		init_special_inode(inode, inode->i_mode, rdev);
-		inode->i_op = &fsapi_linux_special_inode_operations;
-	}
+	fsapi_linux_attributes_to_inode(
+		/* const fsapi_node_attributes *attributes */
+		&attributes,
+		/* struct inode *ino */
+		inode);
 
 	insert_inode_hash(inode);
 
