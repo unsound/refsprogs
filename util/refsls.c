@@ -468,22 +468,22 @@ static int refsls_node_short_entry(
 }
 
 static int refsls_node_hardlink_entry(
-		void *context,
-		u64 hard_link_id,
-		u64 parent_id,
+		void *const context,
+		const u64 hard_link_id,
+		const u64 parent_id,
 		const u16 child_entry_offset,
-		u32 file_flags,
+		const u32 file_flags,
 		const u64 node_number,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
 		const u8 *const key,
 		const size_t key_size,
-		const u8 *record,
-		size_t record_size)
+		const u8 *const record,
+		const size_t record_size)
 {
 	int err = 0;
 
@@ -522,11 +522,11 @@ static int refsls_node_hardlink_entry(
 }
 
 static int refsls_node_ea(
-		void *context,
-		const char *name,
-		size_t name_length,
-		const void *data,
-		size_t data_size)
+		void *const context,
+		const char *const name,
+		const size_t name_length,
+		const void *const data,
+		const size_t data_size)
 {
 	refsls_list_dir_fill_ctx *const ctx =
 		(refsls_list_dir_fill_ctx*) context;
@@ -561,11 +561,11 @@ static int refsls_node_ea(
 }
 
 static int refsls_node_stream(
-		void *context,
-		const char *name,
-		size_t name_length,
-		u64 data_size,
-		const refs_node_stream_data *data_reference)
+		void *const context,
+		const char *const name,
+		const size_t name_length,
+		const u64 data_size,
+		const refs_node_stream_data *const data_reference)
 {
 	refsls_list_dir_fill_ctx *const ctx =
 		(refsls_list_dir_fill_ctx*) context;
