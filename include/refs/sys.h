@@ -30,6 +30,12 @@ typedef struct sys_iohandler sys_iohandler;
 #include "sys_user.h"
 #endif /* defined(__linux__) && defined(__KERNEL__) ... */
 
+#ifdef S_IFLNK
+#define SYS_S_IFLNK S_IFLNK
+#else
+#define SYS_S_IFLNK 0120000
+#endif /* defined(S_IFLNK) ... */
+
 /**
  * The handler of an I/O operation, implementing a method to process it.
  */

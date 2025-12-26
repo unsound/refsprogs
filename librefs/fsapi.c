@@ -1683,13 +1683,10 @@ static int fsapi_fill_attributes(
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		attrs->mode = 0;
-#ifdef S_IFLNK
 		if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
-			attrs->mode |= S_IFLNK;
+			attrs->mode |= SYS_S_IFLNK;
 		}
-		else
-#endif
-		if(is_directory) {
+		else if(is_directory) {
 			attrs->mode |= S_IFDIR;
 		}
 		else {
@@ -2024,11 +2021,9 @@ static int fsapi_node_get_attributes_visit_symlink(
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
-#ifdef S_IFLNK
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
-		attrs->mode = S_IFLNK | (attrs->mode & ~S_IFMT);
+		attrs->mode = SYS_S_IFLNK | (attrs->mode & ~S_IFMT);
 	}
-#endif
 
 	if((attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) &&
 		!(attrs->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
@@ -3429,12 +3424,10 @@ static int fsapi_node_list_visit_symlink(
 		context->attributes->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
-#ifdef S_IFLNK
 	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		context->attributes->mode =
-			S_IFLNK | (context->attributes->mode & ~S_IFMT);
+			SYS_S_IFLNK | (context->attributes->mode & ~S_IFMT);
 	}
-#endif
 
 	if(context->attributes->requested &
 		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET)
