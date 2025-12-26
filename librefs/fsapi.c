@@ -2004,10 +2004,10 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 }
 
 static int fsapi_node_get_attributes_visit_symlink(
-		void *context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length)
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
 {
 	fsapi_node_attributes *const attrs =
 		((fsapi_node_get_attributes_context*) context)->attrs;
@@ -3407,10 +3407,10 @@ out:
 }
 
 static int fsapi_node_list_visit_symlink(
-		void *_context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length)
+		void *const _context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
 {
 	fsapi_readdir_context *const context =
 		(fsapi_readdir_context*) _context;

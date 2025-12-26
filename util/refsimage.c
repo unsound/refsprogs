@@ -227,23 +227,23 @@ static int refsimage_node_volume_label_entry(
 }
 
 static int refsimage_node_long_entry(
-		void *context,
-		const le16 *file_name,
-		u16 file_name_length,
-		u16 child_entry_offset,
-		u32 file_flags,
+		void *const context,
+		const le16 *const file_name,
+		const u16 file_name_length,
+		const u16 child_entry_offset,
+		const u32 file_flags,
 		const u64 node_number,
-		u64 parent_node_object_id,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size)
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
 	(void) context;
 	(void) file_name;
@@ -267,25 +267,25 @@ static int refsimage_node_long_entry(
 }
 
 static int refsimage_node_short_entry(
-		void *context,
-		const le16 *file_name,
-		u16 file_name_length,
-		u16 child_entry_offset,
-		u32 file_flags,
+		void *const context,
+		const le16 *const file_name,
+		const u16 file_name_length,
+		const u16 child_entry_offset,
+		const u32 file_flags,
 		const u64 node_number,
-		u64 parent_node_object_id,
-		u64 object_id,
-		u64 hard_link_id,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
+		const u64 parent_node_object_id,
+		const u64 object_id,
+		const u64 hard_link_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size)
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
 	(void) context;
 	(void) file_name;
@@ -311,22 +311,22 @@ static int refsimage_node_short_entry(
 }
 
 static int refsimage_node_hardlink_entry(
-		void *context,
-		u64 hard_link_id,
-		u64 parent_id,
-		u16 child_entry_offset,
-		u32 file_flags,
+		void *const context,
+		const u64 hard_link_id,
+		const u64 parent_id,
+		const u16 child_entry_offset,
+		const u32 file_flags,
 		const u64 node_number,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size)
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
 	(void) context;
 	(void) hard_link_id;
@@ -349,11 +349,11 @@ static int refsimage_node_hardlink_entry(
 }
 
 static int refsimage_node_file_extent(
-		void *_context,
-		u64 first_logical_block,
-		u64 first_physical_block,
-		u64 block_count,
-		u32 block_index_unit)
+		void *const _context,
+		const u64 first_logical_block,
+		const u64 first_physical_block,
+		const u64 block_count,
+		const u32 block_index_unit)
 {
 	refsimage_crawl_context *const context =
 		(refsimage_crawl_context*) _context;
@@ -403,9 +403,9 @@ out:
 }
 
 static int refsimage_node_file_data(
-		void *context,
-		const void *data,
-		size_t size)
+		void *const context,
+		const void *const data,
+		const size_t size)
 {
 	(void) context;
 	(void) data;
@@ -417,11 +417,11 @@ static int refsimage_node_file_data(
 }
 
 static int refsimage_node_ea(
-		void *context,
-		const char *name,
-		size_t name_length,
-		const void *data,
-		size_t data_size)
+		void *const context,
+		const char *const name,
+		const size_t name_length,
+		const void *const data,
+		const size_t data_size)
 {
 	(void) context;
 	(void) data;
@@ -449,12 +449,12 @@ static int refsimage_node_stream(
 }
 
 static int refsimage_node_stream_extent(
-		void *_context,
-		u64 stream_id,
-		u64 first_logical_block,
-		u64 first_physical_block,
-		u32 block_index_unit,
-		u32 cluster_count)
+		void *const _context,
+		const u64 stream_id,
+		const u64 first_logical_block,
+		const u64 first_physical_block,
+		const u32 block_index_unit,
+		const u32 cluster_count)
 {
 		refsimage_crawl_context *const context =
 		(refsimage_crawl_context*) _context;
