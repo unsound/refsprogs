@@ -973,6 +973,45 @@ out:
 	return err;
 }
 
+typedef struct {
+	u64 node_number;
+	u64 node_first_cluster;
+} refs_volume_lookup_root_node_visit_header_context;
+
+static int refs_volume_lookup_root_node_visit_header(
+		void *const _context,
+		const u64 node_number,
+		const u64 node_first_cluster,
+		const u64 object_id,
+		const u8 *const data,
+		const size_t data_size,
+		const size_t header_offset,
+		const size_t header_size)
+{
+	refs_volume_lookup_root_node_visit_header_context *const context =
+		(refs_volume_lookup_root_node_visit_header_context*) _context;
+	int err = 0;
+
+	sys_log_debug("%s got node: 0x%" PRIX64,
+		__FUNCTION__, PRAX64(object_id));
+
+	if(object_id != 0x600) {
+		goto out;
+	}
+
+	context->node_number = node_number;
+	context->node_first_cluster = node_first_cluster;
+
+	(void) data;
+	(void) data_size;
+	(void) header_offset;
+	(void) header_size;
+
+	err = -1;
+out:
+	return err;
+}
+
 int refs_volume_lookup_by_posix_path(
 		refs_volume *const vol,
 		const char *const path,
@@ -1000,16 +1039,63 @@ int refs_volume_lookup_by_posix_path(
 	if(!start_object_id && !cur_path_length) {
 		/* The request is for the root directory. We can't supply a
 		 * record for it, only the object ID. */
+		const u64 root_object_id = 0x600;
+		refs_volume_lookup_root_node_visit_header_context context;
+		refs_node_walk_visitor visitor;
+
+		memset(&context, 0, sizeof(context));
+		memset(&visitor, 0, sizeof(visitor));
+
+		visitor.context = &context;
+		visitor.node_header = refs_volume_lookup_root_node_visit_header;
+
+		sys_log_debug("Searching for node number of 0x600 root....");
+
+		err = refs_node_walk(
+			/* refs_device *dev */
+			vol->dev,
+			/* const REFS_BOOT_SECTOR *bs */
+			vol->bs,
+			/* REFS_SUPERBLOCK **sb */
+			&vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&vol->block_map,
+			/* refs_node_cache **node_cache */
+			&vol->node_cache,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&root_object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+		if(err == -1) {
+			err = 0;
+		}
+		else if(err) {
+			sys_log_perror(err, "Error searching for node number "
+				"of 0x600 root");
+			goto out;
+		}
+
+		sys_log_debug("Found node number of 0x600 root: 0x%" PRIX64 " "
+			"(first cluster: 0x%" PRIX64 ")",
+			PRAX64(context.node_number),
+			PRAX64(context.node_first_cluster));
+
 		if(out_parent_directory_object_id) {
-			*out_parent_directory_object_id = 0x600;
+			*out_parent_directory_object_id = root_object_id;
 		}
 
 		if(out_directory_object_id) {
-			*out_directory_object_id = 0x600;
+			*out_directory_object_id = root_object_id;
 		}
 
 		if(out_node_number) {
-			*out_node_number = 0;
+			*out_node_number = context.node_number;
 		}
 
 		if(out_record) {
