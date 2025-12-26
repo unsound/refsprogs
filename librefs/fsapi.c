@@ -1683,13 +1683,10 @@ static int fsapi_fill_attributes(
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		attrs->mode = 0;
-#ifdef S_IFLNK
 		if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
-			attrs->mode |= S_IFLNK;
+			attrs->mode |= SYS_S_IFLNK;
 		}
-		else
-#endif
-		if(is_directory) {
+		else if(is_directory) {
 			attrs->mode |= S_IFDIR;
 		}
 		else {
@@ -2007,10 +2004,10 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 }
 
 static int fsapi_node_get_attributes_visit_symlink(
-		void *context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length)
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
 {
 	fsapi_node_attributes *const attrs =
 		((fsapi_node_get_attributes_context*) context)->attrs;
@@ -2024,11 +2021,9 @@ static int fsapi_node_get_attributes_visit_symlink(
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
-#ifdef S_IFLNK
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
-		attrs->mode = S_IFLNK | (attrs->mode & ~S_IFMT);
+		attrs->mode = SYS_S_IFLNK | (attrs->mode & ~S_IFMT);
 	}
-#endif
 
 	if((attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) &&
 		!(attrs->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
@@ -2095,15 +2090,15 @@ static int fsapi_node_get_attributes_common(
 				/* sys_bool is_directory */
 				SYS_TRUE,
 				/* u16 child_entry_offset */
-				0,
+				node->entry_offset,
 				/* u32 file_flags */
 				REFS_FILE_ATTRIBUTE_SYSTEM |
 				REFS_FILE_ATTRIBUTE_DIRECTORY |
 				REFS_FILE_ATTRIBUTE_ARCHIVE,
 				/* u64 node_number */
-				0,
+				node->node_number,
 				/* u64 parent_node_object_id */
-				0x600,
+				node->parent_directory_object_id,
 				/* u64 create_time */
 				filetime_offset,
 				/* u64 last_access_time */
@@ -2387,6 +2382,15 @@ int fsapi_volume_mount(
 	fsapi_node *root_node = NULL;
 	sys_bool cache_lock_initialized = SYS_FALSE;
 	refs_volume *rvol = NULL;
+	u64 parent_directory_object_id = 0;
+	u64 directory_object_id = 0;
+	sys_bool is_short_entry = SYS_FALSE;
+	u64 node_number = 0;
+	u16 entry_offset = 0;
+	u8 *key = NULL;
+	size_t key_size = 0;
+	u8 *record = NULL;
+	size_t record_size = 0;
 
 	fsapi_log_enter("dev=%p, read_only=%u, custom_mount_options=%p, "
 		"out_vol=%p (->%p), out_root_node=%p (->%p), out_attrs=%p",
@@ -2430,35 +2434,70 @@ int fsapi_volume_mount(
 		goto out;
 	}
 
+	err = refs_volume_lookup_by_posix_path(
+		/* refs_volume *vol */
+		rvol,
+		/* const char *path */
+		"/",
+		/* size_t path_length */
+		1,
+		/* const u64 *start_object_id */
+		NULL,
+		/* u64 *out_parent_directory_object_id */
+		&parent_directory_object_id,
+		/* u64 *out_directory_object_id */
+		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
+		/* u64 *out_node_number */
+		&node_number,
+		/* u16 *out_entry_offset */
+		&entry_offset,
+		/* u8 **out_key */
+		&key,
+		/* size_t *out_key_size */
+		&key_size,
+		/* u8 **out_record */
+		&record,
+		/* size_t *out_record_size */
+		&record_size);
+	if(err) {
+		goto out;
+	}
+
+	sys_log_debug("Looked up root directory by posix path. Node number: "
+		"0x%" PRIX64,
+		PRAX64(node_number));
+
 	fsapi_node_init(
 		/* fsapi_node *node */
 		root_node,
 		/* fsapi_node_path_element *path */
 		NULL,
 		/* u64 parent_directory_object_id */
-		0x500, /* ? */
+		parent_directory_object_id,
 		/* u64 node_number */
-		0,
+		node_number,
 		/* u64 directory_object_id */
-		0x600,
+		directory_object_id,
 		/* u64 hard_link_parent_object_id */
 		0,
 		/* u64 hard_link_id */
 		0,
 		/* sys_bool is_short_entry */
-		SYS_TRUE, /* Technically no entry, maybe? */
+		is_short_entry,
 		/* sys_bool is_unresolved_hard_link */
-		0,
+		SYS_FALSE,
 		/* u16 entry_offset */
-		0,
+		entry_offset,
 		/* u8 *key */
-		NULL,
+		key,
 		/* size_t key_size */
-		0,
+		key_size,
 		/* u8 *record */
-		NULL,
+		record,
 		/* size_t record_size */
-		0,
+		record_size,
 		/* fsapi_node *prev */
 		NULL,
 		/* fsapi_node *next */
@@ -3368,10 +3407,10 @@ out:
 }
 
 static int fsapi_node_list_visit_symlink(
-		void *_context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length)
+		void *const _context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
 {
 	fsapi_readdir_context *const context =
 		(fsapi_readdir_context*) _context;
@@ -3385,12 +3424,10 @@ static int fsapi_node_list_visit_symlink(
 		context->attributes->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
-#ifdef S_IFLNK
 	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		context->attributes->mode =
-			S_IFLNK | (context->attributes->mode & ~S_IFMT);
+			SYS_S_IFLNK | (context->attributes->mode & ~S_IFMT);
 	}
-#endif
 
 	if(context->attributes->requested &
 		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET)

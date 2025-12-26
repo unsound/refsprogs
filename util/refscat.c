@@ -339,25 +339,25 @@ static int refscat_node_long_entry(
 }
 
 static int refscat_node_short_entry(
-		void *_context,
-		const le16 *file_name,
-		u16 file_name_length,
+		void *const _context,
+		const le16 *const file_name,
+		const u16 file_name_length,
 		const u16 child_entry_offset,
-		u32 file_flags,
+		const u32 file_flags,
 		const u64 node_number,
 		const u64 parent_node_object_id,
-		u64 object_id,
-		u64 hard_link_id,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
+		const u64 object_id,
+		const u64 hard_link_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
 		const u64 file_size,
 		const u64 allocated_size,
 		const u8 *const key,
 		const size_t key_size,
-		const u8 *record,
-		size_t record_size)
+		const u8 *const record,
+		const size_t record_size)
 {
 	refscat_print_data_ctx *const context =
 		(refscat_print_data_ctx*) _context;
