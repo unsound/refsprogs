@@ -598,14 +598,20 @@ static int fsapi_volume_get_attributes_common(
 
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE) {
 		out_attrs->block_size = vol->vol->cluster_size;
+		sys_log_debug("block_size: %" PRIu32,
+			PRAu32(out_attrs->block_size));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT) {
 		out_attrs->block_count = vol->vol->cluster_count;
+		sys_log_debug("block_count: %" PRIu64,
+			PRAu64(out_attrs->block_count));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS) {
 		out_attrs->free_blocks = 0;
+		sys_log_debug("free_blocks: %" PRIu64,
+			PRAu64(out_attrs->free_blocks));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS;
 	}
 
@@ -663,6 +669,9 @@ static int fsapi_volume_get_attributes_common(
 
 		out_attrs->volume_name = vol->volume_label_cstr;
 		out_attrs->volume_name_length = vol->volume_label_cstr_length;
+		sys_log_debug("volume_name: %.*s",
+			(int) sys_min(INT_MAX, out_attrs->volume_name_length),
+			out_attrs->volume_name);
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_VOLUME_NAME;
 	}
 out:
@@ -1693,11 +1702,14 @@ static int fsapi_fill_attributes(
 			attrs->mode |= S_IFREG;
 		}
 		attrs->mode |= 0777U;
+		sys_log_debug("mode: 0%" PRIo32, PRAo32(attrs->mode));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_MODE;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) {
 		attrs->link_count = is_directory ? 2 /* TODO */ : 1;
+		sys_log_debug("link_count: %" PRIu64,
+			PRAu64(attrs->link_count));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT;
 	}
 
@@ -1708,6 +1720,8 @@ static int fsapi_fill_attributes(
 		 * be a good intermediate solution. */
 		attrs->inode_number =
 			(node_number << 16) | child_entry_offset;
+		sys_log_debug("inode_number: %" PRIu64,
+			PRAu64(attrs->inode_number));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER;
 	}
 
@@ -1716,6 +1730,9 @@ static int fsapi_fill_attributes(
 			(create_time - filetime_offset) / 10000000;
 		attrs->creation_time.tv_nsec =
 			((create_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("creation_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->creation_time.tv_sec),
+			PRAu64(attrs->creation_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME;
 	}
 
@@ -1726,6 +1743,9 @@ static int fsapi_fill_attributes(
 		attrs->last_status_change_time.tv_nsec =
 			((last_mft_change_time - filetime_offset) % 10000000) *
 			100;
+		sys_log_debug("last_status_change_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_status_change_time.tv_sec),
+			PRAu64(attrs->last_status_change_time.tv_nsec));
 		attrs->valid |=
 			FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME;
 	}
@@ -1735,6 +1755,9 @@ static int fsapi_fill_attributes(
 			(last_write_time - filetime_offset) / 10000000;
 		attrs->last_data_change_time.tv_nsec =
 			((last_write_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("last_data_change_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_data_change_time.tv_sec),
+			PRAu64(attrs->last_data_change_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME;
 	}
 
@@ -1743,16 +1766,22 @@ static int fsapi_fill_attributes(
 			(last_access_time - filetime_offset) / 10000000;
 		attrs->last_data_access_time.tv_nsec =
 			((last_access_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("last_data_access_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_data_access_time.tv_sec),
+			PRAu64(attrs->last_data_access_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attrs->size = file_size;
+		sys_log_debug("size: %" PRIu64, PRAu64(attrs->size));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
 		attrs->allocated_size = allocated_size;
+		sys_log_debug("allocated_size: %" PRIu64,
+			PRAu64(attrs->allocated_size));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE;
 	}
 
@@ -1776,6 +1805,8 @@ static int fsapi_fill_attributes(
 
 		if(attrs->bsd_flags) {
 			attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_BSD_FLAGS;
+			sys_log_debug("bsd_flags: 0x%" PRIX64,
+				PRAX64(attrs->bsd_flags));
 		}
 	}
 
@@ -1789,6 +1820,8 @@ static int fsapi_fill_attributes(
 			attrs->windows_flags |= REFS_FILE_ATTRIBUTE_NORMAL;
 		}
 
+		sys_log_debug("windows_flags: 0x%" PRIX64,
+			PRAX64(attrs->windows_flags));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_WINDOWS_FLAGS;
 	}
 
