@@ -8104,6 +8104,9 @@ int parse_level3_long_value(
 	const u64 allocated_size =
 		(value_size < (is_v3 ? 96 : 112) + 8) ? 0 :
 		read_le64(&value[is_v3 ? 96 : 112]);
+	const u32 link_count =
+		(value_size < (is_v3 ? 152 : 168) + 8) ? 0 :
+		read_le64(&value[is_v3 ? 152 : 168]);
 
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -8240,6 +8243,8 @@ int parse_level3_long_value(
 			hard_link_id,
 			/* u64 parent_id */
 			parent_id,
+			/* u64 link_count */
+			link_count,
 			/* u16 child_entry_offset */
 			entry_offset,
 			/* u32 file_flags */
@@ -8418,8 +8423,8 @@ int parse_level3_long_value(
 				&value[0x90]);
 		}
 		if(cur_attribute_end >= 0xA0) {
-			i += print_unknown64(prefix, indent + 1, value,
-				&value[0x98]);
+			i += print_le64_dechex("Link count", prefix, indent + 1,
+				value, &value[0x98]);
 		}
 		if(cur_attribute_end >= 0xA8) {
 			i += print_unknown64(prefix, indent + 1, value,
