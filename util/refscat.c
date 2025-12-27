@@ -417,6 +417,7 @@ static int refscat_node_hardlink_entry(
 		void *const _context,
 		const u64 hard_link_id,
 		const u64 parent_id,
+		const u64 link_count,
 		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 node_number,
@@ -436,6 +437,7 @@ static int refscat_node_hardlink_entry(
 
 	int err = 0;
 
+	(void) link_count;
 	(void) child_entry_offset;
 	(void) file_flags;
 	(void) node_number;
