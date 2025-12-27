@@ -149,6 +149,7 @@ struct refs_node_walk_visitor {
 		void *context,
 		u64 hard_link_id,
 		u64 parent_id,
+		u64 link_count,
 		u16 child_entry_offset,
 		u32 file_flags,
 		u64 node_number,
