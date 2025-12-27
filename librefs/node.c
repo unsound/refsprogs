@@ -10366,8 +10366,8 @@ static int crawl_volume_metadata(
 			sys_log_debug("Reading level %d block %" PRIuz " / "
 				"%" PRIuz ": %" PRIu64 " -> %" PRIu64,
 				2,
-				PRAuz(i),
-				PRAuz(level3_queue.block_queue_length),
+				PRAuz(i + 1),
+				PRAuz(i + level2_queue.block_queue_length),
 				PRAu64(logical_block_numbers[0]),
 				PRAu64(physical_block_numbers[0]));
 
@@ -10446,8 +10446,8 @@ static int crawl_volume_metadata(
 			sys_log_debug("Reading level %d block %" PRIuz " / "
 				"%" PRIuz ": %" PRIu64 " -> %" PRIu64,
 				3,
-				PRAuz(i),
-				PRAuz(level3_queue.block_queue_length),
+				PRAuz(i + 1),
+				PRAuz(i + level3_queue.block_queue_length),
 				PRAu64(logical_block_numbers[0]),
 				PRAu64(physical_block_numbers[0]));
 
