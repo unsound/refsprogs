@@ -450,9 +450,11 @@ static inline int sys_mutex_init(
 
 	err = pthread_mutex_init(mutex, &mutexattr);
 #endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
-	if(!err) {
-		sys_log_debug("Initialized mutex %p.", mutex);
+	if(err) {
+		goto out;
 	}
+
+	sys_log_debug("Initialized mutex %p.", mutex);
 out:
 #if !defined(_WIN32) && defined(HAVE_PTHREAD_H)
 	pthread_mutexattr_destroy(&mutexattr);
