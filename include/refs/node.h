@@ -91,6 +91,22 @@ struct refs_node_walk_visitor {
 		void *context,
 		const le16 *volume_label,
 		u16 volume_label_length);
+	int (*node_root_entry)(
+		void *context,
+		u16 child_entry_offset,
+		u32 file_flags,
+		u64 node_number,
+		u64 parent_node_object_id,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		u64 file_size,
+		u64 allocated_size,
+		const u8 *key,
+		size_t key_size,
+		const u8 *record,
+		size_t record_size);
 	int (*node_long_entry)(
 		void *context,
 		const le16 *file_name,

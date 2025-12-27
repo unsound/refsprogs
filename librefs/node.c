@@ -3553,7 +3553,9 @@ static int parse_generic_block(
 			/* u32 num_entries */
 			values_count,
 			/* void *context */
-			context,
+			!((print_visitor && print_visitor->print_message) ||
+				!add_subnodes_in_offsets_order) ? context :
+				NULL,
 			/* int (*parse_key)(
 			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
@@ -3839,7 +3841,7 @@ static sys_bool parse_level2_0x2_should_add_subnode(
 
 	(void) is_v3;
 
-	if(!context->is_mapping) {
+	if(!context || !context->is_mapping) {
 		/* If we aren't doing object ID mapping then add all
 		 * subnodes. */
 		goto out;
@@ -4015,11 +4017,15 @@ static int parse_level2_0x2_leaf_value(
 	}
 
 	if(context) {
+		sys_bool add_to_queue = SYS_FALSE;
+
 		if(context->is_mapping) {
 			const u64 object_id =
 				(key_size >= 0x10) ? read_le64(&key[0x8]) : 0;
 
-			if(!object_id || context->object_id != object_id);
+			if(!object_id || context->object_id != object_id) {
+				add_to_queue = SYS_FALSE;
+			}
 			else if(context->node_cache &&
 				context->node_cache->object_map_cache &&
 				(err = refs_object_map_cache_insert(
@@ -4034,18 +4040,14 @@ static int parse_level2_0x2_leaf_value(
 					"matching object ID mapping to cache");
 			}
 			else {
-				err = refs_node_block_queue_add(
-					/* refs_node_block_queue *block_queue */
-					context->level3_block_queue,
-					/* const u64 block_numbers[4] */
-					block_numbers,
-					/* u64 flags */
-					flags,
-					/* u64 checksum */
-					checksum);
+				add_to_queue = SYS_TRUE;
 			}
 		}
-		else if(context->level3_block_queue) {
+		else {
+			add_to_queue = SYS_TRUE;
+		}
+
+		if(add_to_queue && context->level3_block_queue) {
 			err = refs_node_block_queue_add(
 				/* refs_node_block_queue *block_queue */
 				context->level3_block_queue,
@@ -8148,7 +8150,44 @@ int parse_level3_long_value(
 	sys_log_debug("Long value for key type 0x%" PRIX16 ".",
 		PRAX16(key_type));
 
-	if(visitor && key_type == 0x0030U && visitor->node_long_entry) {
+	if(!visitor);
+	else if(key_type == 0x0010U && visitor->node_root_entry) {
+		err = visitor->node_root_entry(
+			/* void *context */
+			visitor->context,
+			/* u16 child_entry_offset */
+			entry_offset,
+			/* u32 file_flags */
+			file_flags,
+			/* u64 node_number */
+			node_number,
+			/* u64 parent_node_object_id */
+			parent_node_object_id,
+			/* u64 create_time */
+			creation_time,
+			/* u64 last_access_time */
+			last_access_time,
+			/* u64 last_write_time */
+			last_data_modification_time,
+			/* u64 last_mft_change_time */
+			last_mft_modification_time,
+			/* u64 file_size */
+			file_size,
+			/* u64 allocated_size */
+			allocated_size,
+			/* const u8 *key */
+			key,
+			/* size_t key_size */
+			key_size,
+			/* const u8 *record */
+			value,
+			/* size_t record_size */
+			value_size);
+		if(err) {
+			goto out;
+		}
+	}
+	else if(key_type == 0x0030U && visitor->node_long_entry) {
 		err = visitor->node_long_entry(
 			/* void *context */
 			visitor->context,
@@ -8188,7 +8227,7 @@ int parse_level3_long_value(
 			goto out;
 		}
 	}
-	else if(visitor && key_type == 0x0040U && key_size >= 24 &&
+	else if(key_type == 0x0040U && key_size >= 24 &&
 		visitor->node_hardlink_entry)
 	{
 		const u64 hard_link_id = read_le64(&key[8]);
@@ -10364,8 +10403,8 @@ static int crawl_volume_metadata(
 			sys_log_debug("Reading level %d block %" PRIuz " / "
 				"%" PRIuz ": %" PRIu64 " -> %" PRIu64,
 				2,
-				PRAuz(i),
-				PRAuz(level3_queue.block_queue_length),
+				PRAuz(i + 1),
+				PRAuz(i + level2_queue.block_queue_length),
 				PRAu64(logical_block_numbers[0]),
 				PRAu64(physical_block_numbers[0]));
 
@@ -10444,8 +10483,8 @@ static int crawl_volume_metadata(
 			sys_log_debug("Reading level %d block %" PRIuz " / "
 				"%" PRIuz ": %" PRIu64 " -> %" PRIu64,
 				3,
-				PRAuz(i),
-				PRAuz(level3_queue.block_queue_length),
+				PRAuz(i + 1),
+				PRAuz(i + level3_queue.block_queue_length),
 				PRAu64(logical_block_numbers[0]),
 				PRAu64(physical_block_numbers[0]));
 
