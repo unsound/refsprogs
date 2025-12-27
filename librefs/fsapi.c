@@ -1675,6 +1675,7 @@ static int fsapi_fill_attributes(
 		u32 file_flags,
 		u64 node_number,
 		u64 parent_node_object_id,
+		const u64 link_count,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -1707,7 +1708,7 @@ static int fsapi_fill_attributes(
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) {
-		attrs->link_count = is_directory ? 2 /* TODO */ : 1;
+		attrs->link_count = is_directory ? 2 /* TODO */ : link_count;
 		sys_log_debug("link_count: %" PRIu64,
 			PRAu64(attrs->link_count));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT;
@@ -1868,6 +1869,8 @@ static int fsapi_node_get_attributes_visit_root_entry(
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
+		/* u64 link_count */
+		1,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -1930,6 +1933,8 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
+		/* u64 link_count */
+		1,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -2020,6 +2025,8 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
+		/* u64 link_count */
+		1,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -2038,6 +2045,7 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		void *const context,
 		const u64 hard_link_id,
 		const u64 parent_id,
+		const u64 link_count,
 		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 node_number,
@@ -2072,6 +2080,8 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_id,
+		/* u64 link_count */
+		link_count,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -2184,6 +2194,8 @@ static int fsapi_node_get_attributes_common(
 				node->node_number,
 				/* u64 parent_node_object_id */
 				node->parent_directory_object_id,
+				/* u64 link_count */
+				1,
 				/* u64 create_time */
 				filetime_offset,
 				/* u64 last_access_time */
@@ -3197,6 +3209,8 @@ static int fsapi_node_list_filldir(
 			node_number,
 			/* u64 parent_node_object_id */
 			parent_node_object_id,
+			/* u64 link_count */
+			1,
 			/* u64 create_time */
 			create_time,
 			/* u64 last_access_time */
@@ -3880,6 +3894,7 @@ static int fsapi_node_read_visit_hardlink_entry(
 		void *const _context,
 		const u64 hard_link_id,
 		const u64 parent_id,
+		const u64 link_count,
 		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 node_number,
@@ -3901,6 +3916,7 @@ static int fsapi_node_read_visit_hardlink_entry(
 
 	(void) hard_link_id;
 	(void) parent_id;
+	(void) link_count;
 	(void) child_entry_offset;
 	(void) file_flags;
 	(void) node_number;

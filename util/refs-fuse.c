@@ -98,7 +98,10 @@ static int refs_fuse_fill_stat(
 		stbuf->st_mode =
 			(attributes->is_directory ? S_IFDIR : S_IFREG) | 0777;
 	}
-	stbuf->st_nlink = attributes->is_directory ? 2 /* TODO */ : 1;
+
+	stbuf->st_nlink =
+		(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) ?
+		attributes->link_count : 1;
 
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
 		stbuf->st_ino = attributes->inode_number;
