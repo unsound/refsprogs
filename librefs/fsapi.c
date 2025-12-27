@@ -1715,7 +1715,7 @@ static int fsapi_fill_attributes(
 		attrs->creation_time.tv_sec =
 			(create_time - filetime_offset) / 10000000;
 		attrs->creation_time.tv_nsec =
-			(create_time - filetime_offset) % 10000000;
+			((create_time - filetime_offset) % 10000000) * 100;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME;
 	}
 
@@ -1724,7 +1724,8 @@ static int fsapi_fill_attributes(
 		attrs->last_status_change_time.tv_sec =
 			(last_mft_change_time - filetime_offset) / 10000000;
 		attrs->last_status_change_time.tv_nsec =
-			(last_mft_change_time - filetime_offset) % 10000000;
+			((last_mft_change_time - filetime_offset) % 10000000) *
+			100;
 		attrs->valid |=
 			FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME;
 	}
@@ -1733,7 +1734,7 @@ static int fsapi_fill_attributes(
 		attrs->last_data_change_time.tv_sec =
 			(last_write_time - filetime_offset) / 10000000;
 		attrs->last_data_change_time.tv_nsec =
-			(last_write_time - filetime_offset) % 10000000;
+			((last_write_time - filetime_offset) % 10000000) * 100;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME;
 	}
 
@@ -1741,7 +1742,7 @@ static int fsapi_fill_attributes(
 		attrs->last_data_access_time.tv_sec =
 			(last_access_time - filetime_offset) / 10000000;
 		attrs->last_data_access_time.tv_nsec =
-			(last_access_time - filetime_offset) % 10000000;
+			((last_access_time - filetime_offset) % 10000000) * 100;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME;
 	}
 
