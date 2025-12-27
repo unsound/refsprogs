@@ -3553,7 +3553,9 @@ static int parse_generic_block(
 			/* u32 num_entries */
 			values_count,
 			/* void *context */
-			context,
+			!((print_visitor && print_visitor->print_message) ||
+				!add_subnodes_in_offsets_order) ? context :
+				NULL,
 			/* int (*parse_key)(
 			 *      refs_node_crawl_context *crawl_context,
 			 *      refs_node_walk_visitor *visitor,
@@ -3839,7 +3841,7 @@ static sys_bool parse_level2_0x2_should_add_subnode(
 
 	(void) is_v3;
 
-	if(!context->is_mapping) {
+	if(!context || !context->is_mapping) {
 		/* If we aren't doing object ID mapping then add all
 		 * subnodes. */
 		goto out;
