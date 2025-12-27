@@ -598,14 +598,20 @@ static int fsapi_volume_get_attributes_common(
 
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE) {
 		out_attrs->block_size = vol->vol->cluster_size;
+		sys_log_debug("block_size: %" PRIu32,
+			PRAu32(out_attrs->block_size));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT) {
 		out_attrs->block_count = vol->vol->cluster_count;
+		sys_log_debug("block_count: %" PRIu64,
+			PRAu64(out_attrs->block_count));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS) {
 		out_attrs->free_blocks = 0;
+		sys_log_debug("free_blocks: %" PRIu64,
+			PRAu64(out_attrs->free_blocks));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS;
 	}
 
@@ -663,6 +669,9 @@ static int fsapi_volume_get_attributes_common(
 
 		out_attrs->volume_name = vol->volume_label_cstr;
 		out_attrs->volume_name_length = vol->volume_label_cstr_length;
+		sys_log_debug("volume_name: %.*s",
+			(int) sys_min(INT_MAX, out_attrs->volume_name_length),
+			out_attrs->volume_name);
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_VOLUME_NAME;
 	}
 out:
@@ -1693,11 +1702,14 @@ static int fsapi_fill_attributes(
 			attrs->mode |= S_IFREG;
 		}
 		attrs->mode |= 0777U;
+		sys_log_debug("mode: 0%" PRIo32, PRAo32(attrs->mode));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_MODE;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) {
 		attrs->link_count = is_directory ? 2 /* TODO */ : 1;
+		sys_log_debug("link_count: %" PRIu64,
+			PRAu64(attrs->link_count));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT;
 	}
 
@@ -1708,6 +1720,8 @@ static int fsapi_fill_attributes(
 		 * be a good intermediate solution. */
 		attrs->inode_number =
 			(node_number << 16) | child_entry_offset;
+		sys_log_debug("inode_number: %" PRIu64,
+			PRAu64(attrs->inode_number));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER;
 	}
 
@@ -1715,7 +1729,10 @@ static int fsapi_fill_attributes(
 		attrs->creation_time.tv_sec =
 			(create_time - filetime_offset) / 10000000;
 		attrs->creation_time.tv_nsec =
-			(create_time - filetime_offset) % 10000000;
+			((create_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("creation_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->creation_time.tv_sec),
+			PRAu64(attrs->creation_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME;
 	}
 
@@ -1724,7 +1741,11 @@ static int fsapi_fill_attributes(
 		attrs->last_status_change_time.tv_sec =
 			(last_mft_change_time - filetime_offset) / 10000000;
 		attrs->last_status_change_time.tv_nsec =
-			(last_mft_change_time - filetime_offset) % 10000000;
+			((last_mft_change_time - filetime_offset) % 10000000) *
+			100;
+		sys_log_debug("last_status_change_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_status_change_time.tv_sec),
+			PRAu64(attrs->last_status_change_time.tv_nsec));
 		attrs->valid |=
 			FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME;
 	}
@@ -1733,7 +1754,10 @@ static int fsapi_fill_attributes(
 		attrs->last_data_change_time.tv_sec =
 			(last_write_time - filetime_offset) / 10000000;
 		attrs->last_data_change_time.tv_nsec =
-			(last_write_time - filetime_offset) % 10000000;
+			((last_write_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("last_data_change_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_data_change_time.tv_sec),
+			PRAu64(attrs->last_data_change_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME;
 	}
 
@@ -1741,17 +1765,23 @@ static int fsapi_fill_attributes(
 		attrs->last_data_access_time.tv_sec =
 			(last_access_time - filetime_offset) / 10000000;
 		attrs->last_data_access_time.tv_nsec =
-			(last_access_time - filetime_offset) % 10000000;
+			((last_access_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("last_data_access_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_data_access_time.tv_sec),
+			PRAu64(attrs->last_data_access_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attrs->size = file_size;
+		sys_log_debug("size: %" PRIu64, PRAu64(attrs->size));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
 		attrs->allocated_size = allocated_size;
+		sys_log_debug("allocated_size: %" PRIu64,
+			PRAu64(attrs->allocated_size));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE;
 	}
 
@@ -1775,6 +1805,8 @@ static int fsapi_fill_attributes(
 
 		if(attrs->bsd_flags) {
 			attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_BSD_FLAGS;
+			sys_log_debug("bsd_flags: 0x%" PRIX64,
+				PRAX64(attrs->bsd_flags));
 		}
 	}
 
@@ -1788,6 +1820,8 @@ static int fsapi_fill_attributes(
 			attrs->windows_flags |= REFS_FILE_ATTRIBUTE_NORMAL;
 		}
 
+		sys_log_debug("windows_flags: 0x%" PRIX64,
+			PRAX64(attrs->windows_flags));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_WINDOWS_FLAGS;
 	}
 
@@ -1798,6 +1832,55 @@ typedef struct {
 	refs_volume *vol;
 	fsapi_node_attributes *attrs;
 } fsapi_node_get_attributes_context;
+
+static int fsapi_node_get_attributes_visit_root_entry(
+		void *const context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	return fsapi_fill_attributes(
+		/* fsapi_node_attributes *attrs */
+		((fsapi_node_get_attributes_context*) context)->attrs,
+		/* sys_bool is_directory */
+		SYS_TRUE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 node_number */
+		node_number,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
+		/* u64 create_time */
+		create_time,
+		/* u64 last_access_time */
+		last_access_time,
+		/* u64 last_write_time */
+		last_write_time,
+		/* u64 last_mft_change_time */
+		last_mft_change_time,
+		/* u64 file_size */
+		file_size,
+		/* u64 allocated_size */
+		allocated_size);
+}
 
 static int fsapi_node_get_attributes_visit_short_entry(
 		void *const _context,
@@ -1928,7 +2011,7 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		/* fsapi_node_attributes *attrs */
 		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
-		SYS_FALSE,
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
 		child_entry_offset,
 		/* u32 file_flags */
@@ -1980,7 +2063,7 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		/* fsapi_node_attributes *attrs */
 		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
-		SYS_FALSE,
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
 		child_entry_offset,
 		/* u32 file_flags */
@@ -2082,7 +2165,9 @@ static int fsapi_node_get_attributes_common(
 		context.attrs = &node->attributes;
 		visitor.context = &context;
 
-		if(node->directory_object_id == 0x600) {
+		if((!node->key || !node->record) &&
+			node->directory_object_id == 0x600)
+		{
 			/* Root directory. */
 			err = fsapi_fill_attributes(
 				/* fsapi_node_attributes *attrs */
@@ -2144,6 +2229,8 @@ static int fsapi_node_get_attributes_common(
 				NULL);
 		}
 		else {
+			visitor.node_root_entry =
+				fsapi_node_get_attributes_visit_root_entry;
 			visitor.node_long_entry =
 				fsapi_node_get_attributes_visit_long_entry;
 			visitor.node_hardlink_entry =
@@ -4442,8 +4529,7 @@ int fsapi_node_list_extended_attributes(
 	fsapi_log_enter("vol=%p, node=%p, context=%p, xattr_handler=%p",
 		vol, node, context, xattr_handler);
 
-	if(node == vol->root_node || node->is_short_entry) {
-		/* TODO: Check where root node's streams and EAs are located. */
+	if((!node->key || !node->record) || node->is_short_entry) {
 		err = 0;
 		goto out;
 	}
@@ -4703,8 +4789,7 @@ int fsapi_node_read_extended_attribute(
 		iohandler, out_xattr_size,
 		PRAu64(out_xattr_size ? *out_xattr_size : 0));
 
-	if(node == vol->root_node || node->is_short_entry) {
-		/* TODO: Check where root node's streams and EAs are located. */
+	if((!node->key || !node->record) || node->is_short_entry) {
 		err = ENOENT;
 		goto out;
 	}

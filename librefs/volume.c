@@ -973,39 +973,75 @@ out:
 	return err;
 }
 
-typedef struct {
-	u64 node_number;
-	u64 node_first_cluster;
-} refs_volume_lookup_root_node_visit_header_context;
-
-static int refs_volume_lookup_root_node_visit_header(
+static int refs_volume_lookup_root_node_visit_root_entry(
 		void *const _context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
 		const u64 node_number,
-		const u64 node_first_cluster,
-		const u64 object_id,
-		const u8 *const data,
-		const size_t data_size,
-		const size_t header_offset,
-		const size_t header_size)
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
 {
-	refs_volume_lookup_root_node_visit_header_context *const context =
-		(refs_volume_lookup_root_node_visit_header_context*) _context;
+	refs_volume_lookup_context *const context =
+		(refs_volume_lookup_context*) _context;
+
 	int err = 0;
 
-	sys_log_debug("%s got node: 0x%" PRIX64,
-		__FUNCTION__, PRAX64(object_id));
+	sys_log_debug("Visiting root entry with offset %" PRIu16 " in node "
+		"0x%" PRIX64 "...",
+		PRAu16(child_entry_offset), PRAX64(parent_node_object_id));
 
-	if(object_id != 0x600) {
-		goto out;
-	}
+	(void) file_flags;
+	(void) parent_node_object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+
+	context->found = SYS_TRUE;
+	context->is_short_entry = SYS_FALSE;
+	context->is_directory = SYS_TRUE;
 
 	context->node_number = node_number;
-	context->node_first_cluster = node_first_cluster;
+	if(context->entry_offset) {
+		*context->entry_offset = child_entry_offset;
+	}
 
-	(void) data;
-	(void) data_size;
-	(void) header_offset;
-	(void) header_size;
+	if(context->key) {
+		err = sys_malloc(key_size, context->key);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->key, key, key_size);
+	}
+
+	if(context->key_size) {
+		*context->key_size = key_size;
+	}
+
+	if(context->record) {
+		err = sys_malloc(record_size, context->record);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->record, record, record_size);
+	}
+
+	if(context->record_size) {
+		*context->record_size = record_size;
+	}
 
 	err = -1;
 out:
@@ -1040,14 +1076,21 @@ int refs_volume_lookup_by_posix_path(
 		/* The request is for the root directory. We can't supply a
 		 * record for it, only the object ID. */
 		const u64 root_object_id = 0x600;
-		refs_volume_lookup_root_node_visit_header_context context;
+		refs_volume_lookup_context context;
 		refs_node_walk_visitor visitor;
 
 		memset(&context, 0, sizeof(context));
 		memset(&visitor, 0, sizeof(visitor));
 
+		context.entry_offset = out_entry_offset;
+		context.key = out_key;
+		context.key_size = out_key_size;
+		context.record = out_record;
+		context.record_size = out_record_size;
+
 		visitor.context = &context;
-		visitor.node_header = refs_volume_lookup_root_node_visit_header;
+		visitor.node_root_entry =
+			refs_volume_lookup_root_node_visit_root_entry;
 
 		sys_log_debug("Searching for node number of 0x600 root....");
 
@@ -1081,10 +1124,8 @@ int refs_volume_lookup_by_posix_path(
 			goto out;
 		}
 
-		sys_log_debug("Found node number of 0x600 root: 0x%" PRIX64 " "
-			"(first cluster: 0x%" PRIX64 ")",
-			PRAX64(context.node_number),
-			PRAX64(context.node_first_cluster));
+		sys_log_debug("Found node number of 0x600 root: 0x%" PRIX64,
+			PRAX64(context.node_number));
 
 		if(out_parent_directory_object_id) {
 			*out_parent_directory_object_id = root_object_id;
@@ -1096,14 +1137,6 @@ int refs_volume_lookup_by_posix_path(
 
 		if(out_node_number) {
 			*out_node_number = context.node_number;
-		}
-
-		if(out_record) {
-			*out_record = NULL;
-		}
-
-		if(out_record_size) {
-			*out_record_size = 0;
 		}
 
 		goto out;
@@ -1120,6 +1153,18 @@ int refs_volume_lookup_by_posix_path(
 
 		if(out_node_number) {
 			*out_node_number = 0;
+		}
+
+		if(out_entry_offset) {
+			*out_entry_offset = 0;
+		}
+
+		if(out_key) {
+			*out_key = NULL;
+		}
+
+		if(out_key_size) {
+			*out_key_size = 0;
 		}
 
 		if(out_record) {
