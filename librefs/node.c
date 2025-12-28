@@ -10696,7 +10696,6 @@ int refs_node_scan(
 	size_t padding_size = 0;
 	u8 *padding = NULL;
 	u32 buffer_size = 0;
-	ssize_t buffer_valid_size = 0;
 	u64 buffer_valid_end = 0;
 	u8 *buffer = NULL;
 	u8 *block = NULL;
@@ -10734,6 +10733,8 @@ int refs_node_scan(
 		goto out;
 	}
 
+	sys_log_debug("Reading padding...");
+
 	err = sys_device_pread(
 		/* sys_device *dev */
 		dev,
@@ -10763,6 +10764,9 @@ int refs_node_scan(
 			PRAu32(buffer_size));
 		goto out;
 	}
+
+	sys_log_debug("Reading blocks from %" PRIu64 "-byte device...",
+		PRAu64(device_size));
 
 	for(i = 30 * block_index_unit; i < device_size;
 		i += sys_min(cluster_size, block_size))
@@ -10800,10 +10804,14 @@ int refs_node_scan(
 			}
 
 			buffer_valid_end =
-				buffer_read_offset + (u64) buffer_valid_size;
+				buffer_read_offset + (u64) buffer_size;
 		}
 
 		if(i + sector_size > buffer_valid_end) {
+			sys_log_debug("Done because %" PRIu64 " + %" PRIu32 " "
+				"> %" PRIu64 ".",
+				PRAu64(i), PRAu32(sector_size),
+				PRAu64(buffer_valid_end));
 			break;
 		}
 
