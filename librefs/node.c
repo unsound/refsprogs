@@ -2725,6 +2725,29 @@ static int parse_block_allocation_entry(
 	int err = 0;
 	u32 i = 0;
 
+	if(out_flags) {
+		*out_flags = read_le32(&entry[0xC]);
+	}
+
+	if(out_value_offsets_start) {
+		*out_value_offsets_start = read_le32(&entry[0x10]);
+	}
+
+	if(out_value_count) {
+		*out_value_count = read_le32(&entry[0x14]);
+	}
+
+	if(out_value_offsets_end) {
+		*out_value_offsets_end =
+			is_v3 ? ((entry_size >= 0x24) ?
+			read_le32(&entry[0x20]) : 0) :
+			read_le32(&entry[0x18]);
+	}
+
+	if(!print_visitor) {
+		goto out;
+	}
+
 	print_le32_dechex("Size", prefix, indent, entry, &entry[0x0]);
 	print_le32_dechex("Free space offset", prefix, indent, entry,
 		&entry[0x4]);
@@ -2734,25 +2757,28 @@ static int parse_block_allocation_entry(
 	print_le32_dechex("Free space size", prefix, indent, entry,
 		&entry[0x8]);
 
-	print_le32_dechex("Flags?", prefix, indent, entry, &entry[0xC]);
-	if(out_flags) {
-		*out_flags = read_le32(&entry[0xC]);
+	print_u8_dechex("Tree level", prefix, indent, entry, &entry[0xC]);
+	print_u8_dechex("Flags", prefix, indent, entry, &entry[0xD]);
+	if(entry[0xD] & 0x1) {
+		emit(prefix, indent + 1, "INDEX");
 	}
+	if(entry[0xD] & 0x2) {
+		emit(prefix, indent + 1, "ROOT");
+	}
+	if(entry[0xD] & (u8) ~0x3U) {
+		emit(prefix, indent + 1, "<unknown flags: 0x%" PRIX8 ">",
+			PRAX8(entry[0xD] & (u8) ~0x3U));
+	}
+	print_unknown16(prefix, indent, entry, &entry[0x1E]);
 
 	print_le32_dechex("Value offsets array start offset", prefix, indent,
 		entry, &entry[0x10]);
 	emit(prefix, indent + 1, "-> Real offset: %" PRIu64 " / 0x%" PRIX64,
 		PRAu64(read_le32(&entry[0x10]) + entry_offset),
 		PRAX64(read_le32(&entry[0x10]) + entry_offset));
-	if(out_value_offsets_start) {
-		*out_value_offsets_start = read_le32(&entry[0x10]);
-	}
 
 	print_le32_dec("Number of values", prefix, indent, entry,
 		&entry[0x14]);
-	if(out_value_count) {
-		*out_value_count = read_le32(&entry[0x14]);
-	}
 
 	if(is_v3) {
 		print_unknown32(prefix, indent, entry, &entry[0x18]);
@@ -2764,9 +2790,6 @@ static int parse_block_allocation_entry(
 			"0x%" PRIX64,
 			PRAu64(read_le32(&entry[0x18]) + entry_offset),
 			PRAX64(read_le32(&entry[0x18]) + entry_offset));
-		if(out_value_offsets_end) {
-			*out_value_offsets_end = read_le32(&entry[0x18]);
-		}
 	}
 	print_unknown32(prefix, indent, entry, &entry[0x1C]);
 	i = 0x20;
@@ -2779,10 +2802,6 @@ static int parse_block_allocation_entry(
 				"/ 0x%" PRIX64,
 				PRAu64(read_le32(&entry[0x20]) + entry_offset),
 				PRAX64(read_le32(&entry[0x20]) + entry_offset));
-			if(out_value_offsets_end) {
-				*out_value_offsets_end =
-					read_le32(&entry[0x20]);
-			}
 		}
 		else {
 			print_unknown32(prefix, indent, entry, &entry[0x20]);
@@ -2800,7 +2819,7 @@ static int parse_block_allocation_entry(
 		print_data_with_base(prefix, indent, i, 0, &entry[i],
 			entry_size - i);
 	}
-
+out:
 	return err;
 }
 
@@ -3433,18 +3452,9 @@ static int parse_generic_block(
 		}
 	}
 
-	/* The 0x301 value seems to be a sure marker that this is an index node.
-	 * There are however other values that also seem to indicate an index
-	 * node, but not reliably so.
-	 * Well actually this may be a misinterpretation. Some values in nodes
-	 * with flags 0x0 have block references with an Object ID key, but I
-	 * think those are in fact subdirectory references.
-	 * In fact the 0x2 tree seems to be the tree mapping object IDs to
-	 * root nodes of directories (?). Then the directory trees can also have
-	 * index nodes but the leaf nodes have mixed values... e.g. the first
-	 * entry seems to be an $I30 index in each directory, then there are
-	 * file/directory entries, etc. */
-	if(flags == 0x301 || flags == 0x302 || flags == 0x101) {
+	/* We now consider 0x100 to be the flag indicating whether a node is an
+	 * index node. TOOD: Check this with all available images. */
+	if(flags & 0x100) {
 		is_index_node = SYS_TRUE;
 	}
 
@@ -5520,16 +5530,25 @@ static int parse_level3_filename_key(
 		entry_type_to_string(dirent_type));
 
 	err = sys_unistr_decode(
+		/* const refschar *ins */
 		(const refschar*) &key[4],
+		/* size_t ins_len */
 		(key_size - 4) / sizeof(refschar),
+		/* char **outs */
 		&cstr,
+		/* size_t *outs_len */
 		&cstr_length);
 	if(err) {
-		goto out;
+		sys_log_pwarning(err, "Error while decoding filename in key");
+		err = 0;
+		emit(prefix, indent, "Filename:");
+	}
+	else {
+		emit(prefix, indent, "Filename: %" PRIbs,
+			PRAbs(cstr_length, cstr));
 	}
 
-	emit(prefix, indent, "Filename: %" PRIbs,
-		PRAbs(cstr_length, cstr));
+	print_data(prefix, indent + 1, &key[4], key_size - 4);
 out:
 	if(cstr) {
 		sys_free(cstr_length + 1, &cstr);
@@ -5935,6 +5954,10 @@ static int parse_attribute_named_stream_key(
 	}
 
 	if(key_end >= name_start) {
+		emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
+			"(length: %" PRIuz "):",
+			PRAuz(j), PRAXz(j), PRAuz(cstr_length));
+
 		err = sys_unistr_decode(
 			/* const refschar *ins */
 			(const refschar*) &attribute[name_start],
@@ -5945,14 +5968,17 @@ static int parse_attribute_named_stream_key(
 			/* size_t *outs_len */
 			&cstr_length);
 		if(err) {
-			sys_log_perror(err, "Error while decoding stream name");
-			goto out;
+			sys_log_pwarning(err, "Error while decoding stream "
+				"name");
+		}
+		else {
+			emit(prefix, indent + 1, "%" PRIbs,
+				PRAbs(cstr_length, cstr));
 		}
 
-		emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
-			"(length: %" PRIuz "):",
-			PRAuz(j), PRAXz(j), PRAuz(cstr_length));
-		emit(prefix, indent + 1, "%" PRIbs, PRAbs(cstr_length, cstr));
+		print_data(prefix, indent + 1, &attribute[name_start],
+			key_end - name_start);
+
 		j += key_end - name_start;
 	}
 
@@ -7664,8 +7690,8 @@ static int parse_attribute_leaf_value(
 				/* size_t *outs_len */
 				&cstr_length);
 			if(err) {
-				sys_log_perror(err, "Error while decoding name "
-					"in attribute key");
+				sys_log_pwarning(err, "Error while decoding "
+					"name in attribute key");
 				goto out;
 			}
 		}
@@ -8292,7 +8318,7 @@ int parse_level3_long_value(
 		(attribute_size && attribute_size < value_size) ?
 		attribute_size : value_size;
 
-	if(attribute_size >= 120) {
+	if(cur_attribute_end >= 120) {
 		print_unknown16(prefix, indent + 1, value, &value[2]);
 
 		/* This field has the value 65576 / 0x10028 in all observed
@@ -9363,7 +9389,7 @@ static int parse_level3_volume_label_value(
 			/* refschar *volume_label */
 			(const refschar*) value,
 			/* u16 volume_label_length */
-			value_size / 2);
+			value_size / sizeof(refschar));
 		if(err) {
 			goto out;
 		}
@@ -9374,20 +9400,29 @@ static int parse_level3_volume_label_value(
 		PRAX16(value_offset));
 
 	err = sys_unistr_decode(
+		/* const refschar *ins */
 		(const refschar*) value,
-		value_size / 2,
+		/* size_t ins_len */
+		value_size / sizeof(refschar),
+		/* char **outs */
 		&cname,
+		/* size_t *outs_len */
 		&cname_length);
 	if(err) {
-		sys_log_perror(err, "Error while decoding volume label");
-		goto out;
+		sys_log_pwarning(err, "Error while decoding volume label");
+		emit(prefix, indent, "Volume label (length: %" PRIu16 "):",
+			PRAu16(value_size / 2));
+	}
+	else {
+		emit(prefix, indent, "Volume label (length: %" PRIu16 "): "
+			"%" PRIbs,
+			PRAu16(value_size / 2),
+			PRAbs(cname_length, cname));
 	}
 
-	emit(prefix, indent, "Volume label (length: %" PRIu16 "): %" PRIbs,
-		PRAu16(value_size / 2),
-		PRAbs(cname_length, cname));
+	print_data(prefix, indent + 1, value, value_size);
 
-	i += (value_size / 2) * 2;
+	i += (value_size / sizeof(refschar)) * sizeof(refschar);
 	if(i < value_size) {
 		print_data_with_base(prefix, indent, i, value_size, &value[i],
 			value_size - i);
