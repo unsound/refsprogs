@@ -5530,16 +5530,25 @@ static int parse_level3_filename_key(
 		entry_type_to_string(dirent_type));
 
 	err = sys_unistr_decode(
+		/* const refschar *ins */
 		(const refschar*) &key[4],
+		/* size_t ins_len */
 		(key_size - 4) / sizeof(refschar),
+		/* char **outs */
 		&cstr,
+		/* size_t *outs_len */
 		&cstr_length);
 	if(err) {
-		goto out;
+		sys_log_pwarning(err, "Error while decoding filename in key");
+		err = 0;
+		emit(prefix, indent, "Filename:");
+	}
+	else {
+		emit(prefix, indent, "Filename: %" PRIbs,
+			PRAbs(cstr_length, cstr));
 	}
 
-	emit(prefix, indent, "Filename: %" PRIbs,
-		PRAbs(cstr_length, cstr));
+	print_data(prefix, indent + 1, &key[4], key_size - 4);
 out:
 	if(cstr) {
 		sys_free(cstr_length + 1, &cstr);
@@ -5945,6 +5954,10 @@ static int parse_attribute_named_stream_key(
 	}
 
 	if(key_end >= name_start) {
+		emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
+			"(length: %" PRIuz "):",
+			PRAuz(j), PRAXz(j), PRAuz(cstr_length));
+
 		err = sys_unistr_decode(
 			/* const refschar *ins */
 			(const refschar*) &attribute[name_start],
@@ -5955,14 +5968,17 @@ static int parse_attribute_named_stream_key(
 			/* size_t *outs_len */
 			&cstr_length);
 		if(err) {
-			sys_log_perror(err, "Error while decoding stream name");
-			goto out;
+			sys_log_pwarning(err, "Error while decoding stream "
+				"name");
+		}
+		else {
+			emit(prefix, indent + 1, "%" PRIbs,
+				PRAbs(cstr_length, cstr));
 		}
 
-		emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
-			"(length: %" PRIuz "):",
-			PRAuz(j), PRAXz(j), PRAuz(cstr_length));
-		emit(prefix, indent + 1, "%" PRIbs, PRAbs(cstr_length, cstr));
+		print_data(prefix, indent + 1, &attribute[name_start],
+			key_end - name_start);
+
 		j += key_end - name_start;
 	}
 
@@ -7674,8 +7690,8 @@ static int parse_attribute_leaf_value(
 				/* size_t *outs_len */
 				&cstr_length);
 			if(err) {
-				sys_log_perror(err, "Error while decoding name "
-					"in attribute key");
+				sys_log_pwarning(err, "Error while decoding "
+					"name in attribute key");
 				goto out;
 			}
 		}
@@ -9373,7 +9389,7 @@ static int parse_level3_volume_label_value(
 			/* refschar *volume_label */
 			(const refschar*) value,
 			/* u16 volume_label_length */
-			value_size / 2);
+			value_size / sizeof(refschar));
 		if(err) {
 			goto out;
 		}
@@ -9384,20 +9400,29 @@ static int parse_level3_volume_label_value(
 		PRAX16(value_offset));
 
 	err = sys_unistr_decode(
+		/* const refschar *ins */
 		(const refschar*) value,
-		value_size / 2,
+		/* size_t ins_len */
+		value_size / sizeof(refschar),
+		/* char **outs */
 		&cname,
+		/* size_t *outs_len */
 		&cname_length);
 	if(err) {
-		sys_log_perror(err, "Error while decoding volume label");
-		goto out;
+		sys_log_pwarning(err, "Error while decoding volume label");
+		emit(prefix, indent, "Volume label (length: %" PRIu16 "):",
+			PRAu16(value_size / 2));
+	}
+	else {
+		emit(prefix, indent, "Volume label (length: %" PRIu16 "): "
+			"%" PRIbs,
+			PRAu16(value_size / 2),
+			PRAbs(cname_length, cname));
 	}
 
-	emit(prefix, indent, "Volume label (length: %" PRIu16 "): %" PRIbs,
-		PRAu16(value_size / 2),
-		PRAbs(cname_length, cname));
+	print_data(prefix, indent + 1, value, value_size);
 
-	i += (value_size / 2) * 2;
+	i += (value_size / sizeof(refschar)) * sizeof(refschar);
 	if(i < value_size) {
 		print_data_with_base(prefix, indent, i, value_size, &value[i],
 			value_size - i);
