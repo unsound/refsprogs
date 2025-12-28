@@ -8292,7 +8292,7 @@ int parse_level3_long_value(
 		(attribute_size && attribute_size < value_size) ?
 		attribute_size : value_size;
 
-	if(attribute_size >= 120) {
+	if(cur_attribute_end >= 120) {
 		print_unknown16(prefix, indent + 1, value, &value[2]);
 
 		/* This field has the value 65576 / 0x10028 in all observed
