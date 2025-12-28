@@ -2725,6 +2725,29 @@ static int parse_block_allocation_entry(
 	int err = 0;
 	u32 i = 0;
 
+	if(out_flags) {
+		*out_flags = read_le32(&entry[0xC]);
+	}
+
+	if(out_value_offsets_start) {
+		*out_value_offsets_start = read_le32(&entry[0x10]);
+	}
+
+	if(out_value_count) {
+		*out_value_count = read_le32(&entry[0x14]);
+	}
+
+	if(out_value_offsets_end) {
+		*out_value_offsets_end =
+			is_v3 ? ((entry_size >= 0x24) ?
+			read_le32(&entry[0x20]) : 0) :
+			read_le32(&entry[0x18]);
+	}
+
+	if(!print_visitor) {
+		goto out;
+	}
+
 	print_le32_dechex("Size", prefix, indent, entry, &entry[0x0]);
 	print_le32_dechex("Free space offset", prefix, indent, entry,
 		&entry[0x4]);
@@ -2734,25 +2757,28 @@ static int parse_block_allocation_entry(
 	print_le32_dechex("Free space size", prefix, indent, entry,
 		&entry[0x8]);
 
-	print_le32_dechex("Flags?", prefix, indent, entry, &entry[0xC]);
-	if(out_flags) {
-		*out_flags = read_le32(&entry[0xC]);
+	print_u8_dechex("Tree level", prefix, indent, entry, &entry[0xC]);
+	print_u8_dechex("Flags", prefix, indent, entry, &entry[0xD]);
+	if(entry[0xD] & 0x1) {
+		emit(prefix, indent + 1, "INDEX");
 	}
+	if(entry[0xD] & 0x2) {
+		emit(prefix, indent + 1, "ROOT");
+	}
+	if(entry[0xD] & (u8) ~0x3U) {
+		emit(prefix, indent + 1, "<unknown flags: 0x%" PRIX8 ">",
+			PRAX8(entry[0xD] & (u8) ~0x3U));
+	}
+	print_unknown16(prefix, indent, entry, &entry[0x1E]);
 
 	print_le32_dechex("Value offsets array start offset", prefix, indent,
 		entry, &entry[0x10]);
 	emit(prefix, indent + 1, "-> Real offset: %" PRIu64 " / 0x%" PRIX64,
 		PRAu64(read_le32(&entry[0x10]) + entry_offset),
 		PRAX64(read_le32(&entry[0x10]) + entry_offset));
-	if(out_value_offsets_start) {
-		*out_value_offsets_start = read_le32(&entry[0x10]);
-	}
 
 	print_le32_dec("Number of values", prefix, indent, entry,
 		&entry[0x14]);
-	if(out_value_count) {
-		*out_value_count = read_le32(&entry[0x14]);
-	}
 
 	if(is_v3) {
 		print_unknown32(prefix, indent, entry, &entry[0x18]);
@@ -2764,9 +2790,6 @@ static int parse_block_allocation_entry(
 			"0x%" PRIX64,
 			PRAu64(read_le32(&entry[0x18]) + entry_offset),
 			PRAX64(read_le32(&entry[0x18]) + entry_offset));
-		if(out_value_offsets_end) {
-			*out_value_offsets_end = read_le32(&entry[0x18]);
-		}
 	}
 	print_unknown32(prefix, indent, entry, &entry[0x1C]);
 	i = 0x20;
@@ -2779,10 +2802,6 @@ static int parse_block_allocation_entry(
 				"/ 0x%" PRIX64,
 				PRAu64(read_le32(&entry[0x20]) + entry_offset),
 				PRAX64(read_le32(&entry[0x20]) + entry_offset));
-			if(out_value_offsets_end) {
-				*out_value_offsets_end =
-					read_le32(&entry[0x20]);
-			}
 		}
 		else {
 			print_unknown32(prefix, indent, entry, &entry[0x20]);
@@ -2800,7 +2819,7 @@ static int parse_block_allocation_entry(
 		print_data_with_base(prefix, indent, i, 0, &entry[i],
 			entry_size - i);
 	}
-
+out:
 	return err;
 }
 
