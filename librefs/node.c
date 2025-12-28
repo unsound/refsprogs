@@ -5555,7 +5555,7 @@ static int parse_level3_filename_key(
 	}
 
 	print_data(prefix, indent + 1, &key[4], key_size - 4);
-out:
+
 	if(cstr) {
 		sys_free(cstr_length + 1, &cstr);
 	}
@@ -5998,7 +5998,7 @@ static int parse_attribute_named_stream_key(
 	if(out_cstr_length) {
 		*out_cstr_length = cstr_length;
 	}
-out:
+
 	if(cstr) {
 		sys_free(cstr_length + 1, &cstr);
 	}
