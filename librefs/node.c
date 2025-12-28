@@ -5955,7 +5955,8 @@ static int parse_attribute_named_stream_key(
 	if(key_end >= name_start) {
 		emit(prefix, indent, "Name @ %" PRIuz " / 0x%" PRIXz " "
 			"(length: %" PRIuz "):",
-			PRAuz(j), PRAXz(j), PRAuz(cstr_length));
+			PRAuz(j), PRAXz(j),
+			PRAuz((key_end - name_start) / sizeof(refschar)));
 
 		err = sys_unistr_decode(
 			/* const refschar *ins */
