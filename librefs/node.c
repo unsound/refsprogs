@@ -4698,38 +4698,31 @@ static int parse_level2_0x21_leaf_value(
 
 	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
 		(key == value && key_size == value_size) ? "Key/value" :
-		"Value", "unknown", PRAu16(value_offset), PRAX16(value_offset));
+		"Value", "bitmap", PRAu16(value_offset), PRAX16(value_offset));
 
 	if(value_size >= 0x8) {
-		i += print_le64_dechex("Block number 1", prefix, indent, value,
+		i += print_le64_dechex("Stars block", prefix, indent, value,
 			&value[0x0]);
 	}
 	if(value_size >= 0x10) {
-		i += print_le64_dechex("Block number 2", prefix, indent, value,
+		i += print_le64_dechex("Block count", prefix, indent, value,
 			&value[0x8]);
 	}
+	if(value_size >= 0x12) {
+		i += print_unknown16(prefix, indent, value, &value[0x10]);
+	}
+	if(value_size >= 0x14) {
+		i += print_unknown16(prefix, indent, value, &value[0x12]);
+	}
 	if(value_size >= 0x18) {
-		i += print_le64_dechex("Block number 3", prefix, indent, value,
-			&value[0x10]);
-	}
-	if(value_size >= 0x20) {
-		i += print_le64_dechex("Block number 4", prefix, indent, value,
-			&value[0x18]);
-	}
-	if(value_size >= 0x24) {
-		i += print_unknown32(prefix, indent, value, &value[0x20]);
-	}
-	if(value_size >= 0x28) {
-		i += print_unknown32(prefix, indent, value, &value[0x24]);
-	}
-	if(value_size >= 0x30) {
-		i += print_le64_hex("Checksum", prefix, indent, value,
-			&value[0x28]);
+		i += print_unknown32(prefix, indent, value, &value[0x14]);
 	}
 
 	if(i < value_size) {
-		print_data_with_base(prefix, indent, i, entry_size, &value[i],
-			value_size - i);
+		emit(prefix, indent, "Bitmap data @ %" PRIu64 " / "
+			"0x%" PRIX64 ":", PRAu64(i), PRAX64(i));
+		print_data_with_base(prefix, indent + 1, 0, entry_size,
+			&value[i], value_size - i);
 	}
 
 	return 0;
