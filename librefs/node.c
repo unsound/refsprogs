@@ -1804,7 +1804,13 @@ static int parse_block_header(
 
 	if(block_number != read_le64(&header[0x0])) {
 		sys_log_warning("Ignoring block with mismatching block "
-			"number.");
+			"number at cluster %" PRIu64 " / 0x%" PRIX64 " "
+			"(expected block number: %" PRIu64 " / 0x%" PRIX64 ", "
+			"actual block number: %" PRIu64 " / 0x%" PRIX64 ")...",
+			PRAu64(cluster_number), PRAX64(cluster_number),
+			PRAu64(block_number), PRAX64(block_number),
+			PRAu64(read_le64(&header[0x0])),
+			PRAX64(read_le64(&header[0x0])));
 		if(out_is_valid) {
 			*out_is_valid = SYS_FALSE;
 		}
@@ -3453,7 +3459,7 @@ static int parse_generic_block(
 	}
 
 	/* We now consider 0x100 to be the flag indicating whether a node is an
-	 * index node. TOOD: Check this with all available images. */
+	 * index node. TODO: Check this with all available images. */
 	if(flags & 0x100) {
 		is_index_node = SYS_TRUE;
 	}
