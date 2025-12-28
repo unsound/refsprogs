@@ -55,40 +55,18 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 		char **const outs, size_t *const outs_len)
 {
 	int err = 0;
-#ifdef _WIN32
-	int res = 0;
-#else
-	iconv_t handle = (iconv_t) -1;
-#endif
-#if defined(__illumos__)
-	const char *ins_tmp = (const char*) ins;
-#elif !defined(_WIN32)
-	char *ins_tmp = (char*) ins;
-#endif
-	size_t ins_remaining = 0;
 	size_t outs_capacity = 0;
 	size_t outs_remaining = 0;
 	char *outs_tmp = NULL;
+	size_t i;
 
-#if 0
-	if(iconv_decode_handle == (iconv_t) -1) {
-		handle = iconv_open("UTF-8", "UTF-16LE");
-		if(iconv_decode_handle == (iconv_t) -1) {
-			err = errno;
-			goto out;
+	if(!outs) {
+		/* This is a request for the size of the decoded string only. */
+		if(outs_len) {
+			*outs_len = 0;
 		}
 	}
-#endif
-
-#ifndef _WIN32
-	handle = iconv_open("UTF-8", "UTF-16LE");
-	if(handle == (iconv_t) -1) {
-		err = errno;
-		goto out;
-	}
-#endif
-
-	if(!*outs) {
+	else if(!*outs) {
 		/* Allocate a worst-case string, which is 3 times the number of
 		 * characters of the UTF-16LE string times 4 to account for
 		 * possible NFD decomposition (+1 for the NULL terminator). */
@@ -107,57 +85,103 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 		outs_remaining = *outs_len;
 	}
 
-	ins_remaining = ins_len * sizeof(refschar);
+	for(i = 0; i < ins_len; ++i) {
+		const u16 code_unit_1 = le16_to_cpu(ins[i]);
+		u32 code_point = 0;
+		u8 utf8_code_units = 0;
 
-#ifdef _WIN32
-	res = WideCharToMultiByte(
-		CP_UTF8,
-		0,
-		ins,
-		ins_len,
-		outs_tmp,
-		outs_remaining,
-		NULL,
-		NULL);
-	if(res <= 0) {
-		err = EILSEQ;
-		goto out;
+		if(code_unit_1 >= 0xD800U && code_unit_1 <= 0xDBFFU &&
+			i + 1 < ins_len)
+		{
+			const u16 code_unit_2 = le16_to_cpu(ins[i + 1]);
+
+			if(code_unit_2 >= 0xDC00U && code_unit_2 <= 0xDFFFU) {
+				code_point =
+					((u32) 0x10000UL) +
+					(((((u32) code_unit_1) & 0x3FFU) <<
+					10) | (code_unit_2 & 0x3FFU));
+				++i;
+			}
+			else {
+				code_point = code_unit_1;
+			}
+		}
+		else {
+			code_point = code_unit_1;
+		}
+
+		if(code_point <= 0x7FU) {
+			utf8_code_units = 1;
+		}
+		else if(code_point <= 0x7FFU) {
+			utf8_code_units = 2;
+		}
+		else if(code_point <= 0xFFFFU) {
+			utf8_code_units = 3;
+		}
+		else if(code_point <= 0x10FFFFUL) {
+			utf8_code_units = 4;
+		}
+		else {
+			/* The UTF-16 encoding allows for at most ~20.087 bits
+			 * encoded (0x100000 values in surrogates + 0x10000
+			 * non-surrogate values for a maximum encoded value of
+			 * 0x10000 + 0x100000 - 1 = 0x10FFFF, log2(0x10FFFF + 1)
+			 * ~= 20.087) and UTF-8 can encode 21 bits in 4 bytes
+			 * (though the maximum valid value is still 0x10FFFF).
+			 * So this should be an impossible situation unless
+			 * we've made a mistake in the implementation. */
+			sys_log_critical("Invalid Unicode code point "
+				"0x%" PRIX32 ". This should be impossible.",
+				PRAX32(code_point));
+			code_point = 0xFFFDU;
+			utf8_code_units = 3;
+		}
+
+		if(outs) {
+			if(outs_remaining < utf8_code_units + 1) {
+				err = E2BIG;
+				goto out;
+			}
+
+			if(utf8_code_units == 1) {
+				outs_tmp[0] = (u8) code_point;
+				outs_tmp = &outs_tmp[1];
+			}
+			else if(utf8_code_units == 2) {
+				outs_tmp[0] = (u8) (0xC0 | (code_point >> 6));
+				outs_tmp[1] = (u8) (0x80 | (code_point & 0x3F));
+				outs_tmp = &outs_tmp[2];
+			}
+			else if(utf8_code_units == 3) {
+				outs_tmp[0] = (u8) (0xE0 | (code_point >> 12));
+				outs_tmp[1] = (u8) (0x80 | (code_point >> 6));
+				outs_tmp[2] = (u8) (0x80 | (code_point & 0x3F));
+				outs_tmp = &outs_tmp[3];
+			}
+			else {
+				outs_tmp[0] = (u8) (0xF0 | (code_point >> 18));
+				outs_tmp[1] = (u8) (0x80 | (code_point >> 12));
+				outs_tmp[2] = (u8) (0x80 | (code_point >> 6));
+				outs_tmp[3] = (u8) (0x80 | (code_point & 0x3F));
+				outs_tmp = &outs_tmp[4];
+			}
+
+			outs_remaining -= utf8_code_units;
+		}
+		else if(outs_len) {
+			*outs_len += utf8_code_units;
+		}
 	}
 
-	ins_remaining = 0; /* No way of getting this info, so assume all was read. */
-	outs_tmp = &outs_tmp[res];
-	outs_remaining -= (unsigned int) res;
-#else
-	if(iconv(
-		/* iconv_t cd */
-		handle,
-		/* const char **restrict inbuf */
-		&ins_tmp,
-		/* size_t *restrict inbytesleft */
-		&ins_remaining,
-		/* char **restrict outbuf */
-		&outs_tmp,
-		/* size_t *restrict outbytesleft */
-		&outs_remaining) == (size_t) -1)
-	{
-		err = errno;
-		goto out;
-	}
-#endif
+	if(outs) {
+		const size_t length = (size_t) outs_tmp - (size_t) *outs;;
+		if(outs_len) {
+			*outs_len = length;
+		}
 
-	if(ins_remaining || (outs_capacity && !outs_remaining)) {
-		/* There should be remaining capacity for a NULL terminator
-		 * given our worst case allocation. */
-		sys_log_critical("Unexpected: Incomplete decoding with no "
-			"error (remaining input bytes: %" PRIuz " remaining "
-			"output bytes: %" PRIuz ").",
-			PRAuz(ins_remaining), PRAuz(outs_remaining));
-		err = ENXIO;
-		goto out;
+		(*outs)[length - (outs_remaining ? 0 : 1)] = '\0';
 	}
-
-	*outs_len = (size_t) outs_tmp - (size_t) *outs;
-	(*outs)[*outs_len - (outs_remaining ? 0 : 1)] = '\0';
 out:
 	if(outs_capacity && outs_tmp) {
 		if(!err && *outs_len + 1 < outs_capacity) {
@@ -174,12 +198,6 @@ out:
 			sys_free(outs_capacity * sizeof((*outs)[0]), outs);
 		}
 	}
-
-#ifndef _WIN32
-	if(handle != (iconv_t) -1) {
-		iconv_close(handle);
-	}
-#endif
 
 	return err;
 }
