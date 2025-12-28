@@ -1029,6 +1029,91 @@ static int fsapi_lookup_by_posix_path_compare(
 	return res;
 }
 
+typedef struct {
+	sys_bool found;
+	sys_bool is_short_entry;
+	u64 node_number;
+	u16 *entry_offset;
+	u8 **key;
+	size_t *key_size;
+	u8 **record;
+	size_t *record_size;
+} refs_fsapi_lookup_context;
+
+static int refs_fsapi_lookup_visit_root_entry(
+		void *const _context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	refs_fsapi_lookup_context *const context =
+		(refs_fsapi_lookup_context*) _context;
+
+	int err = 0;
+
+	sys_log_debug("Visiting root entry with offset %" PRIu16 " in node "
+		"0x%" PRIX64 "...",
+		PRAu16(child_entry_offset), PRAX64(parent_node_object_id));
+
+	(void) file_flags;
+	(void) parent_node_object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+
+	context->found = SYS_TRUE;
+	context->is_short_entry = SYS_FALSE;
+
+	context->node_number = node_number;
+	if(context->entry_offset) {
+		*context->entry_offset = child_entry_offset;
+	}
+
+	if(context->key) {
+		err = sys_malloc(key_size, context->key);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->key, key, key_size);
+	}
+
+	if(context->key_size) {
+		*context->key_size = key_size;
+	}
+
+	if(context->record) {
+		err = sys_malloc(record_size, context->record);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->record, record, record_size);
+	}
+
+	if(context->record_size) {
+		*context->record_size = record_size;
+	}
+
+	err = -1;
+out:
+	return err;
+}
+
 static int fsapi_lookup_by_posix_path(
 		fsapi_volume *vol,
 		fsapi_node *root_node,
@@ -1618,6 +1703,98 @@ static int fsapi_lookup_by_posix_path(
 		cache_locked = SYS_TRUE;
 	}
 
+	if(cached_node->is_short_entry && cached_node->directory_object_id) {
+		/* Attempt to resolve the corresponding long value, the first
+		 * entry in its tree. */
+		refs_fsapi_lookup_context context;
+		u16 long_value_entry_offset = 0;
+		u8 *long_value_key = NULL;
+		size_t long_value_key_size = 0;
+		u8 *long_value_record = NULL;
+		size_t long_value_record_size = 0;
+		refs_node_walk_visitor visitor;
+
+		sys_log_info("Resolving long entry of directory on lookup.");
+
+		memset(&context, 0, sizeof(context));
+		memset(&visitor, 0, sizeof(visitor));
+
+		context.entry_offset = &long_value_entry_offset ;
+		context.key = &long_value_key;
+		context.key_size = &long_value_key_size;
+		context.record = &long_value_record;
+		context.record_size = &long_value_record_size;
+
+		visitor.context = &context;
+		visitor.node_root_entry = refs_fsapi_lookup_visit_root_entry;
+
+		err = refs_node_walk(
+			/* sys_device *dev */
+			vol->vol->dev,
+			/* const REFS_BOOT_SECTOR *bs */
+			vol->vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&vol->vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&vol->vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&vol->vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&vol->vol->block_map,
+			/* refs_node_cache **node_cache */
+			&vol->vol->node_cache,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&cached_node->directory_object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+		if(err == -1) {
+			err = 0;
+		}
+		else if(err) {
+			goto out;
+		}
+
+		if(context.found) {
+			sys_log_info("Successfully resolved short entry to "
+				"%s entry at offset %" PRIu16 " in node "
+				"0x%" PRIX64,
+				context.is_short_entry ? "short" : "long",
+				PRAu16(long_value_entry_offset),
+				PRAu64(context.node_number));
+
+			if(cached_node->key) {
+				sys_free(cached_node->key_size,
+					&cached_node->key);
+			}
+
+			if(cached_node->record) {
+				sys_free(cached_node->record_size,
+					&cached_node->record);
+			}
+
+			cached_node->is_short_entry = context.is_short_entry;
+			cached_node->node_number = context.node_number;
+			cached_node->entry_offset = long_value_entry_offset;
+			cached_node->key = long_value_key;
+			cached_node->key_size = long_value_key_size;
+			cached_node->record = long_value_record;
+			cached_node->record_size = long_value_record_size;
+		}
+		else {
+			if(long_value_key) {
+				sys_free(long_value_key_size,
+					&long_value_key);
+			}
+
+			if(long_value_record) {
+				sys_free(long_value_record_size,
+					&long_value_record);
+			}
+		}
+	}
+
 	if(out_node) {
 		if(cached_node->next) {
 			/* The node came from the node cache and needs to be
@@ -1835,7 +2012,7 @@ typedef struct {
 } fsapi_node_get_attributes_context;
 
 static int fsapi_node_get_attributes_visit_root_entry(
-		void *const context,
+		void *const _context,
 		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 node_number,
@@ -1851,6 +2028,9 @@ static int fsapi_node_get_attributes_visit_root_entry(
 		const u8 *const record,
 		const size_t record_size)
 {
+	fsapi_node_get_attributes_context *const context =
+		(fsapi_node_get_attributes_context*) _context;
+
 	(void) key;
 	(void) key_size;
 	(void) record;
@@ -1858,7 +2038,7 @@ static int fsapi_node_get_attributes_visit_root_entry(
 
 	return fsapi_fill_attributes(
 		/* fsapi_node_attributes *attrs */
-		((fsapi_node_get_attributes_context*) context)->attrs,
+		context->attrs,
 		/* sys_bool is_directory */
 		SYS_TRUE,
 		/* u16 child_entry_offset */
@@ -2208,6 +2388,9 @@ static int fsapi_node_get_attributes_common(
 				0,
 				/* u64 allocated_size */
 				0);
+			if(err) {
+				goto out;
+			}
 		}
 		else if(node->is_short_entry) {
 			visitor.node_short_entry =
@@ -2239,6 +2422,9 @@ static int fsapi_node_get_attributes_common(
 				node->record_size,
 				/* void *context */
 				NULL);
+			if(err) {
+				goto out;
+			}
 		}
 		else {
 			visitor.node_root_entry =
@@ -2277,6 +2463,9 @@ static int fsapi_node_get_attributes_common(
 				node->record_size,
 				/* void *context */
 				NULL);
+			if(err) {
+				goto out;
+			}
 		}
 	}
 
