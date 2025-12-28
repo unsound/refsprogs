@@ -1804,7 +1804,13 @@ static int parse_block_header(
 
 	if(block_number != read_le64(&header[0x0])) {
 		sys_log_warning("Ignoring block with mismatching block "
-			"number.");
+			"number at cluster %" PRIu64 " / 0x%" PRIX64 " "
+			"(expected block number: %" PRIu64 " / 0x%" PRIX64 ", "
+			"actual block number: %" PRIu64 " / 0x%" PRIX64 ")...",
+			PRAu64(cluster_number), PRAX64(cluster_number),
+			PRAu64(block_number), PRAX64(block_number),
+			PRAu64(read_le64(&header[0x0])),
+			PRAX64(read_le64(&header[0x0])));
 		if(out_is_valid) {
 			*out_is_valid = SYS_FALSE;
 		}
@@ -3453,7 +3459,7 @@ static int parse_generic_block(
 	}
 
 	/* We now consider 0x100 to be the flag indicating whether a node is an
-	 * index node. TOOD: Check this with all available images. */
+	 * index node. TODO: Check this with all available images. */
 	if(flags & 0x100) {
 		is_index_node = SYS_TRUE;
 	}
@@ -4692,38 +4698,31 @@ static int parse_level2_0x21_leaf_value(
 
 	emit(prefix, indent - 1, "%s (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
 		(key == value && key_size == value_size) ? "Key/value" :
-		"Value", "unknown", PRAu16(value_offset), PRAX16(value_offset));
+		"Value", "bitmap", PRAu16(value_offset), PRAX16(value_offset));
 
 	if(value_size >= 0x8) {
-		i += print_le64_dechex("Block number 1", prefix, indent, value,
+		i += print_le64_dechex("Stars block", prefix, indent, value,
 			&value[0x0]);
 	}
 	if(value_size >= 0x10) {
-		i += print_le64_dechex("Block number 2", prefix, indent, value,
+		i += print_le64_dechex("Block count", prefix, indent, value,
 			&value[0x8]);
 	}
+	if(value_size >= 0x12) {
+		i += print_unknown16(prefix, indent, value, &value[0x10]);
+	}
+	if(value_size >= 0x14) {
+		i += print_unknown16(prefix, indent, value, &value[0x12]);
+	}
 	if(value_size >= 0x18) {
-		i += print_le64_dechex("Block number 3", prefix, indent, value,
-			&value[0x10]);
-	}
-	if(value_size >= 0x20) {
-		i += print_le64_dechex("Block number 4", prefix, indent, value,
-			&value[0x18]);
-	}
-	if(value_size >= 0x24) {
-		i += print_unknown32(prefix, indent, value, &value[0x20]);
-	}
-	if(value_size >= 0x28) {
-		i += print_unknown32(prefix, indent, value, &value[0x24]);
-	}
-	if(value_size >= 0x30) {
-		i += print_le64_hex("Checksum", prefix, indent, value,
-			&value[0x28]);
+		i += print_unknown32(prefix, indent, value, &value[0x14]);
 	}
 
 	if(i < value_size) {
-		print_data_with_base(prefix, indent, i, entry_size, &value[i],
-			value_size - i);
+		emit(prefix, indent, "Bitmap data @ %" PRIu64 " / "
+			"0x%" PRIX64 ":", PRAu64(i), PRAX64(i));
+		print_data_with_base(prefix, indent + 1, 0, entry_size,
+			&value[i], value_size - i);
 	}
 
 	return 0;
@@ -5549,7 +5548,7 @@ static int parse_level3_filename_key(
 	}
 
 	print_data(prefix, indent + 1, &key[4], key_size - 4);
-out:
+
 	if(cstr) {
 		sys_free(cstr_length + 1, &cstr);
 	}
@@ -5992,7 +5991,7 @@ static int parse_attribute_named_stream_key(
 	if(out_cstr_length) {
 		*out_cstr_length = cstr_length;
 	}
-out:
+
 	if(cstr) {
 		sys_free(cstr_length + 1, &cstr);
 	}
@@ -10690,7 +10689,6 @@ int refs_node_scan(
 	size_t padding_size = 0;
 	u8 *padding = NULL;
 	u32 buffer_size = 0;
-	ssize_t buffer_valid_size = 0;
 	u64 buffer_valid_end = 0;
 	u8 *buffer = NULL;
 	u8 *block = NULL;
@@ -10728,6 +10726,8 @@ int refs_node_scan(
 		goto out;
 	}
 
+	sys_log_debug("Reading padding...");
+
 	err = sys_device_pread(
 		/* sys_device *dev */
 		dev,
@@ -10757,6 +10757,9 @@ int refs_node_scan(
 			PRAu32(buffer_size));
 		goto out;
 	}
+
+	sys_log_debug("Reading blocks from %" PRIu64 "-byte device...",
+		PRAu64(device_size));
 
 	for(i = 30 * block_index_unit; i < device_size;
 		i += sys_min(cluster_size, block_size))
@@ -10794,10 +10797,14 @@ int refs_node_scan(
 			}
 
 			buffer_valid_end =
-				buffer_read_offset + (u64) buffer_valid_size;
+				buffer_read_offset + (u64) buffer_size;
 		}
 
 		if(i + sector_size > buffer_valid_end) {
+			sys_log_debug("Done because %" PRIu64 " + %" PRIu32 " "
+				"> %" PRIu64 ".",
+				PRAu64(i), PRAu32(sector_size),
+				PRAu64(buffer_valid_end));
 			break;
 		}
 
