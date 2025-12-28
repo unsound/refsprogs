@@ -3433,18 +3433,9 @@ static int parse_generic_block(
 		}
 	}
 
-	/* The 0x301 value seems to be a sure marker that this is an index node.
-	 * There are however other values that also seem to indicate an index
-	 * node, but not reliably so.
-	 * Well actually this may be a misinterpretation. Some values in nodes
-	 * with flags 0x0 have block references with an Object ID key, but I
-	 * think those are in fact subdirectory references.
-	 * In fact the 0x2 tree seems to be the tree mapping object IDs to
-	 * root nodes of directories (?). Then the directory trees can also have
-	 * index nodes but the leaf nodes have mixed values... e.g. the first
-	 * entry seems to be an $I30 index in each directory, then there are
-	 * file/directory entries, etc. */
-	if(flags == 0x301 || flags == 0x302 || flags == 0x101) {
+	/* We now consider 0x100 to be the flag indicating whether a node is an
+	 * index node. TOOD: Check this with all available images. */
+	if(flags & 0x100) {
 		is_index_node = SYS_TRUE;
 	}
 
