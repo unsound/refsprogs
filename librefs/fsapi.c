@@ -1714,7 +1714,7 @@ static int fsapi_lookup_by_posix_path(
 		size_t long_value_record_size = 0;
 		refs_node_walk_visitor visitor;
 
-		sys_log_info("Resolving long entry of directory on lookup.");
+		sys_log_debug("Resolving long entry of directory on lookup.");
 
 		memset(&context, 0, sizeof(context));
 		memset(&visitor, 0, sizeof(visitor));
@@ -1757,7 +1757,7 @@ static int fsapi_lookup_by_posix_path(
 		}
 
 		if(context.found) {
-			sys_log_info("Successfully resolved short entry to "
+			sys_log_debug("Successfully resolved short entry to "
 				"%s entry at offset %" PRIu16 " in node "
 				"0x%" PRIX64,
 				context.is_short_entry ? "short" : "long",
