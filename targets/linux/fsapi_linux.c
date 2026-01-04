@@ -2533,6 +2533,7 @@ out:
 static int fsapi_linux_setattr_common(
 		fsapi_volume *const vol,
 		fsapi_node *const node,
+		struct inode *const inode,
 		struct iattr *const attr)
 {
 	int ret = 0;
@@ -2587,6 +2588,8 @@ static int fsapi_linux_setattr_common(
 			attr->/* (struct timespec64) */ ia_ctime.tv_nsec;
 	}
 
+	attrs.requested = attrs.valid;
+
 	err = fsapi_node_set_attributes(
 		/* fsapi_volume *vol */
 		vol,
@@ -2598,6 +2601,14 @@ static int fsapi_linux_setattr_common(
 		ret = -err;
 		goto out;
 	}
+
+	/* Update the inode fields with the values that were written to the
+	 * filesystem entry. */
+	fsapi_linux_attributes_to_inode(
+		/* const fsapi_node_attributes *attributes */
+		&attrs,
+		/* struct inode *ino */
+		inode);
 out:
 	return ret;
 }
@@ -2775,7 +2786,7 @@ static ssize_t fsapi_linux_listxattr_common(
 	memset(&context, 0, sizeof(context));
 
 	if(!vol) {
-		ret = -ENOSYS;
+		ret = -EIO;
 		goto out;
 	}
 
@@ -3710,6 +3721,8 @@ static int fsapi_linux_file_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
@@ -4065,7 +4078,7 @@ static int fsapi_linux_dir_op_iterate(
 	memset(&context, 0, sizeof(context));
 
 	if(!vol) {
-		ret = -ENOSYS;
+		ret = -EIO;
 		goto out;
 	}
 
@@ -4085,7 +4098,7 @@ static int fsapi_linux_dir_op_iterate(
 			/* int namelen */
 			1,
 			/* u64 ino */
-			filp->f_inode->i_ino,
+			(filp->f_inode->i_ino < 2) ? 2 : filp->f_inode->i_ino,
 			/* unsigned type */
 			DT_DIR);
 		if(abort) {
@@ -4115,7 +4128,7 @@ static int fsapi_linux_dir_op_iterate(
 			/* int namelen */
 			2,
 			/* u64 ino */
-			parent_inode_number,
+			(parent_inode_number < 2) ? 2 : parent_inode_number,
 			/* unsigned type */
 			DT_DIR);
 		if(abort) {
@@ -5331,6 +5344,8 @@ static int fsapi_linux_dir_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
@@ -5576,11 +5591,11 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 {
 	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
 		/* struct super_block *sb */
-		dentry->d_inode->i_sb);
+		inode->i_sb);
 
 	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
 		/* struct inode *inode */
-		dentry->d_inode);
+		inode);
 
 	int ret = 0;
 	int err = 0;
@@ -5611,7 +5626,7 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 	}
 	else if(!(attributes.valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
 	{
-		ret = -ENOSYS;
+		ret = -EINVAL;
 		goto out;
 	}
 	else if(!attributes.symlink_target) {
@@ -5659,6 +5674,8 @@ static int fsapi_linux_symlink_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
@@ -5857,6 +5874,8 @@ static int fsapi_linux_special_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
