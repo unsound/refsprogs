@@ -5576,11 +5576,11 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 {
 	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
 		/* struct super_block *sb */
-		dentry->d_inode->i_sb);
+		inode->i_sb);
 
 	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
 		/* struct inode *inode */
-		dentry->d_inode);
+		inode);
 
 	int ret = 0;
 	int err = 0;
