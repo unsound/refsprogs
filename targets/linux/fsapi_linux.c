@@ -4085,7 +4085,7 @@ static int fsapi_linux_dir_op_iterate(
 			/* int namelen */
 			1,
 			/* u64 ino */
-			filp->f_inode->i_ino,
+			(filp->f_inode->i_ino < 2) ? 2 : filp->f_inode->i_ino,
 			/* unsigned type */
 			DT_DIR);
 		if(abort) {
@@ -4115,7 +4115,7 @@ static int fsapi_linux_dir_op_iterate(
 			/* int namelen */
 			2,
 			/* u64 ino */
-			parent_inode_number,
+			(parent_inode_number < 2) ? 2 : parent_inode_number,
 			/* unsigned type */
 			DT_DIR);
 		if(abort) {
