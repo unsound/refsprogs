@@ -2775,7 +2775,7 @@ static ssize_t fsapi_linux_listxattr_common(
 	memset(&context, 0, sizeof(context));
 
 	if(!vol) {
-		ret = -ENOSYS;
+		ret = -EIO;
 		goto out;
 	}
 
@@ -4065,7 +4065,7 @@ static int fsapi_linux_dir_op_iterate(
 	memset(&context, 0, sizeof(context));
 
 	if(!vol) {
-		ret = -ENOSYS;
+		ret = -EIO;
 		goto out;
 	}
 
@@ -5611,7 +5611,7 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 	}
 	else if(!(attributes.valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
 	{
-		ret = -ENOSYS;
+		ret = -EINVAL;
 		goto out;
 	}
 	else if(!attributes.symlink_target) {
