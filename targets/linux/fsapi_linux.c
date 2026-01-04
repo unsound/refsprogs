@@ -2533,6 +2533,7 @@ out:
 static int fsapi_linux_setattr_common(
 		fsapi_volume *const vol,
 		fsapi_node *const node,
+		struct inode *const inode,
 		struct iattr *const attr)
 {
 	int ret = 0;
@@ -2587,6 +2588,8 @@ static int fsapi_linux_setattr_common(
 			attr->/* (struct timespec64) */ ia_ctime.tv_nsec;
 	}
 
+	attrs.requested = attrs.valid;
+
 	err = fsapi_node_set_attributes(
 		/* fsapi_volume *vol */
 		vol,
@@ -2598,6 +2601,14 @@ static int fsapi_linux_setattr_common(
 		ret = -err;
 		goto out;
 	}
+
+	/* Update the inode fields with the values that were written to the
+	 * filesystem entry. */
+	fsapi_linux_attributes_to_inode(
+		/* const fsapi_node_attributes *attributes */
+		&attrs,
+		/* struct inode *ino */
+		inode);
 out:
 	return ret;
 }
@@ -3710,6 +3721,8 @@ static int fsapi_linux_file_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
@@ -5331,6 +5344,8 @@ static int fsapi_linux_dir_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
@@ -5659,6 +5674,8 @@ static int fsapi_linux_symlink_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
@@ -5857,6 +5874,8 @@ static int fsapi_linux_special_inode_op_setattr(
 		vol,
 		/* fsapi_node *node */
 		node,
+		/* struct inode *inode */
+		entry->d_inode,
 		/* struct iattr *attr */
 		attr);
 
