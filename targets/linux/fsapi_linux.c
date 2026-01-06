@@ -4329,8 +4329,12 @@ static int fsapi_linux_dir_op_fsync(
 	(void) vol;
 	(void) node;
 
-	fsapi_linux_op_log_enter("filp=%p, start=%" PRId64 ", end=%" PRId64 ", "
-		"datasync=%d",
+	fsapi_linux_op_log_enter("filp=%p, start=%" PRId64 ", "
+		"end=%" PRId64 ", datasync=%d",
+		filp, PRAd64(start), PRAd64(end), datasync);
+
+	fsapi_linux_op_log_leave(-EIO, "filp=%p, start=%" PRId64 ", "
+		"end=%" PRId64 ", datasync=%d",
 		filp, PRAd64(start), PRAd64(end), datasync);
 
 	return -EIO;
@@ -5060,10 +5064,10 @@ static int fsapi_linux_dir_inode_op_rmdir(
 		ret = -err;
 		goto out;
 	}
-
+out:
 	fsapi_linux_op_log_leave(ret, "parent_inode=%p, dent=%p",
 		parent_inode, dent);
-out:
+
 	return ret;
 }
 
