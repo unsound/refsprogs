@@ -229,12 +229,29 @@
 #define SSIZE_MAX LONG_MAX
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)) */
 
+/* Enabling the following block of defines causes a monotonically increasing
+ * operation number to be included in enter/leave messages which can be helpful
+ * when debugging to match enter/leave messages in a huge volume of output. */
+#if 0
+static atomic_t opnum = ATOMIC_INIT(1);
+#define OPNUM_DECL const int opnr = atomic_fetch_add(1, &opnum)
+#define OPNUM_PREFIX "<op %d> "
+#define OPNUM_ARGUMENT , opnr
+#else
+#define OPNUM_DECL do {} while(0)
+#define OPNUM_PREFIX ""
+#define OPNUM_ARGUMENT
+#endif
+
 #define fsapi_linux_op_log_enter(fmt, ...) \
-	sys_log_trace("Entering %s(" fmt ")...", __FUNCTION__, ##__VA_ARGS__)
+	OPNUM_DECL; \
+	sys_log_trace("Entering %s(" OPNUM_PREFIX fmt ")...", \
+		__FUNCTION__ OPNUM_ARGUMENT, ##__VA_ARGS__)
 
 #define fsapi_linux_op_log_leave(ret, fmt, ...) \
-	sys_log_trace("Leaving %s(" fmt "): %s%s%" PRId64 "%s", __FUNCTION__, \
-		##__VA_ARGS__, (ret) < 0 ? sys_strerror(-(ret)) : "", \
+	sys_log_trace("Leaving %s(" OPNUM_PREFIX fmt "): %s%s%" PRId64 "%s", \
+		__FUNCTION__ OPNUM_ARGUMENT, ##__VA_ARGS__, \
+		(ret) < 0 ? sys_strerror(-(ret)) : "", \
 		(ret) < 0 ? " (" : "", PRAd64(ret), (ret) < 0 ? ")" : "")
 
 typedef struct {
@@ -3487,11 +3504,11 @@ static long fsapi_linux_file_op_unlocked_ioctl(
 		/* struct inode *inode */
 		file->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("file=%p, cmd=0x%X, arg=0x%lX",
 		file, cmd, arg);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "file=%p, cmd=0x%X, arg=0x%lX",
 		file, cmd, arg);
@@ -3513,11 +3530,11 @@ static long fsapi_linux_file_op_compat_ioctl(
 		/* struct inode *inode */
 		file->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("file=%p, cmd=0x%X, arg=0x%lX",
 		file, cmd, arg);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "file=%p, cmd=0x%X, arg=0x%lX",
 		file, cmd, arg);
@@ -3538,11 +3555,11 @@ static int fsapi_linux_file_op_mmap(
 		/* struct inode *inode */
 		file->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("file=%p, vma=%p",
 		file, vma);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "file=%p, vma=%p",
 		file, vma);
@@ -3562,11 +3579,11 @@ static int fsapi_linux_file_op_open(
 		/* struct inode *inode */
 		inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("inode=%p, filp=%p",
 		inode, filp);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(0, "inode=%p, filp=%p",
 		inode, filp);
@@ -3586,11 +3603,11 @@ static int fsapi_linux_file_op_release(
 		/* struct inode *inode */
 		inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("inode=%p, filp=%p",
 		inode, filp);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(0, "inode=%p, filp=%p",
 		inode, filp);
@@ -3612,12 +3629,12 @@ static int fsapi_linux_file_op_fsync(
 		/* struct inode *inode */
 		filp->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
 		filp, PRAd64(start), PRAd64(end), datasync);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
@@ -3642,12 +3659,12 @@ static ssize_t fsapi_linux_file_op_splice_write(
 		/* struct inode *inode */
 		out->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("pipe=%p, out=%p, ppos=%p "
 		"(->%" PRId64 "), len=%" PRIuz ", flags=0x%X",
 		pipe, out, ppos, PRAd64(ppos ? *ppos : 0), PRAuz(len), flags);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "pipe=%p, out=%p, ppos=%p "
 		"(->%" PRId64 "), len=%" PRIuz ", flags=0x%X",
@@ -3671,12 +3688,12 @@ static ssize_t fsapi_linux_file_op_splice_read(
 		/* struct inode *inode */
 		in->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("in=%p, ppos=%p (->%" PRId64 "),"
 		" pipe=%p, len=%" PRIuz ", flags=0x%X",
 		in, ppos, PRAd64(ppos ? *ppos : 0), pipe, PRAuz(len), flags);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "in=%p, ppos=%p (->%" PRId64 "), "
 		"pipe=%p, len=%" PRIuz ", flags=0x%X",
@@ -3700,12 +3717,12 @@ static long fsapi_linux_file_op_fallocate(
 		/* struct inode *inode */
 		file->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("file=%p, mode=0x%X, offset=%" PRId64 ", "
 		"len=%" PRId64,
 		file, mode, PRAd64(offset), PRAd64(len));
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "file=%p, mode=0x%X, offset=%" PRId64 ", "
 		"len=%" PRId64,
@@ -3862,12 +3879,12 @@ static int fsapi_linux_file_inode_op_fiemap(
 		/* struct inode *inode */
 		inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("inode=%p, fieinfo=%p, start=%" PRIu64 ", "
 		"len=%" PRIu64,
 		inode, fieinfo, PRAu64(start), PRAu64(len));
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "inode=%p, fieinfo=%p, "
 		"start=%" PRIu64 ", len=%" PRIu64,
@@ -3938,11 +3955,11 @@ static int fsapi_linux_file_inode_op_fileattr_set(
 		/* struct inode *inode */
 		dentry->d_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("mnt_userns=%p, dentry=%p, fa=%p",
 		mnt_userns, dentry, fa);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "mnt_userns=%p, dentry=%p, fa=%p",
 		mnt_userns, dentry, fa);
@@ -4321,11 +4338,11 @@ static int fsapi_linux_dir_op_release(
 		/* struct inode *inode */
 		inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("inode=%p, filp=%p",
 		inode, filp);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(0, "inode=%p, filp=%p",
 		inode, filp);
@@ -4347,12 +4364,12 @@ static int fsapi_linux_dir_op_fsync(
 		/* struct inode *inode */
 		filp->f_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
 		filp, PRAd64(start), PRAd64(end), datasync);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
@@ -5487,12 +5504,12 @@ static int fsapi_linux_dir_inode_op_fiemap(
 		/* struct inode *inode */
 		inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("inode=%p, fieinfo=%p, "
 		"start=%" PRIu64 ", len=%" PRIu64,
 		inode, fieinfo, PRAu64(start), PRAu64(len));
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "inode=%p, fieinfo=%p, "
 		"start=%" PRIu64 ", len=%" PRIu64,
@@ -5563,11 +5580,11 @@ static int fsapi_linux_dir_inode_op_fileattr_set(
 		/* struct inode *inode */
 		dentry->d_inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("mnt_userns=%p, dentry=%p, fa=%p",
 		mnt_userns, dentry, fa);
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "mnt_userns=%p, dentry=%p, fa=%p",
 		mnt_userns, dentry, fa);
@@ -5817,12 +5834,12 @@ static int fsapi_linux_symlink_inode_op_fiemap(
 		/* struct inode *inode */
 		inode);
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("inode=%p, fieinfo=%p, "
 		"start=%" PRIu64 ", len=%" PRIu64,
 		inode, fieinfo, PRAu64(start), PRAu64(len));
+
+	(void) vol;
+	(void) node;
 
 	fsapi_linux_op_log_leave(-EIO, "inode=%p, fieinfo=%p, "
 		"start=%" PRIu64 ", len=%" PRIu64,
@@ -6057,11 +6074,11 @@ static int fsapi_linux_address_space_op_read_folio(struct file *file,
 
 	int ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("file=%p, folio=%p",
 		file, folio);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
@@ -6084,11 +6101,11 @@ static int fsapi_linux_address_space_op_readpage(struct file *file,
 
 	int ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("file=%p, page=%p",
 		file, page);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
@@ -6114,11 +6131,11 @@ static int fsapi_linux_address_space_op_writepages(
 
 	int ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("mapping=%p, wbc=%p",
 		mapping, wbc);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
@@ -6144,11 +6161,11 @@ static bool fsapi_linux_address_space_op_dirty_folio(
 
 	int ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("mapping=%p, folio=%p",
 		mapping, folio);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
@@ -6164,6 +6181,8 @@ static int fsapi_linux_address_space_op_set_page_dirty(
 	int ret = 0;
 
 	fsapi_linux_op_log_enter("page=%p", page);
+
+	(void) page;
 
 	ret = -EIO;
 
@@ -6186,10 +6205,10 @@ static void fsapi_linux_address_space_op_readahead(struct readahead_control *rac
 
 	int ret = 0;
 
+	fsapi_linux_op_log_enter("rac=%p", rac);
+
 	(void) vol;
 	(void) node;
-
-	fsapi_linux_op_log_enter("rac=%p", rac);
 
 	fsapi_linux_op_log_leave(ret, "rac=%p", rac);
 
@@ -6210,12 +6229,12 @@ static int fsapi_linux_address_space_op_readpages(struct file *file,
 
 	int ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("file=%p, mapping=%p, pages=%p, "
 		"nr_pages=%u",
 		file, mapping, pages, nr_pages);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
@@ -6256,9 +6275,6 @@ static int fsapi_linux_address_space_op_write_begin(
 
 	int ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter(
 		FSAPI_IF_LINUX_6_17("iocb=%p, ")
 		FSAPI_NOT_LINUX_6_17("file=%p, ")
@@ -6278,6 +6294,9 @@ static int fsapi_linux_address_space_op_write_begin(
 		FSAPI_IF_LINUX_6_12(foliop,)
 		FSAPI_NOT_LINUX_6_12(pagep,)
 		fsdata);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
@@ -6331,9 +6350,6 @@ static int fsapi_linux_address_space_op_write_end(
 
 	int ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter(
 		FSAPI_IF_LINUX_6_17("iocb=%p, ")
 		FSAPI_NOT_LINUX_6_17("file=%p, ")
@@ -6353,6 +6369,9 @@ static int fsapi_linux_address_space_op_write_end(
 		FSAPI_IF_LINUX_6_12(folio,)
 		FSAPI_NOT_LINUX_6_12(page,)
 		fsdata);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
@@ -6392,11 +6411,11 @@ static sector_t fsapi_linux_address_space_op_bmap(struct address_space *mapping,
 
 	size_t ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("mapping=%p, sector=%" PRIu64,
 		mapping, PRAu64(sector));
+
+	(void) vol;
+	(void) node;
 
 	/* 0 means error or cannot map, etc. */
 
@@ -6419,11 +6438,11 @@ static ssize_t fsapi_linux_address_space_op_direct_IO(struct kiocb *iocb,
 
 	ssize_t ret = 0;
 
-	(void) vol;
-	(void) node;
-
 	fsapi_linux_op_log_enter("iocb=%p, iter=%p",
 		iocb, iter);
+
+	(void) vol;
+	(void) node;
 
 	ret = -EIO;
 
