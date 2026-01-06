@@ -4238,6 +4238,11 @@ static int fsapi_linux_dir_op_iterate(
 		/* Break code when the buffer is full, not an error. */
 		err = 0;
 	}
+	else if(err == ENOENT) {
+		/* This is expected if the directory has been removed. */
+		sys_log_debug("Attempted to list removed directory.");
+		ret = -ENOENT;
+	}
 	else if(err) {
 		sys_log_perror(err, "handle_dirent callback returned error for "
 			"offset %" PRIu64, PRAu64(offset));
