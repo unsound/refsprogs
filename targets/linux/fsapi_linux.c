@@ -28,6 +28,7 @@
 
 #include <linux/blkdev.h>
 #include <linux/buffer_head.h>
+#include <linux/falloc.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0))
 #include <linux/fileattr.h>
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)) */
@@ -2788,6 +2789,49 @@ out:
 	return ret;
 }
 
+static int fsapi_linux_fsync_common(
+		struct file *const filp,
+		const loff_t start,
+		const loff_t end,
+		const int datasync)
+{
+	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
+		/* struct super_block *sb */
+		filp->f_inode->i_sb);
+
+	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
+		/* struct inode *inode */
+		filp->f_inode);
+
+	int ret = 0;
+	int err = 0;
+
+	if(start < 0 || end < start) {
+		ret = -EINVAL;
+		goto out;
+	}
+	else if(!vol) {
+		goto out;
+	}
+
+	err = fsapi_node_sync(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* u64 start */
+		(u64) start,
+		/* u64 length */
+		(u64) (end - start),
+		/* sys_bool data_only */
+		datasync ? SYS_TRUE : SYS_FALSE);
+	if(err) {
+		ret = -err;
+	}
+out:
+	return ret;
+}
+
 typedef struct {
 	/** The target buffer of the xattr listing. */
 	char *buf;
@@ -3660,26 +3704,27 @@ static int fsapi_linux_file_op_fsync(
 		loff_t end,
 		int datasync)
 {
-	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
-		/* struct super_block *sb */
-		filp->f_inode->i_sb);
-
-	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
-		/* struct inode *inode */
-		filp->f_inode);
+	int ret = 0;
 
 	fsapi_linux_op_log_enter("filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
 		filp, PRAd64(start), PRAd64(end), datasync);
 
-	(void) vol;
-	(void) node;
+	ret = fsapi_linux_fsync_common(
+		/* struct file *filp */
+		filp,
+		/* loff_t start */
+		start,
+		/* loff_t end */
+		end,
+		/* int datasync */
+		datasync);
 
-	fsapi_linux_op_log_leave(-EIO, "filp=%p, start=%" PRId64 ", "
+	fsapi_linux_op_log_leave(ret, "filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
 		filp, PRAd64(start), PRAd64(end), datasync);
 
-	return -EIO;
+	return ret;
 }
 
 #if 0
@@ -3756,6 +3801,11 @@ static long fsapi_linux_file_op_fallocate(
 		/* struct inode *inode */
 		file->f_inode);
 
+	int ret = 0;
+	int err = 0;
+	int supported_modes = 0;
+	fsapi_node_fallocate_flags flags = 0;
+
 	fsapi_linux_op_log_enter(
 		"file=%p, "
 		"mode=0x%X, "
@@ -3766,10 +3816,91 @@ static long fsapi_linux_file_op_fallocate(
 		PRAd64(offset),
 		PRAd64(len));
 
-	(void) vol;
-	(void) node;
+#if defined(FALLOC_FL_KEEP_SIZE)
+	if(mode & FALLOC_FL_KEEP_SIZE) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_KEEP_SIZE;
+	}
 
-	fsapi_linux_op_log_leave(-EIO,
+	supported_modes |= FALLOC_FL_KEEP_SIZE;
+#endif /* defined(FALLOC_FL_KEEP_SIZE) */
+
+#if defined(FALLOC_FL_PUNCH_HOLE)
+	if(mode & FALLOC_FL_PUNCH_HOLE) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_PUNCH_HOLE;
+	}
+
+	supported_modes |= FALLOC_FL_PUNCH_HOLE;
+#endif /* defined(FALLOC_FL_PUNCH_HOLE) */
+
+#if defined(FALLOC_FL_NO_HIDE_STALE)
+	if(mode & FALLOC_FL_NO_HIDE_STALE) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_NO_HIDE_STALE;
+	}
+
+	supported_modes |= FALLOC_FL_NO_HIDE_STALE;
+#endif /* defined(FALLOC_FL_NO_HIDE_STALE) */
+
+#if defined(FALLOC_FL_COLLAPSE_RANGE)
+	if(mode & FALLOC_FL_COLLAPSE_RANGE) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_COLLAPSE_RANGE;
+	}
+
+	supported_modes |= FALLOC_FL_COLLAPSE_RANGE;
+#endif /* defined(FALLOC_FL_COLLAPSE_RANGE) */
+
+#if defined(FALLOC_FL_ZERO_RANGE)
+	if(mode & FALLOC_FL_ZERO_RANGE) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_ZERO_RANGE;
+	}
+
+	supported_modes |= FALLOC_FL_ZERO_RANGE;
+#endif /* defined(FALLOC_FL_ZERO_RANGE) */
+
+#if defined(FALLOC_FL_INSERT_RANGE)
+	if(mode & FALLOC_FL_INSERT_RANGE) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_INSERT_RANGE;
+	}
+
+	supported_modes |= FALLOC_FL_INSERT_RANGE;
+#endif /* defined(FALLOC_FL_INSERT_RANGE) */
+
+#if defined(FALLOC_FL_UNSHARE_RANGE)
+	if(mode & FALLOC_FL_UNSHARE_RANGE) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_UNSHARE_RANGE;
+	}
+
+	supported_modes |= FALLOC_FL_UNSHARE_RANGE;
+#endif /* defined(FALLOC_FL_UNSHARE_RANGE) */
+
+#if defined(FALLOC_FL_WRITE_ZEROES)
+	if(mode & FALLOC_FL_WRITE_ZEROES) {
+		flags |= FSAPI_NODE_FALLOCATE_FLAG_WRITE_ZEROES;
+	}
+
+	supported_modes |= FALLOC_FL_WRITE_ZEROES;
+#endif /* defined(FALLOC_FL_WRITE_ZEROES) */
+
+	if(mode & ~supported_modes) {
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
+	err = fsapi_node_fallocate(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* fsapi_node_fallocate_flags flags */
+		flags,
+		/* u64 offset */
+		offset,
+		/* u64 length */
+		len);
+	if(err) {
+		ret = -err;
+	}
+out:
+	fsapi_linux_op_log_leave(ret,
 		"file=%p, "
 		"mode=0x%X, "
 		"offset=%" PRId64 ", "
@@ -3779,7 +3910,7 @@ static long fsapi_linux_file_op_fallocate(
 		PRAd64(offset),
 		PRAd64(len));
 
-	return -EIO;
+	return ret;
 }
 
 static int fsapi_linux_file_inode_op_setattr(
@@ -4444,26 +4575,27 @@ static int fsapi_linux_dir_op_fsync(
 		loff_t end,
 		int datasync)
 {
-	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
-		/* struct super_block *sb */
-		filp->f_inode->i_sb);
-
-	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
-		/* struct inode *inode */
-		filp->f_inode);
+	int ret = 0;
 
 	fsapi_linux_op_log_enter("filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
 		filp, PRAd64(start), PRAd64(end), datasync);
 
-	(void) vol;
-	(void) node;
+	ret = fsapi_linux_fsync_common(
+		/* struct file *filp */
+		filp,
+		/* loff_t start */
+		start,
+		/* loff_t end */
+		end,
+		/* int datasync */
+		datasync);
 
-	fsapi_linux_op_log_leave(-EIO, "filp=%p, start=%" PRId64 ", "
+	fsapi_linux_op_log_leave(ret, "filp=%p, start=%" PRId64 ", "
 		"end=%" PRId64 ", datasync=%d",
 		filp, PRAd64(start), PRAd64(end), datasync);
 
-	return -EIO;
+	return ret;
 }
 
 static struct dentry* fsapi_linux_dir_inode_op_lookup(

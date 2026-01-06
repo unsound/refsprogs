@@ -4436,12 +4436,15 @@ int fsapi_node_write(
 int fsapi_node_sync(
 		fsapi_volume *vol,
 		fsapi_node *node,
+		u64 start,
+		u64 length,
 		sys_bool data_only)
 {
 	int err;
 
-	fsapi_log_enter("vol=%p, node=%p, data_only=%u",
-		vol, node, data_only);
+	fsapi_log_enter("vol=%p, node=%p, start=%" PRIu64 ", "
+		"length=%" PRIu64 ", data_only=%u",
+		vol, node, PRAu64(start), PRAu64(length), data_only);
 
 	(void) vol;
 	(void) node;
@@ -4451,8 +4454,9 @@ int fsapi_node_sync(
 	 * moment. */
 	err = 0;
 
-	fsapi_log_leave(err, "vol=%p, node=%p, data_only=%u",
-		vol, node, data_only);
+	fsapi_log_leave(err, "vol=%p, node=%p, start=%" PRIu64 ", "
+		"length=%" PRIu64 ", data_only=%u",
+		vol, node, PRAu64(start), PRAu64(length), data_only);
 
 	return err;
 }
@@ -4637,6 +4641,34 @@ int fsapi_node_remove(
 		name ? name : "",
 		PRAuz(name_length),
 		out_removed_node, out_removed_node ? *out_removed_node : NULL);
+
+	return err;
+}
+
+int fsapi_node_fallocate(
+		fsapi_volume *const vol,
+		fsapi_node *const node,
+		const fsapi_node_fallocate_flags flags,
+		const u64 offset,
+		const u64 length)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, flags=0x%X, offset=%" PRIu64 ", "
+		"length=%" PRIu64,
+		vol, node, flags, PRAu64(offset), PRAu64(length));
+
+	(void) vol;
+	(void) node;
+	(void) flags;
+	(void) offset;
+	(void) length;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, flags=0x%X, offset=%" PRIu64 ", "
+		"length=%" PRIu64,
+		vol, node, flags, PRAu64(offset), PRAu64(length));
 
 	return err;
 }
