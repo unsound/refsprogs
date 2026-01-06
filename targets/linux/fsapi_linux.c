@@ -2275,7 +2275,8 @@ static inline fsapi_node* fsapi_linux_inode_to_fsapi_node(
 
 static void fsapi_linux_attributes_to_inode(
 		const fsapi_node_attributes *const attributes,
-		struct inode *const ino)
+		struct inode *const ino,
+		const sys_bool fill_operations)
 {
 	dev_t rdev = 0;
 
@@ -2367,26 +2368,35 @@ static void fsapi_linux_attributes_to_inode(
 #if 0
 	ino->i_mapping->a_ops = &fsapi_linux_address_space_operations;
 #endif
-	if(S_ISREG(ino->i_mode)) {
+	if(!fill_operations);
+	else if(attributes->is_directory) {
+		sys_log_debug("Setting directory operations for inode %p with "
+			"mode 0%o...", ino, ino->i_mode);
+		ino->i_op = &fsapi_linux_dir_inode_operations;
+		ino->i_fop = &fsapi_linux_dir_operations;
+	}
+	else if(S_ISLNK(ino->i_mode)) {
+		sys_log_debug("Setting symlink operations for inode %p with "
+			"mode 0%o...", ino, ino->i_mode);
+		ino->i_op = &fsapi_linux_symlink_inode_operations;
+		ino->i_fop = &fsapi_linux_null_file_operations;
+	}
+	else if(S_ISBLK(ino->i_mode) || S_ISCHR(ino->i_mode)) {
+		sys_log_debug("Setting special operations for inode %p with "
+			"mode 0%o...", ino, ino->i_mode);
+		ino->i_blkbits = ino->i_sb->s_blocksize_bits;
+		init_special_inode(ino, ino->i_mode, rdev);
+		ino->i_op = &fsapi_linux_special_inode_operations;
+	}
+	else {
+		sys_log_debug("Setting file operations for inode %p with mode "
+			"0%o...", ino, ino->i_mode);
 		ino->i_op = &fsapi_linux_file_inode_operations;
 		ino->i_fop = &fsapi_linux_file_operations;
 #if 0
 		ino->i_mapping->a_ops =
 			&fsapi_linux_file_address_space_operations;
 #endif
-	}
-	else if(S_ISDIR(ino->i_mode)) {
-		ino->i_op = &fsapi_linux_dir_inode_operations;
-		ino->i_fop = &fsapi_linux_dir_operations;
-	}
-	else if(S_ISLNK(ino->i_mode)) {
-		ino->i_op = &fsapi_linux_symlink_inode_operations;
-		ino->i_fop = &fsapi_linux_null_file_operations;
-	}
-	else if(S_ISBLK(ino->i_mode) || S_ISCHR(ino->i_mode)) {
-		ino->i_blkbits = ino->i_sb->s_blocksize_bits;
-		init_special_inode(ino, ino->i_mode, rdev);
-		ino->i_op = &fsapi_linux_special_inode_operations;
 	}
 }
 
@@ -2585,9 +2595,23 @@ static int fsapi_linux_setattr_common(
 		goto out;
 	}
 
+	attrs.is_directory =
+		((inode->i_mode & S_IFMT) == S_IFDIR) ? SYS_TRUE : SYS_FALSE;
+
 	if(attr->ia_valid & ATTR_MODE) {
+		if((attr->ia_mode & S_IFMT) &&
+			(inode->i_mode & S_IFMT) != (attr->ia_mode & S_IFMT))
+		{
+			/* Attempted to change type of file. Let's return EINVAL
+			 * if this ever happens. */
+			ret = -EINVAL;
+			goto out;
+		}
+
 		attrs.valid |= FSAPI_NODE_ATTRIBUTE_TYPE_MODE;
-		attrs.mode = attr->/* (umode_t) */ ia_mode;
+		attrs.mode =
+			(inode->i_mode & S_IFMT) |
+			(attr->/* (umode_t) */ ia_mode & ~S_IFMT);
 	}
 	if(attr->ia_valid & ATTR_UID) {
 		attrs.valid |= FSAPI_NODE_ATTRIBUTE_TYPE_UID;
@@ -2646,7 +2670,9 @@ static int fsapi_linux_setattr_common(
 		/* const fsapi_node_attributes *attributes */
 		&attrs,
 		/* struct inode *ino */
-		inode);
+		inode,
+		/* sys_bool fill_operations */
+		SYS_FALSE);
 out:
 	return ret;
 }
@@ -4469,7 +4495,10 @@ static struct dentry* fsapi_linux_dir_inode_op_lookup(
 		/* const fsapi_node_attributes *attributes */
 		&attributes,
 		/* struct inode *ino */
-		child_ino);
+		child_ino,
+		/* sys_bool fill_operations */
+		SYS_TRUE);
+
 	ret_dent = d_splice_alias(child_ino, dent);
 out:
 	fsapi_linux_op_log_leave(ret, "target_inode=%p, dent=%p, flags=0x%X",
@@ -4596,7 +4625,9 @@ static int fsapi_linux_dir_inode_op_create(
 		/* const fsapi_node_attributes *attributes */
 		&attributes,
 		/* struct inode *ino */
-		child_ino);
+		child_ino,
+		/* sys_bool fill_operations */
+		SYS_TRUE);
 
 	inode_inc_iversion(target_inode); /* needed? */
 	d_instantiate(dent, child_ino);
@@ -4884,7 +4915,9 @@ static int fsapi_linux_dir_inode_op_symlink(
 		/* const fsapi_node_attributes *attributes */
 		&attributes,
 		/* struct inode *ino */
-		child_ino);
+		child_ino,
+		/* sys_bool fill_operations */
+		SYS_TRUE);
 
 	inode_inc_iversion(parent_inode); /* needed? */
 	d_instantiate(dent, child_ino);
@@ -5025,7 +5058,9 @@ static int fsapi_linux_dir_inode_op_mkdir(
 		/* const fsapi_node_attributes *attributes */
 		&attributes,
 		/* struct inode *ino */
-		child_ino);
+		child_ino,
+		/* sys_bool fill_operations */
+		SYS_TRUE);
 
 	inode_inc_iversion(parent_inode); /* needed? */
 	d_instantiate(dent, child_ino);
@@ -5234,7 +5269,9 @@ static int fsapi_linux_dir_inode_op_mknod(
 		/* const fsapi_node_attributes *attributes */
 		&attributes,
 		/* struct inode *ino */
-		child_ino);
+		child_ino,
+		/* sys_bool fill_operations */
+		SYS_TRUE);
 
 	inode_inc_iversion(parent_inode); /* needed? */
 	d_instantiate(dent, child_ino);
@@ -6776,7 +6813,9 @@ static int fsapi_linux_fill_super(
 		/* const fsapi_node_attributes *attributes */
 		&attributes,
 		/* struct inode *ino */
-		inode);
+		inode,
+		/* sys_bool fill_operations */
+		SYS_TRUE);
 
 	insert_inode_hash(inode);
 
