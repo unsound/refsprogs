@@ -5697,6 +5697,11 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 
 	attributes.requested |= FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
 
+	/* TODO: Sleeping here can lead to a WARNING in the kernel if there is
+	 * contention becase we are in an RCU read-side critical section.
+	 * Ideally we should have read the link into memory on lookup and just
+	 * return a pointer to it here with no need for locking, even though
+	 * that might be slightly wasteful. */
 	err = fsapi_node_get_attributes(
 		/* fsapi_volume *vol */
 		vol,
