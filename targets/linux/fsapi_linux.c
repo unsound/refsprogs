@@ -4612,11 +4612,11 @@ static int fsapi_linux_dir_inode_op_create(
 		/* fsapi_node **out_node */
 		&child_node);
 	if(err == ENOSPC) {
-		err = -ENOSPC;
+		ret = -ENOSPC;
 		goto out;
 	}
 	else if(err == EEXIST) {
-		err = -EEXIST;
+		ret = -EEXIST;
 		goto out;
 	}
 	else if(err) {
@@ -4776,7 +4776,7 @@ static int fsapi_linux_dir_inode_op_unlink(
 		/* fsapi_node **out_removed_node */
 		NULL);
 	if(err == ENOENT) {
-		err = -ENOENT;
+		ret = -ENOENT;
 		goto out;
 	}
 	else if(err == EISDIR) {
@@ -4784,7 +4784,7 @@ static int fsapi_linux_dir_inode_op_unlink(
 		 * errno value when attempting to unlink a directory but Linux
 		 * in general instead returns EISDIR. Since we are in the Linux
 		 * kernel we'd better behave like it. */
-		err = -EISDIR;
+		ret = -EISDIR;
 		goto out;
 	}
 	else if(err) {
@@ -4902,11 +4902,11 @@ static int fsapi_linux_dir_inode_op_symlink(
 		/* fsapi_node **out_created_node */
 		&child_node);
 	if(err == ENOSPC) {
-		err = -ENOSPC;
+		ret = -ENOSPC;
 		goto out;
 	}
 	else if(err == EEXIST) {
-		err = -EEXIST;
+		ret = -EEXIST;
 		goto out;
 	}
 	else if(err) {
@@ -5045,11 +5045,11 @@ static int fsapi_linux_dir_inode_op_mkdir(
 		/* fsapi_node **out_created_node */
 		&child_node);
 	if(err == ENOSPC) {
-		err = -ENOSPC;
+		ret = -ENOSPC;
 		goto out;
 	}
 	else if(err == EEXIST) {
-		err = -EEXIST;
+		ret = -EEXIST;
 		goto out;
 	}
 	else if(err) {
@@ -5127,15 +5127,15 @@ static int fsapi_linux_dir_inode_op_rmdir(
 		/* fsapi_node **out_removed_node */
 		NULL);
 	if(err == ENOENT) {
-		err = -ENOENT;
+		ret = -ENOENT;
 		goto out;
 	}
 	else if(err == ENOTDIR) {
-		err = -ENOTDIR;
+		ret = -ENOTDIR;
 		goto out;
 	}
 	else if(err == ENOTEMPTY) {
-		err = -ENOTEMPTY;
+		ret = -ENOTEMPTY;
 		goto out;
 	}
 	else if(err) {
@@ -5256,11 +5256,11 @@ static int fsapi_linux_dir_inode_op_mknod(
 		/* fsapi_node **out_node */
 		&child_node);
 	if(err == ENOSPC) {
-		err = -ENOSPC;
+		ret = -ENOSPC;
 		goto out;
 	}
 	else if(err == EEXIST) {
-		err = -EEXIST;
+		ret = -EEXIST;
 		goto out;
 	}
 	else if(err) {
@@ -5358,27 +5358,27 @@ static int fsapi_linux_dir_inode_op_rename(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0)) */
 		0);
 	if(err == ENOENT) {
-		err = -ENOSPC;
+		ret = -ENOSPC;
 		goto out;
 	}
 	else if(err == EEXIST) {
-		err = -EEXIST;
+		ret = -EEXIST;
 		goto out;
 	}
 	else if(err == ENOTDIR) {
-		err = -ENOTDIR;
+		ret = -ENOTDIR;
 		goto out;
 	}
 	else if(err == EISDIR) {
-		err = -EISDIR;
+		ret = -EISDIR;
 		goto out;
 	}
 	else if(err == ENOTEMPTY) {
-		err = -ENOTEMPTY;
+		ret = -ENOTEMPTY;
 		goto out;
 	}
 	else if(err == EINVAL) {
-		err = -EINVAL;
+		ret = -EINVAL;
 		goto out;
 	}
 	else if(err) {
