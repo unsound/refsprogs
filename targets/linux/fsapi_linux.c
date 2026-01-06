@@ -4791,6 +4791,10 @@ static int fsapi_linux_dir_inode_op_unlink(
 		ret = -err;
 		goto out;
 	}
+
+	if(dent->d_inode) {
+		drop_nlink(dent->d_inode);
+	}
 out:
 	fsapi_linux_op_log_leave(ret, "parent_inode=%p, dent=%p",
 		parent_inode, dent);
@@ -5142,6 +5146,10 @@ static int fsapi_linux_dir_inode_op_rmdir(
 		ret = -err;
 		goto out;
 	}
+
+	if(dent->d_inode) {
+		drop_nlink(dent->d_inode);
+	}
 out:
 	fsapi_linux_op_log_leave(ret, "parent_inode=%p, dent=%p",
 		parent_inode, dent);
@@ -5389,6 +5397,10 @@ static int fsapi_linux_dir_inode_op_rename(
 	inode_inc_iversion(source_dir_inode);
 	if(source_dir_inode != target_dir_inode) {
 		inode_inc_iversion(target_dir_inode);
+	}
+
+	if(target_dent->d_inode) {
+		drop_nlink(target_dent->d_inode);
 	}
 out:
 	fsapi_linux_op_log_leave(ret, FSAPI_IF_LINUX_5_12("namespace=%p, ")
