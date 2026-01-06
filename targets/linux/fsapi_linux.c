@@ -246,7 +246,7 @@ typedef struct {
 	fsapi_node *root_node;
 } fsapi_linux_context;
 
-struct kmem_cache *fsapi_inode_cache = NULL;
+static struct kmem_cache *fsapi_inode_cache = NULL;
 
 static struct inode* fsapi_linux_super_op_alloc_inode(
 		struct super_block *sb);
