@@ -254,6 +254,12 @@ static atomic_t opnum = ATOMIC_INIT(1);
 		(ret) < 0 ? sys_strerror(-(ret)) : "", \
 		(ret) < 0 ? " (" : "", PRAd64(ret), (ret) < 0 ? ")" : "")
 
+#define PRIdentry "p (inode: %p, name: %.*s)"
+#define PRAdentry(dentry) \
+	(dentry), (dentry)->d_inode, \
+	(dentry) ? (int) sizeof((dentry)->d_iname) : 0, \
+	(dentry) ? (char*) (dentry)->d_iname : ""
+
 typedef struct {
 	struct super_block *sb;
 	struct inode *root_inode;
@@ -2328,7 +2334,8 @@ static void fsapi_linux_attributes_to_inode(
 			attributes->last_data_access_time.tv_nsec);
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0) */
 		ino->i_atime.tv_sec = attributes->last_data_access_time.tv_sec;
-		ino->i_atime.tv_nsec = attributes->last_data_access_time.tv_nsec;
+		ino->i_atime.tv_nsec =
+			attributes->last_data_access_time.tv_nsec;
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0) ... */
 	}
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME)
@@ -3121,8 +3128,11 @@ static int fsapi_linux_super_op_statfs(
 	int err = 0;
 	fsapi_volume_attributes attributes;
 
-	fsapi_linux_op_log_enter("dentry=%p, sfs=%p",
-		dentry, sfs);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"sfs=%p",
+		PRAdentry(dentry),
+		sfs);
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -3186,8 +3196,11 @@ static int fsapi_linux_super_op_statfs(
 		/* ST_NOSYMFOLLOW | */
 		0;
 out:
-	fsapi_linux_op_log_leave(ret, "dentry=%p, sfs=%p",
-		dentry, sfs);
+	fsapi_linux_op_log_leave(ret,
+		"dentry=%" PRIdentry ", "
+		"sfs=%p",
+		PRAdentry(dentry),
+		sfs);
 
 	return ret;
 }
@@ -3743,16 +3756,28 @@ static long fsapi_linux_file_op_fallocate(
 		/* struct inode *inode */
 		file->f_inode);
 
-	fsapi_linux_op_log_enter("file=%p, mode=0x%X, offset=%" PRId64 ", "
+	fsapi_linux_op_log_enter(
+		"file=%p, "
+		"mode=0x%X, "
+		"offset=%" PRId64 ", "
 		"len=%" PRId64,
-		file, mode, PRAd64(offset), PRAd64(len));
+		file,
+		mode,
+		PRAd64(offset),
+		PRAd64(len));
 
 	(void) vol;
 	(void) node;
 
-	fsapi_linux_op_log_leave(-EIO, "file=%p, mode=0x%X, offset=%" PRId64 ", "
+	fsapi_linux_op_log_leave(-EIO,
+		"file=%p, "
+		"mode=0x%X, "
+		"offset=%" PRId64 ", "
 		"len=%" PRId64,
-		file, mode, PRAd64(offset), PRAd64(len));
+		file,
+		mode,
+		PRAd64(offset),
+		PRAd64(len));
 
 	return -EIO;
 }
@@ -3830,15 +3855,18 @@ static int fsapi_linux_file_inode_op_getattr(
 	fsapi_linux_op_log_enter(
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	ret = fsapi_linux_getattr_common(
 		/* fsapi_volume *vol */
@@ -3854,15 +3882,18 @@ static int fsapi_linux_file_inode_op_getattr(
 	fsapi_linux_op_log_leave(ret,
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	return ret;
 }
@@ -3874,8 +3905,13 @@ static ssize_t fsapi_linux_file_inode_op_listxattr(
 {
 	int ret = 0;
 
-	fsapi_linux_op_log_enter("dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	ret = fsapi_linux_listxattr_common(
 		/* struct dentry *dentry */
@@ -3885,8 +3921,13 @@ static ssize_t fsapi_linux_file_inode_op_listxattr(
 		/* size_t size */
 		size);
 
-	fsapi_linux_op_log_leave(ret, "dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_leave(ret,
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	return ret;
 }
@@ -3981,14 +4022,24 @@ static int fsapi_linux_file_inode_op_fileattr_set(
 		/* struct inode *inode */
 		dentry->d_inode);
 
-	fsapi_linux_op_log_enter("mnt_userns=%p, dentry=%p, fa=%p",
-		mnt_userns, dentry, fa);
+	fsapi_linux_op_log_enter(
+		"mnt_userns=%p, "
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		mnt_userns,
+		PRAdentry(dentry),
+		fa);
 
 	(void) vol;
 	(void) node;
 
-	fsapi_linux_op_log_leave(-EIO, "mnt_userns=%p, dentry=%p, fa=%p",
-		mnt_userns, dentry, fa);
+	fsapi_linux_op_log_leave(-EIO,
+		"mnt_userns=%p, "
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		mnt_userns,
+		PRAdentry(dentry),
+		fa);
 
 	return -EIO;
 }
@@ -4015,8 +4066,11 @@ static int fsapi_linux_file_inode_op_fileattr_get(
 
 	memset(&attrs, 0, sizeof(attrs));
 
-	fsapi_linux_op_log_enter("dentry=%p, fa=%p",
-		dentry, fa);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		PRAdentry(dentry),
+		fa);
 
 	if(!vol) {
 		ret = -EIO;
@@ -4049,8 +4103,11 @@ static int fsapi_linux_file_inode_op_fileattr_get(
 		fa->flags |= FS_IMMUTABLE_FL;
 	}
 out:
-	fsapi_linux_op_log_leave(ret, "dentry=%p, fa=%p",
-		dentry, fa);
+	fsapi_linux_op_log_leave(ret,
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		PRAdentry(dentry),
+		fa);
 
 	return ret;
 }
@@ -4429,8 +4486,13 @@ static struct dentry* fsapi_linux_dir_inode_op_lookup(
 	fsapi_node *child_node = NULL;
 	struct inode *child_ino = NULL;
 
-	fsapi_linux_op_log_enter("target_inode=%p, dent=%p, flags=0x%X",
-		target_inode, dent, flags);
+	fsapi_linux_op_log_enter(
+		"target_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"flags=0x%X",
+		target_inode,
+		PRAdentry(dent),
+		flags);
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -4506,8 +4568,13 @@ static struct dentry* fsapi_linux_dir_inode_op_lookup(
 
 	ret_dent = d_splice_alias(child_ino, dent);
 out:
-	fsapi_linux_op_log_leave(ret, "target_inode=%p, dent=%p, flags=0x%X",
-		target_inode, dent, flags);
+	fsapi_linux_op_log_leave(ret,
+		"target_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"flags=0x%X",
+		target_inode,
+		PRAdentry(dent),
+		flags);
 
 	return ret ? (struct dentry*) ERR_PTR(ret) : ret_dent;
 }
@@ -4537,10 +4604,17 @@ static int fsapi_linux_dir_inode_op_create(
 	fsapi_node_attributes attributes;
 	fsapi_node *child_node = NULL;
 
-	fsapi_linux_op_log_enter(FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"target_inode=%p, dent=%p, mode=%" PRIo32 ", excl=%d",
-		FSAPI_IF_LINUX_5_12(namespace,) target_inode, dent,
-		PRAo32(mode), excl);
+	fsapi_linux_op_log_enter(
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"target_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"mode=0%" PRIo32 ", "
+		"excl=%d",
+		FSAPI_IF_LINUX_5_12(namespace,)
+		target_inode,
+		PRAdentry(dent),
+		PRAo32(mode),
+		excl);
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -4643,10 +4717,17 @@ out:
 		}
 	}
 
-	fsapi_linux_op_log_leave(ret, FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"target_inode=%p, dent=%p, mode=%" PRIo32 ", excl=%d",
-		FSAPI_IF_LINUX_5_12(namespace,) target_inode, dent,
-		PRAo32(mode), excl);
+	fsapi_linux_op_log_leave(ret,
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"target_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"mode=0%" PRIo32 ", "
+		"excl=%d",
+		FSAPI_IF_LINUX_5_12(namespace,)
+		target_inode,
+		PRAdentry(dent),
+		PRAo32(mode),
+		excl);
 
 	return ret;
 }
@@ -4670,9 +4751,13 @@ static int fsapi_linux_dir_inode_op_link(
 		/* struct inode *inode */
 		source_dent->d_inode);
 
-	fsapi_linux_op_log_enter("source_dent=%p, target_dir_inode=%p, "
-		"target_dent=%p",
-		source_dent, target_dir_inode, target_dent);
+	fsapi_linux_op_log_enter(
+		"source_dent=%" PRIdentry ", "
+		"target_dir_inode=%p, "
+		"target_dent=%" PRIdentry,
+		PRAdentry(source_dent),
+		target_dir_inode,
+		PRAdentry(target_dent));
 
 	if(!vol) {
 		ret = -EIO;
@@ -4724,9 +4809,13 @@ static int fsapi_linux_dir_inode_op_link(
 
 	d_instantiate(target_dent, source_dent->d_inode);
 out:
-	fsapi_linux_op_log_leave(ret, "source_dent=%p, target_dir_inode=%p, "
-		"target_dent=%p",
-		source_dent, target_dir_inode, target_dent);
+	fsapi_linux_op_log_leave(ret,
+		"source_dent=%" PRIdentry ", "
+		"target_dir_inode=%p, "
+		"target_dent=%" PRIdentry,
+		PRAdentry(source_dent),
+		target_dir_inode,
+		PRAdentry(target_dent));
 
 #if 1
 	return ret;
@@ -4754,8 +4843,11 @@ static int fsapi_linux_dir_inode_op_unlink(
 	int ret = 0;
 	int err = 0;
 
-	fsapi_linux_op_log_enter("parent_inode=%p, dent=%p",
-		parent_inode, dent);
+	fsapi_linux_op_log_enter(
+		"parent_inode=%p, "
+		"dent=%" PRIdentry,
+		parent_inode,
+		PRAdentry(dent));
 
 	if(!vol) {
 		ret = -EIO;
@@ -4796,8 +4888,11 @@ static int fsapi_linux_dir_inode_op_unlink(
 		drop_nlink(dent->d_inode);
 	}
 out:
-	fsapi_linux_op_log_leave(ret, "parent_inode=%p, dent=%p",
-		parent_inode, dent);
+	fsapi_linux_op_log_leave(ret,
+		"parent_inode=%p, "
+		"dent=%" PRIdentry,
+		parent_inode,
+		PRAdentry(dent));
 
 	return ret;
 }
@@ -4826,9 +4921,14 @@ static int fsapi_linux_dir_inode_op_symlink(
 	fsapi_node_attributes attributes;
 	fsapi_node *child_node = NULL;
 
-	fsapi_linux_op_log_enter(FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"parent_inode=%p, dent=%p, target=%p (->\"%s\")",
-		FSAPI_IF_LINUX_5_12(namespace,) parent_inode, dent,
+	fsapi_linux_op_log_enter(
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"parent_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"target=%p (->\"%s\")",
+		FSAPI_IF_LINUX_5_12(namespace,)
+		parent_inode,
+		PRAdentry(dent),
 		target, target ? target : "");
 
 	memset(&attributes, 0, sizeof(attributes));
@@ -4937,9 +5037,14 @@ out:
 		}
 	}
 
-	fsapi_linux_op_log_leave(ret, FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"parent_inode=%p, dent=%p, target=%p (->\"%s\")",
-		FSAPI_IF_LINUX_5_12(namespace,) parent_inode, dent,
+	fsapi_linux_op_log_leave(ret,
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"parent_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"target=%p (->\"%s\")",
+		FSAPI_IF_LINUX_5_12(namespace,)
+		parent_inode,
+		PRAdentry(dent),
 		target, target ? target : "");
 
 	return ret;
@@ -4973,9 +5078,14 @@ static int fsapi_linux_dir_inode_op_mkdir(
 	fsapi_node_attributes attributes;
 	fsapi_node *child_node = NULL;
 
-	fsapi_linux_op_log_enter(FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"parent_inode=%p, dent=%p, mode=%" PRIo32,
-		FSAPI_IF_LINUX_5_12(namespace,) parent_inode, dent,
+	fsapi_linux_op_log_enter(
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"parent_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"mode=0%" PRIo32,
+		FSAPI_IF_LINUX_5_12(namespace,)
+		parent_inode,
+		PRAdentry(dent),
 		PRAo32(mode));
 
 	memset(&attributes, 0, sizeof(attributes));
@@ -5080,9 +5190,14 @@ out:
 		}
 	}
 
-	fsapi_linux_op_log_leave(ret, FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"parent_inode=%p, dent=%p, mode=%" PRIo32,
-		FSAPI_IF_LINUX_5_12(namespace,) parent_inode, dent,
+	fsapi_linux_op_log_leave(ret,
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"parent_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"mode=0%" PRIo32,
+		FSAPI_IF_LINUX_5_12(namespace,)
+		parent_inode,
+		PRAdentry(dent),
 		PRAo32(mode));
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0))
@@ -5109,8 +5224,11 @@ static int fsapi_linux_dir_inode_op_rmdir(
 	int ret = 0;
 	int err = 0;
 
-	fsapi_linux_op_log_enter("parent_inode=%p, dent=%p",
-		parent_inode, dent);
+	fsapi_linux_op_log_enter(
+		"parent_inode=%p, "
+		"dent=%" PRIdentry,
+		parent_inode,
+		PRAdentry(dent));
 
 	if(!vol) {
 		ret = -EIO;
@@ -5151,8 +5269,11 @@ static int fsapi_linux_dir_inode_op_rmdir(
 		drop_nlink(dent->d_inode);
 	}
 out:
-	fsapi_linux_op_log_leave(ret, "parent_inode=%p, dent=%p",
-		parent_inode, dent);
+	fsapi_linux_op_log_leave(ret,
+		"parent_inode=%p, "
+		"dent=%" PRIdentry,
+		parent_inode,
+		PRAdentry(dent));
 
 	return ret;
 }
@@ -5182,10 +5303,17 @@ static int fsapi_linux_dir_inode_op_mknod(
 	fsapi_node_attributes attributes;
 	fsapi_node *child_node = NULL;
 
-	fsapi_linux_op_log_enter(FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"parent_inode=%p, dent=%p, mode=%" PRIo32 ", rdev=%" PRIX64,
-		FSAPI_IF_LINUX_5_12(namespace,) parent_inode, dent,
-		PRAo32(mode), PRAX64(rdev));
+	fsapi_linux_op_log_enter(
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"parent_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"mode=0%" PRIo32 ", "
+		"rdev=%" PRIX64,
+		FSAPI_IF_LINUX_5_12(namespace,)
+		parent_inode,
+		PRAdentry(dent),
+		PRAo32(mode),
+		PRAX64(rdev));
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -5295,10 +5423,17 @@ out:
 		}
 	}
 
-	fsapi_linux_op_log_leave(ret, FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"parent_inode=%p, dent=%p, mode=%" PRIo32 ", rdev=%" PRIX64,
-		FSAPI_IF_LINUX_5_12(namespace,) parent_inode, dent,
-		PRAo32(mode), PRAX64(rdev));
+	fsapi_linux_op_log_leave(ret,
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"parent_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"mode=0%" PRIo32 ", "
+		"rdev=%" PRIX64,
+		FSAPI_IF_LINUX_5_12(namespace,)
+		parent_inode,
+		PRAdentry(dent),
+		PRAo32(mode),
+		PRAX64(rdev));
 
 	return ret;
 }
@@ -5332,11 +5467,19 @@ static int fsapi_linux_dir_inode_op_rename(
 	int ret = 0;
 	int err = 0;
 
-	fsapi_linux_op_log_enter(FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"source_dir_inode=%p, dent=%p, target_dir_inode=%p, "
-		"target_dent=%p" FSAPI_IF_LINUX_4_9(", flags=0x%X"),
-		FSAPI_IF_LINUX_5_12(namespace,) source_dir_inode, dent,
-		target_dir_inode, target_dent FSAPI_IF_LINUX_4_9(, flags));
+	fsapi_linux_op_log_enter(
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"source_dir_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"target_dir_inode=%p, "
+		"target_dent=%" PRIdentry
+		FSAPI_IF_LINUX_4_9(", flags=0x%X"),
+		FSAPI_IF_LINUX_5_12(namespace,)
+		source_dir_inode,
+		PRAdentry(dent),
+		target_dir_inode,
+		PRAdentry(target_dent)
+		FSAPI_IF_LINUX_4_9(, flags));
 
 	if(!vol) {
 		ret = -EIO;
@@ -5403,11 +5546,19 @@ static int fsapi_linux_dir_inode_op_rename(
 		drop_nlink(target_dent->d_inode);
 	}
 out:
-	fsapi_linux_op_log_leave(ret, FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"source_dir_inode=%p, dent=%p, target_dir_inode=%p, "
-		"target_dent=%p" FSAPI_IF_LINUX_4_9(", flags=0x%X"),
-		FSAPI_IF_LINUX_5_12(namespace,) source_dir_inode, dent,
-		target_dir_inode, target_dent FSAPI_IF_LINUX_4_9(, flags));
+	fsapi_linux_op_log_leave(ret,
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"source_dir_inode=%p, "
+		"dent=%" PRIdentry ", "
+		"target_dir_inode=%p, "
+		"target_dent=%" PRIdentry
+		FSAPI_IF_LINUX_4_9(", flags=0x%X"),
+		FSAPI_IF_LINUX_5_12(namespace,)
+		source_dir_inode,
+		PRAdentry(dent),
+		target_dir_inode,
+		PRAdentry(target_dent)
+		FSAPI_IF_LINUX_4_9(, flags));
 
 	return ret;
 }
@@ -5483,15 +5634,18 @@ static int fsapi_linux_dir_inode_op_getattr(
 	fsapi_linux_op_log_enter(
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	ret = fsapi_linux_getattr_common(
 		/* fsapi_volume *vol */
@@ -5507,15 +5661,18 @@ static int fsapi_linux_dir_inode_op_getattr(
 	fsapi_linux_op_log_leave(ret,
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	return ret;
 }
@@ -5527,8 +5684,13 @@ static ssize_t fsapi_linux_dir_inode_op_listxattr(
 {
 	int ret = 0;
 
-	fsapi_linux_op_log_enter("dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	ret = fsapi_linux_listxattr_common(
 		/* struct dentry *dentry */
@@ -5538,8 +5700,13 @@ static ssize_t fsapi_linux_dir_inode_op_listxattr(
 		/* size_t size */
 		size);
 
-	fsapi_linux_op_log_leave(ret, "dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_leave(ret,
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	return ret;
 }
@@ -5634,14 +5801,24 @@ static int fsapi_linux_dir_inode_op_fileattr_set(
 		/* struct inode *inode */
 		dentry->d_inode);
 
-	fsapi_linux_op_log_enter("mnt_userns=%p, dentry=%p, fa=%p",
-		mnt_userns, dentry, fa);
+	fsapi_linux_op_log_enter(
+		"mnt_userns=%p, "
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		mnt_userns,
+		PRAdentry(dentry),
+		fa);
 
 	(void) vol;
 	(void) node;
 
-	fsapi_linux_op_log_leave(-EIO, "mnt_userns=%p, dentry=%p, fa=%p",
-		mnt_userns, dentry, fa);
+	fsapi_linux_op_log_leave(-EIO,
+		"mnt_userns=%p, "
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		mnt_userns,
+		PRAdentry(dentry),
+		fa);
 
 	return -EIO;
 }
@@ -5662,14 +5839,20 @@ static int fsapi_linux_dir_inode_op_fileattr_get(
 		/* struct inode *inode */
 		dentry->d_inode);
 
-	fsapi_linux_op_log_enter("dentry=%p, fa=%p",
-		dentry, fa);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		PRAdentry(dentry),
+		fa);
 
 	(void) vol;
 	(void) node;
 
-	fsapi_linux_op_log_leave(-EIO, "dentry=%p, fa=%p",
-		dentry, fa);
+	fsapi_linux_op_log_leave(-EIO,
+		"dentry=%" PRIdentry ", "
+		"fa=%p",
+		PRAdentry(dentry),
+		fa);
 
 	return -EIO;
 }
@@ -5697,8 +5880,13 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 	int err = 0;
 	fsapi_node_attributes attributes;
 
-	fsapi_linux_op_log_enter("dentry=%p, inode=%p, callback=%p",
-		dentry, inode, callback);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"inode=%p, "
+		"callback=%p",
+		PRAdentry(dentry),
+		inode,
+		callback);
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -5741,8 +5929,13 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 	callback->fn = fsapi_linux_symlink_inode_cleanup_link;
 	callback->arg = attributes.symlink_target;
 out:
-	fsapi_linux_op_log_leave(ret, "dentry=%p, inode=%p, callback=%p",
-		dentry, inode, callback);
+	fsapi_linux_op_log_leave(ret,
+		"dentry=%" PRIdentry ", "
+		"inode=%p, "
+		"callback=%p",
+		PRAdentry(dentry),
+		inode,
+		callback);
 
 	return ret ? ERR_PTR(ret) : attributes.symlink_target;
 }
@@ -5766,9 +5959,13 @@ static int fsapi_linux_symlink_inode_op_setattr(
 
 	int ret = 0;
 
-	fsapi_linux_op_log_enter(FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"entry=%p, attr=%p",
-		FSAPI_IF_LINUX_5_12(namespace,) entry, attr);
+	fsapi_linux_op_log_enter(
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"entry=%p, "
+		"attr=%p",
+		FSAPI_IF_LINUX_5_12(namespace,)
+		entry,
+		attr);
 
 	ret = fsapi_linux_setattr_common(
 		/* fsapi_volume *vol */
@@ -5780,9 +5977,13 @@ static int fsapi_linux_symlink_inode_op_setattr(
 		/* struct iattr *attr */
 		attr);
 
-	fsapi_linux_op_log_leave(ret, FSAPI_IF_LINUX_5_12("namespace=%p, ")
-		"entry=%p, attr=%p",
-		FSAPI_IF_LINUX_5_12(namespace,) entry, attr);
+	fsapi_linux_op_log_leave(ret,
+		FSAPI_IF_LINUX_5_12("namespace=%p, ")
+		"entry=%p, "
+		"attr=%p",
+		FSAPI_IF_LINUX_5_12(namespace,)
+		entry,
+		attr);
 
 	return ret;
 }
@@ -5818,15 +6019,18 @@ static int fsapi_linux_symlink_inode_op_getattr(
 	fsapi_linux_op_log_enter(
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	ret = fsapi_linux_getattr_common(
 		/* fsapi_volume *vol */
@@ -5842,15 +6046,18 @@ static int fsapi_linux_symlink_inode_op_getattr(
 	fsapi_linux_op_log_leave(ret,
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	return ret;
 }
@@ -5862,8 +6069,13 @@ static ssize_t fsapi_linux_symlink_inode_op_listxattr(
 {
 	int ret = 0;
 
-	fsapi_linux_op_log_enter("dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	ret = fsapi_linux_listxattr_common(
 		/* struct dentry *dentry */
@@ -5873,8 +6085,13 @@ static ssize_t fsapi_linux_symlink_inode_op_listxattr(
 		/* size_t size */
 		size);
 
-	fsapi_linux_op_log_leave(ret, "dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_leave(ret,
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	return ret;
 }
@@ -6018,15 +6235,18 @@ static int fsapi_linux_special_inode_op_getattr(
 	fsapi_linux_op_log_enter(
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	ret = fsapi_linux_getattr_common(
 		/* fsapi_volume *vol */
@@ -6042,15 +6262,18 @@ static int fsapi_linux_special_inode_op_getattr(
 	fsapi_linux_op_log_leave(ret,
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		FSAPI_IF_LINUX_4_11("path=%p, ")
-		FSAPI_NOT_LINUX_4_11("mnt=%p, dentry=%p, ")
+		FSAPI_NOT_LINUX_4_11("mnt=%p, ")
+		FSAPI_NOT_LINUX_4_11("dentry=%" PRIdentry ", ")
 		"stat=%p"
-		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32 ", "
-		"query_flags=%X"),
+		FSAPI_IF_LINUX_4_11(", request_mask=0x%" PRIX32)
+		FSAPI_IF_LINUX_4_11(", query_flags=%X"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		FSAPI_IF_LINUX_4_11(path,)
-		FSAPI_NOT_LINUX_4_11(mnt, dentry,)
+		FSAPI_NOT_LINUX_4_11(mnt,)
+		FSAPI_NOT_LINUX_4_11(PRAdentry(dentry),)
 		stat
-		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask), query_flags));
+		FSAPI_IF_LINUX_4_11(, PRAX32(request_mask))
+		FSAPI_IF_LINUX_4_11(, query_flags));
 
 	return ret;
 }
@@ -6062,8 +6285,13 @@ static ssize_t fsapi_linux_special_inode_op_listxattr(
 {
 	int ret = 0;
 
-	fsapi_linux_op_log_enter("dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_enter(
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	ret = fsapi_linux_listxattr_common(
 		/* struct dentry *dentry */
@@ -6073,8 +6301,13 @@ static ssize_t fsapi_linux_special_inode_op_listxattr(
 		/* size_t size */
 		size);
 
-	fsapi_linux_op_log_leave(ret, "dentry=%p, list=%p, size=%" PRIuz,
-		dentry, list, size);
+	fsapi_linux_op_log_leave(ret,
+		"dentry=%" PRIdentry ", "
+		"list=%p, "
+		"size=%" PRIuz,
+		PRAdentry(dentry),
+		list,
+		PRAuz(size));
 
 	return ret;
 }
@@ -6252,7 +6485,8 @@ static int fsapi_linux_address_space_op_set_page_dirty(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,18,0)) ... */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,18,0))
-static void fsapi_linux_address_space_op_readahead(struct readahead_control *rac)
+static void fsapi_linux_address_space_op_readahead(
+		struct readahead_control *rac)
 {
 	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
 		/* struct super_block *sb */
@@ -6536,9 +6770,18 @@ static int fsapi_linux_xattr_get(
 	memset(&buffer_context, 0, sizeof(buffer_context));
 	memset(&iohandler, 0, sizeof(iohandler));
 
-	fsapi_linux_op_log_enter("handler=%p, dentry=%p, inode=%p, "
-		"name=%p (->\"%s\"), value=%p, size=%" PRIuz,
-		handler, dentry, inode, name, name ? name : "", value,
+	fsapi_linux_op_log_enter(
+		"handler=%p, "
+		"dentry=%" PRIdentry ", "
+		"inode=%p, "
+		"name=%p (->\"%s\"), "
+		"value=%p, "
+		"size=%" PRIuz,
+		handler,
+		PRAdentry(dentry),
+		inode,
+		name, name ? name : "",
+		value,
 		PRAuz(size));
 
 	if(!vol) {
@@ -6586,9 +6829,18 @@ static int fsapi_linux_xattr_get(
 		ret = (valid_bytes > INT_MAX) ? INT_MAX : (int) valid_bytes;
 	}
 out:
-	fsapi_linux_op_log_leave(ret, "handler=%p, dentry=%p, inode=%p, "
-		"name=%p (->\"%s\"), value=%p, size=%" PRIuz,
-		handler, dentry, inode, name, name ? name : "", value,
+	fsapi_linux_op_log_leave(ret,
+		"handler=%p, "
+		"dentry=%" PRIdentry ", "
+		"inode=%p, "
+		"name=%p (->\"%s\"), "
+		"value=%p, "
+		"size=%" PRIuz,
+		handler,
+		PRAdentry(dentry),
+		inode,
+		name, name ? name : "",
+		value,
 		PRAuz(size));
 
 	return ret;
@@ -6619,11 +6871,23 @@ static int fsapi_linux_xattr_set(
 	int ret = 0;
 	int err = 0;
 
-	fsapi_linux_op_log_enter("handler=%p, "
-		FSAPI_IF_LINUX_5_12("idmap=%p, ") "dentry=%p, inode=%p, "
-		"name=%p (->\"%s\"), value=%p, size=%" PRIuz ", flags=0x%X",
-		handler, FSAPI_IF_LINUX_5_12(idmap,) dentry, inode, name,
-		name ? name : "", value, PRAuz(size), flags);
+	fsapi_linux_op_log_enter(
+		"handler=%p, "
+		FSAPI_IF_LINUX_5_12("idmap=%p, ")
+		"dentry=%" PRIdentry ", "
+		"inode=%p, "
+		"name=%p (->\"%s\"), "
+		"value=%p, "
+		"size=%" PRIuz ", "
+		"flags=0x%X",
+		handler,
+		FSAPI_IF_LINUX_5_12(idmap,)
+		PRAdentry(dentry),
+		inode,
+		name, name ? name : "",
+		value,
+		PRAuz(size),
+		flags);
 
 	if(!vol) {
 		ret = -EIO;
@@ -6684,11 +6948,23 @@ static int fsapi_linux_xattr_set(
 		ret = -err;
 	}
 out:
-	fsapi_linux_op_log_leave(ret, "handler=%p, "
-		FSAPI_IF_LINUX_5_12("idmap=%p, ") "dentry=%p, inode=%p, "
-		"name=%p (->\"%s\"), value=%p, size=%" PRIuz ", flags=0x%X",
-		handler, FSAPI_IF_LINUX_5_12(idmap,) dentry, inode, name,
-		name ? name : "", value, PRAuz(size), flags);
+	fsapi_linux_op_log_leave(ret,
+		"handler=%p, "
+		FSAPI_IF_LINUX_5_12("idmap=%p, ")
+		"dentry=%" PRIdentry ", "
+		"inode=%p, "
+		"name=%p (->\"%s\"), "
+		"value=%p, "
+		"size=%" PRIuz ", "
+		"flags=0x%X",
+		handler,
+		FSAPI_IF_LINUX_5_12(idmap,)
+		PRAdentry(dentry),
+		inode,
+		name, name ? name : "",
+		value,
+		PRAuz(size),
+		flags);
 
 	return ret;
 }
