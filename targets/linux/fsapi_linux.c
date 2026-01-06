@@ -2272,12 +2272,19 @@ static void fsapi_linux_attributes_to_inode(
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) {
 		set_nlink(ino, attributes->link_count);
 	}
+	else {
+		set_nlink(ino, attributes->is_directory ? 3 : 1);
+	}
 #if 0
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATION_BLOCK_SIZE)
 	{
 		ino->i_blkbits = ffs(attributes->allocation_block_size);
 	}
+	else
 #endif
+	{
+		ino->i_blkbits = ffs(128UL * 1024UL);
+	}
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
 		ino->i_ino = attributes->inode_number;
 	}
@@ -2332,7 +2339,10 @@ static void fsapi_linux_attributes_to_inode(
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0) ... */
 	}
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
-		ino->i_blocks = attributes->allocated_size / 512;
+		ino->i_blocks = (attributes->allocated_size + 511) / 512;
+	}
+	else {
+		ino->i_blocks = (ino->i_size + 511) / 512;
 	}
 	ino->i_flags = 0;
 	ino->i_generation = 0;
@@ -2434,11 +2444,19 @@ static int fsapi_linux_getattr_common(
 	if(attrs.valid & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) {
 		stat->/* (unsigned int) */ nlink = attrs.link_count;
 	}
+	else {
+		stat->/* (unsigned int) */ nlink =
+			attrs.is_directory ? 3 : 1;
+	}
 #if 0
 	if(attrs.valid & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATION_BLOCK_SIZE) {
 		stat->/* (uint32_t) */ blksize = attrs.allocation_block_size;
 	}
+	else
 #endif
+	{
+		stat->/* (uint32_t) */ blksize = 128UL * 1024UL;
+	}
 #ifdef UF_HIDDEN
 	if(attrs.valid & FSAPI_NODE_ATTRIBUTE_TYPE_BSD_FLAGS) {
 		stat->/* (u64) */ attributes =
@@ -2512,6 +2530,9 @@ static int fsapi_linux_getattr_common(
 	}
 	if(attrs.valid & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
 		stat->/* (u64) */ blocks = attrs.allocated_size / 512;
+	}
+	else {
+		stat->/* (u64) */ blocks = (stat->size + 511) / 512;
 	}
 #if 0
 	/* Do we need to fill these in? */
