@@ -2470,6 +2470,7 @@ static int fsapi_node_get_attributes_common(
 	}
 
 	provided_mask = attributes->requested & node->attributes.valid;
+	attributes->is_directory = node->attributes.is_directory;
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attributes->size = node->attributes.size;
 	}
