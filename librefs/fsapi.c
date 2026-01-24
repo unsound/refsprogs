@@ -4175,10 +4175,27 @@ static int fsapi_node_read_visit_file_extent(
 		goto out;
 	}
 	else if(extent_logical_start > context->cur_offset) {
-		if(context->is_sparse) {
-			/* We have encountered a hole. Return zeroes until we
-			 * reach context->cur_offset or until the end of the
-			 * read. */
+		if(!context->is_sparse) {
+			/* Ignore extent. We'll get back to it in the next
+			 * iteration. */
+			goto out;
+		}
+		else if(context->iohandler->handle_hole) {
+			/* We have encountered a hole and the caller has a
+			 * handler for it. Call the 'handle_hole' callback. */
+			err = context->iohandler->handle_hole(
+				/* void *context */
+				context->iohandler->context,
+				/* size_t size */
+				bytes_to_read);
+			if(err) {
+				goto out;
+			}
+		}
+		else {
+			/* We have encountered a hole with no hole handler.
+			 * Return zeroes until we reach context->cur_offset or
+			 * until the end of the read. */
 			const u64 bytes_to_extent =
 				extent_logical_start - context->cur_offset;
 			const size_t bytes_to_zero =
@@ -4197,11 +4214,6 @@ static int fsapi_node_read_visit_file_extent(
 			if(!context->size) {
 				goto out;
 			}
-		}
-		else {
-			/* Ignore extent. We'll get back to it in the next
-			 * iteration. */
-			goto out;
 		}
 	}
 
