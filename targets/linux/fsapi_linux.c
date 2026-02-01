@@ -2033,6 +2033,112 @@ static const struct inode_operations fsapi_linux_special_inode_operations = {
 	.update_time = fsapi_linux_special_inode_op_update_time,
 };
 
+static const struct vm_operations_struct fsapi_linux_vm_operations = {
+	/* void (*open)(
+	 *     struct vm_area_struct * area) */
+	.open = NULL,
+
+	/* void (*close)(
+	 *     struct vm_area_struct * area) */
+	.close = NULL,
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,11,0))
+	/* int (*may_split)(
+	 *     struct vm_area_struct *area,
+	 *     unsigned long addr) */
+	.may_split = NULL,
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)) */
+	/* int (*split)(
+	 *     struct vm_area_struct *area,
+	 *     unsigned long addr) */
+	.split = NULL,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,11,0)) ... */
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,11,0))
+	/* int (*mremap)(
+	 *     struct vm_area_struct *area,
+	 *     unsigned long flags) */
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)) */
+	/* int (*mremap)(
+	 *     struct vm_area_struct * area);*/
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,11,0)) ... */
+	.mremap = NULL,
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,11,0))
+	/* int (*mprotect)(
+	 *     struct vm_area_struct *vma,
+	 *     unsigned long start,
+	 *     unsigned long end,
+	 *     unsigned long newflags) */
+	.mprotect = NULL,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,11,0)) ... */
+
+	/* vm_fault_t (*fault)(
+	 *     struct vm_fault *vmf) */
+	.fault = filemap_fault,
+
+	/* vm_fault_t (*huge_fault)(
+	 *     struct vm_fault *vmf,
+	 *     enum page_entry_size pe_size) */
+	.huge_fault = NULL,
+
+	/* vm_fault_t (*map_pages)(
+	 *     struct vm_fault *vmf,
+	 *     pgoff_t start_pgoff,
+	 *     pgoff_t end_pgoff) */
+	.map_pages = filemap_map_pages,
+
+	/* unsigned long (*pagesize)(
+	 *     struct vm_area_struct * area) */
+	.pagesize = NULL,
+
+	/* vm_fault_t (*page_mkwrite)(
+	 *     struct vm_fault *vmf) */
+	.page_mkwrite = filemap_page_mkwrite,
+
+	/* vm_fault_t (*pfn_mkwrite)(
+	 *     struct vm_fault *vmf) */
+	.pfn_mkwrite = NULL,
+
+	/* int (*access)(
+	 *     struct vm_area_struct *vma,
+	 *     unsigned long addr,
+	 *     void *buf,
+	 *     int len,
+	 *     int write) */
+	.access = NULL,
+
+	/* const char* (*name)(
+	 *     struct vm_area_struct *vma) */
+	.name = NULL,
+
+#ifdef CONFIG_NUMA
+	/* int (*set_policy)(
+	 *     struct vm_area_struct *vma,
+	 *     struct mempolicy *new) */
+	.set_policy = NULL,
+
+	/* struct mempolicy* (*get_policy)(
+	 *     struct vm_area_struct *vma,
+	 *     unsigned long addr) */
+	.get_policy = NULL,
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+#ifdef CONFIG_FIND_NORMAL_PAGE
+	/* struct page *(*find_normal_page)(
+	 *     struct vm_area_struct *vma,
+	 *     unsigned long addr) */
+	.find_normal_page = NULL,
+#endif /* CONFIG_FIND_NORMAL_PAGE */
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
+	/* struct page* (*find_special_page)(
+	 *     struct vm_area_struct *vma,
+	 *     unsigned long addr) */
+	.find_special_page = NULL,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)) ... */
+};
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0))
 static int fsapi_linux_address_space_op_read_folio(struct file *,
 		struct folio *);
@@ -2308,7 +2414,7 @@ static void fsapi_linux_attributes_to_inode(
 	else
 #endif
 	{
-		ino->i_blkbits = ffs(128UL * 1024UL);
+		ino->i_blkbits = PAGE_SHIFT;
 	}
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER) {
 		ino->i_ino = attributes->inode_number;
@@ -2373,9 +2479,6 @@ static void fsapi_linux_attributes_to_inode(
 	ino->i_flags = 0;
 	ino->i_generation = 0;
 
-#if 0
-	ino->i_mapping->a_ops = &fsapi_linux_address_space_operations;
-#endif
 	if(!fill_operations);
 	else if(attributes->is_directory) {
 		sys_log_debug("Setting directory operations for inode %p with "
@@ -2401,10 +2504,8 @@ static void fsapi_linux_attributes_to_inode(
 			"0%o...", ino, ino->i_mode);
 		ino->i_op = &fsapi_linux_file_inode_operations;
 		ino->i_fop = &fsapi_linux_file_operations;
-#if 0
 		ino->i_mapping->a_ops =
-			&fsapi_linux_file_address_space_operations;
-#endif
+			&fsapi_linux_address_space_operations;
 	}
 }
 
@@ -3066,6 +3167,9 @@ static void fsapi_linux_super_op_evict_inode(
 	}
 
 	inode->i_private = NULL;
+
+	truncate_inode_pages_final(&inode->i_data);
+	invalidate_inode_buffers(inode);
 	clear_inode(inode);
 
 	fsapi_linux_op_log_leave(0, "inode=%p", inode);
@@ -3630,24 +3734,18 @@ static int fsapi_linux_file_op_mmap(
 		struct file *file,
 		struct vm_area_struct *vma)
 {
-	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
-		/* struct super_block *sb */
-		file->f_inode->i_sb);
-
-	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
-		/* struct inode *inode */
-		file->f_inode);
+	int ret = 0;
 
 	fsapi_linux_op_log_enter("file=%p, vma=%p",
 		file, vma);
 
-	(void) vol;
-	(void) node;
+	file_accessed(file);
+	vma->vm_ops = &fsapi_linux_vm_operations;
 
-	fsapi_linux_op_log_leave(-EIO, "file=%p, vma=%p",
+	fsapi_linux_op_log_leave(ret, "file=%p, vma=%p",
 		file, vma);
 
-	return -EIO;
+	return ret;
 }
 
 static int fsapi_linux_file_op_open(
@@ -6484,36 +6582,374 @@ static int fsapi_linux_special_inode_op_update_time(
 	return ret;
 }
 
+typedef struct {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0))
+	struct folio *folio;
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+	struct page *page;
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)) ... */
+	struct inode *inode;
+	size_t block_size_shift;
+	size_t block_size;
+	size_t block_size_mask;
+	size_t block_index;
+	struct buffer_head *cur_buffer;
+	struct buffer_head *buffer_head;
+	struct buffer_head *valid_buffers[MAX_BUF_PER_PAGE];
+	size_t num_valid_buffers;
+	size_t bytes_read;
+	sys_bool has_holes;
+} fsapi_linux_address_space_read_folio_context;
+
+static int fsapi_linux_address_space_read_handle_io(
+		void *const _context,
+		sys_device *const dev,
+		const u64 offset,
+		const size_t size)
+{
+	fsapi_linux_address_space_read_folio_context *const context =
+		(fsapi_linux_address_space_read_folio_context*) _context;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0))
+	struct folio *const folio = context->folio;
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+	struct page *const page = context->page;
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)) ... */
+
+	int err = 0;
+
+	u64 physical_block = 0;
+	size_t remaining_size =
+		(size + ~context->block_size_mask) & context->block_size_mask;
+
+	sys_log_debug("Entering %s(context=%p, dev=%p, "
+		"offset=%" PRIu64 ", size=%" PRIuz ")...",
+		__FUNCTION__,
+		_context, dev, PRAu64(offset), PRAuz(size));
+
+	if(offset & ~context->block_size_mask) {
+		sys_log_error("Unexpected I/O offset (not block aligned): "
+			"%" PRIu64 " (block size: %" PRIuz ")",
+			PRAu64(offset), PRAuz(context->block_size));
+		err = EINVAL;
+		goto out;
+	}
+
+	physical_block = offset >> context->block_size_shift;
+
+	if(!context->buffer_head) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0))
+		if(!folio_get_private(
+			/* struct folio *folio */
+			folio))
+		{
+			sys_log_debug("folio_size: %zu", folio_size(folio));
+			context->buffer_head = folio_alloc_buffers(
+				/* struct folio *folio */
+				folio,
+				/* unsigned long size */
+				context->block_size,
+				/* gfp_t gfp */
+				GFP_NOFS | __GFP_ACCOUNT);
+			sys_log_debug("alloc_buffers(folio=%p, "
+				"size=%" PRIuz ", gfp=GFP_NOFS | "
+				"__GFP_ACCOUNT): %p",
+				folio, PRAuz(context->block_size),
+				context->buffer_head);
+		}
+		else {
+			context->buffer_head = folio_buffers(
+				/* struct folio *folio */
+				folio);
+			sys_log_debug("folio_buffers(%p): %p",
+				folio, context->buffer_head);
+		}
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+		if(!page_has_buffers(
+			/* struct page *page */
+			page))
+		{
+			context->buffer_head = alloc_page_buffers(
+				/* struct page *page */
+				page,
+				/* unsigned long size */
+				context->block_size,
+				/* bool retry */
+				1);
+		}
+		else {
+			context->buffer_head = page_buffers(
+				/* struct page *page */
+				page);
+		}
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)) ... */
+		if(!context->buffer_head) {
+			sys_log_error("No buffer head: Ending read with "
+				"ENOMEM.");
+
+			err = ENOMEM;
+			goto out;
+		}
+
+		sys_log_debug("got buffer head: %p", context->buffer_head);
+
+		context->cur_buffer = context->buffer_head;
+	}
+	else if(context->cur_buffer == context->buffer_head) {
+		sys_log_critical("Unexpected: Got data beyond the size of the "
+			"page.");
+		err = EIO;
+		goto out;
+	}
+
+	do {
+		context->cur_buffer->b_bdev = context->inode->i_sb->s_bdev;
+
+		if(!dev) {
+			/* This is a hole, indicated by 'dev' being NULL. */
+			sys_log_debug("Processing buffer %" PRIuz " (%p) with "
+				"%" PRIuz " byte hole.",
+				PRAuz(context->block_index),
+				context->cur_buffer, PRAuz(size));
+
+			context->cur_buffer->b_blocknr = (sector_t) -1;
+			clear_buffer_mapped(
+				/* struct buffer_head *bh */
+				context->cur_buffer);
+
+			if(!buffer_uptodate(context->cur_buffer)) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,17,0))
+				zero_user_segment(
+					/* struct page *page */
+					folio_page(
+						/* struct folio *folio */
+						folio,
+						/* size_t n */
+						context->block_index /
+						MAX_BUF_PER_PAGE),
+					/* unsigned start */
+					context->block_index *
+					context->block_size,
+					/* unsigned end */
+					(context->block_index + 1) *
+					context->block_size);
+#else /* (LINUX_VERSION_CODE <= KERNEL_VERSION(6,17,0)) */
+				zero_user(
+					/* struct page *page */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0))
+					folio_page(
+						/* struct folio *folio */
+						folio,
+						/* size_t n */
+						context->block_index /
+						MAX_BUF_PER_PAGE),
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+					page,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)) ... */
+					/* unsigned start */
+					context->block_index *
+					context->block_size,
+					/* unsigned size */
+					context->block_size);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,17,0)) ... */
+
+				set_buffer_uptodate(
+					/* struct buffer_head *bh */
+					context->cur_buffer);
+			}
+
+			context->has_holes = SYS_TRUE;
+		}
+		else {
+			sys_log_debug("Filling buffer %" PRIuz " (%p) from "
+				"block %" PRIu64 ".",
+				PRAuz(context->block_index),
+				context->cur_buffer, PRAu64(physical_block));
+
+			if(!buffer_mapped(context->cur_buffer)) {
+				context->cur_buffer->b_blocknr = physical_block;
+				set_buffer_mapped(
+					/* struct buffer_head *bh */
+					context->cur_buffer);
+			}
+			if(!buffer_uptodate(context->cur_buffer)) {
+				context->valid_buffers[
+					context->num_valid_buffers++] =
+					context->cur_buffer;
+			}
+		}
+
+		++physical_block;
+		++context->block_index;
+		remaining_size -= context->block_size;
+	} while(remaining_size &&
+		(context->cur_buffer = context->cur_buffer->b_this_page) !=
+		context->buffer_head);
+
+	context->bytes_read += size;
+out:
+	sys_log_pdebug(err, "Leaving %s(context=%p, dev=%p, "
+		"offset=%" PRIu64 ", size=%" PRIuz ")",
+		__FUNCTION__,
+		_context, dev, PRAu64(offset), PRAuz(size));
+
+	return err;
+}
+
+static int fsapi_linux_address_space_read_handle_hole(
+		void *const context,
+		const size_t size)
+{
+	return fsapi_linux_address_space_read_handle_io(
+		/* void *context */
+		context,
+		/* sys_device *dev */
+		NULL,
+		/* u64 offset */
+		0,
+		/* size_t size */
+		size);
+}
+
+static int fsapi_linux_address_space_read_copy_data(
+		void *const _context,
+		const void *const data,
+		const size_t size)
+{
+	fsapi_linux_address_space_read_folio_context *const context =
+		(fsapi_linux_address_space_read_folio_context*) _context;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0))
+	struct folio *const folio = context->folio;
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+	struct page *const page = context->page;
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)) ... */
+
+	int err = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0))
+	size_t end;
+	char *page_data = NULL;
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+
+	sys_log_trace("Entering %s(context=%p, data=%p, size=%" PRIuz ")...",
+		__FUNCTION__,
+		_context, data, PRAuz(size));
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0))
+	sys_log_debug("Filling tail with %" PRIuz " bytes of data at offset "
+		"%" PRIuz "...",
+		PRAuz(size), PRAuz(context->bytes_read));
+	folio_fill_tail(
+		/* struct folio *folio */
+		folio,
+		/* size_t offset */
+		context->bytes_read,
+		/* const char *from */
+		data,
+		/* size_t len */
+		size);
+
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+	end = context->bytes_read + size;
+	if(end > PAGE_SIZE) {
+		sys_log_critical("Unexpected: Attempted to write beyond end of "
+			"page. bytes_read: %" PRIuz ", size: %" PRIuz ", "
+			"PAGE_SIZE: %" PRIuz,
+			PRAuz(context->bytes_read), PRAuz(size),
+			PRAuz(PAGE_SIZE));
+		err = EIO;
+		goto out;
+	}
+
+	page_data = kmap_atomic(
+		/* struct page *page */
+		page);
+
+	if(size > 0) {
+		memcpy(&page_data[context->bytes_read], data, size);
+	}
+	if(end < PAGE_SIZE) {
+		memset(&page_data[end], 0, PAGE_SIZE - end);
+	}
+
+	flush_dcache_page(
+		/* struct page *page */
+		page);
+
+	kunmap_atomic(
+		/* const void *addr */
+		page_data);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)) ... */
+
+	context->has_holes = SYS_TRUE;
+	context->bytes_read += size;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0))
+out:
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+	sys_log_pdebug(err, "Leaving %s(context=%p, data=%p, size=%" PRIuz ")",
+		__FUNCTION__,
+		_context, data, PRAuz(size));
+
+	return err;
+}
+
+static void fsapi_linux_address_space_read_folio_end_io(
+		struct buffer_head *const bh,
+		const int uptodate)
+{
+	/* At the moment this is only used for trivially mapped blocks, and only
+	 * for reads. Anything that needs postprocessing to e.g. decrypt data,
+	 * decompress, update checksums, etc. should use the slow I/O path. */
+	struct page *const page = bh->b_page;
+
+	sys_log_debug("end_io called for buffer %p", bh);
+	if(uptodate) {
+		set_buffer_uptodate(
+			/* struct buffer_head *bh */
+			bh);
+	}
+	else {
+		clear_buffer_uptodate(
+			/* struct buffer_head *bh */
+			bh);
+	}
+
+	clear_buffer_async_read(
+		/* struct buffer_head *bh */
+		bh);
+
+	unlock_buffer(
+		/* struct buffer_head *bh */
+		bh);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0))
+	folio_end_read(
+		/* struct folio *folio */
+		page_folio(page),
+		/* bool success */
+		uptodate);
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0)) */
+	if(uptodate && !PageError(page)) {
+		SetPageUptodate(
+			/* struct page *page */
+			page);
+	}
+
+	unlock_page(
+		/* struct page *page */
+		page);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)) */
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0))
-static int fsapi_linux_address_space_op_read_folio(struct file *file,
-		struct folio *folio)
-{
-	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
-		/* struct super_block *sb */
-		file->f_inode->i_sb);
-
-	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
-		/* struct inode *inode */
-		file->f_inode);
-
-	int ret = 0;
-
-	fsapi_linux_op_log_enter("file=%p, folio=%p",
-		file, folio);
-
-	(void) vol;
-	(void) node;
-
-	ret = -EIO;
-
-	fsapi_linux_op_log_leave(ret, "file=%p, folio=%p",
-		file, folio);
-
-	return ret;
-}
+static int fsapi_linux_address_space_op_read_folio(
+		struct file *const file,
+		struct folio *const folio)
 #else /* (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0)) */
-static int fsapi_linux_address_space_op_readpage(struct file *file,
-		struct page *page)
+static int fsapi_linux_address_space_op_readpage(
+		struct file *const file,
+		struct page *const page)
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)) ... */
 {
 	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
 		/* struct super_block *sb */
@@ -6523,22 +6959,184 @@ static int fsapi_linux_address_space_op_readpage(struct file *file,
 		/* struct inode *inode */
 		file->f_inode);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)) && \
+		(LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0))
+	struct page *page = &folio->page;
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0)) && ... */
+
+	int err = 0;
 	int ret = 0;
+	size_t data_size = 0;
+	u64 read_offset = 0;
+	fsapi_iohandler iohandler;
+	fsapi_linux_address_space_read_folio_context context;
+	size_t bytes_read = 0;
 
-	fsapi_linux_op_log_enter("file=%p, page=%p",
-		file, page);
+	memset(&iohandler, 0, sizeof(iohandler));
+	memset(&context, 0, sizeof(context));
 
-	(void) vol;
-	(void) node;
+	fsapi_linux_op_log_enter("file=%p, "
+		FSAPI_IF_LINUX_5_19("folio") FSAPI_NOT_LINUX_5_19("page") "=%p",
+		file, FSAPI_IF_LINUX_5_19(folio) FSAPI_NOT_LINUX_5_19(page));
 
-	ret = -EIO;
+	if(!vol || !node) {
+		sys_log_error("No volume or node.");
+		ret = -EIO;
+		goto out;
+	}
 
-	fsapi_linux_op_log_leave(ret, "file=%p, page=%p",
-		file, page);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0))
+	data_size = folio_size(
+		/* struct folio *folio */
+		folio);
+	read_offset = ((u64) folio->index) << PAGE_SHIFT;
+	context.folio = folio;
+	context.inode = folio->mapping->host;
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)) */
+	data_size = page_size(
+		/* struct page *page */
+		page);
+	read_offset = ((u64) page->index) << PAGE_SHIFT;
+	context.page = page;
+	context.inode = page->mapping->host;
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)) ... */
+	context.block_size_shift = context.inode->i_blkbits;
+	context.block_size = ((size_t) 1) << context.block_size_shift;
+	context.block_size_mask = (size_t) ~(context.block_size - 1);
+
+	iohandler.context = &context;
+	iohandler.handle_io = fsapi_linux_address_space_read_handle_io;
+	iohandler.handle_hole = fsapi_linux_address_space_read_handle_hole;
+	iohandler.copy_data = fsapi_linux_address_space_read_copy_data;
+
+	sys_log_debug("Reading %" PRIuz " bytes from file offset %" PRIu64 " "
+		"into iohandler %p.",
+		PRAuz(data_size), PRAu64(read_offset), &iohandler);
+
+	err = fsapi_node_read(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node *node */
+		node,
+		/* u64 offset */
+		read_offset,
+		/* size_t size */
+		data_size,
+		/* fsapi_iohandler *iohandler */
+		&iohandler);
+	if(err) {
+		sys_log_perror(err, "Error reading from node");
+		ret = -err;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0))
+		SetPageError(page);
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0)) */
+		goto out;
+	}
+	else if(bytes_read > data_size) {
+		sys_log_critical("Unexpected: Read more data than requested.");
+		ret = -EIO;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0))
+		SetPageError(page);
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0)) */
+		goto out;
+	}
+
+	if(!context.has_holes) {
+		sys_log_debug("Setting folio mapped to disk.");
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0))
+		folio_set_mappedtodisk(
+			/* struct folio *folio */
+			folio);
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,13,0)) */
+		SetPageMappedToDisk(
+			/* struct page *page */
+			page);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0)) ... */
+	}
+
+	if(context.num_valid_buffers) {
+		size_t i;
+
+		sys_log_debug("Initiating read on mapped buffers.");
+
+		for(i = 0; i < context.num_valid_buffers; i++) {
+			struct buffer_head *const cur_buffer =
+				context.valid_buffers[i];
+
+			lock_buffer(
+				/* struct buffer_head *bh */
+				cur_buffer);
+
+			cur_buffer->b_end_io =
+				fsapi_linux_address_space_read_folio_end_io;
+
+			set_buffer_async_read(
+				/* struct buffer_head *bh */
+				cur_buffer);
+		}
+
+		for(i = 0; i < context.num_valid_buffers; i++) {
+			struct buffer_head *const cur_buffer =
+				context.valid_buffers[i];
+
+			if(!buffer_uptodate(
+				/* struct buffer_head *bh */
+				cur_buffer))
+			{
+				submit_bh(
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0))
+					/* blk_opf_t opf */
+					REQ_OP_READ | 0,
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)) */
+					/* int op */
+					REQ_OP_READ,
+					/* int op_flags */
+					0,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0)) ... */
+					/* struct buffer_head *bh */
+					cur_buffer);
+			}
+			else {
+				fsapi_linux_address_space_read_folio_end_io(
+					/* struct buffer_head *bh */
+					cur_buffer,
+					/* int uptodate */
+					1);
+			}
+		}
+	}
+
+	sys_log_debug("Done with reading into "
+		FSAPI_IF_LINUX_5_19("folio") FSAPI_NOT_LINUX_5_19("page") ".");
+out:
+	if(ret || !context.num_valid_buffers) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0))
+		sys_log_debug("Ending read with success=%d.",
+			ret ? false : true);
+		folio_end_read(
+			/* struct folio *folio */
+			folio,
+			/* bool success */
+			ret ? false : true);
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0)) */
+		if(!ret) {
+			SetPageUptodate(
+				/* struct page *page */
+				page);
+		}
+
+		unlock_page(
+			/* struct page *page */
+			page);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)) ... */
+	}
+
+	fsapi_linux_op_log_leave(ret, "file=%p, "
+		FSAPI_IF_LINUX_5_19("folio") FSAPI_NOT_LINUX_5_19("page") "=%p",
+		file, FSAPI_IF_LINUX_5_19(folio) FSAPI_NOT_LINUX_5_19(page));
 
 	return ret;
 }
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)) ... */
 
 /* Write back some dirty pages from this mapping. */
 static int fsapi_linux_address_space_op_writepages(
