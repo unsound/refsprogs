@@ -7043,15 +7043,15 @@ static int fsapi_linux_address_space_op_readpage(
 
 	if(!context.has_holes) {
 		sys_log_debug("Setting folio mapped to disk.");
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0))
 		folio_set_mappedtodisk(
 			/* struct folio *folio */
 			folio);
-#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,13,0)) */
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0)) */
 		SetPageMappedToDisk(
 			/* struct page *page */
 			page);
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)) ... */
 	}
 
 	if(context.num_valid_buffers) {
