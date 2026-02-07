@@ -4241,7 +4241,7 @@ static int fsapi_node_read_visit_file_extent(
 		/* sys_device *dev */
 		context->vol->dev,
 		/* u64 offset */
-		cur_pos + copy_offset_in_buffer,
+		cur_pos + offset_in_extent + copy_offset_in_buffer,
 		/* size_t size */
 		bytes_to_read);
 	if(err) {
