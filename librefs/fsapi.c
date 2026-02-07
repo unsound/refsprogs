@@ -2289,6 +2289,8 @@ static int fsapi_node_get_attributes_visit_symlink(
 
 	(void) type;
 
+	attrs->is_directory = SYS_FALSE;
+
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attrs->size = target_length;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
