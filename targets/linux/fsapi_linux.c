@@ -42,6 +42,10 @@
 #include <linux/statfs.h>
 #include <linux/xattr.h>
 
+#ifndef FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH
+#define FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH 0
+#endif
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
 #define FSAPI_IF_LINUX_4_9(...) __VA_ARGS__
 #define FSAPI_NOT_LINUX_4_9(...)
@@ -497,14 +501,32 @@ static struct file_operations fsapi_linux_null_file_operations = {
 	 *     size_t,
 	 *     loff_t *) */
 	.write = NULL,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	/* ssize_t (*read_iter)(
 	 *     struct kiocb *,
 	 *     struct iov_iter *) */
 	.read_iter = NULL,
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+	/* ssize_t (*aio_read)(
+	 *     struct kiocb *,
+	 *     const struct iovec *,
+	 *     unsigned long,
+	 *     loff_t) */
+	.aio_read = NULL,
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	/* ssize_t (*write_iter)(
 	 *     struct kiocb *,
 	 *     struct iov_iter *) */
 	.write_iter = NULL,
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+	/* ssize_t (*aio_write)(
+	 *     struct kiocb *,
+	 *     const struct iovec *,
+	 *     unsigned long,
+	 *     loff_t) */
+	.aio_write = NULL,
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
 	/* int (*iopoll)(
 	 *     struct kiocb *kiocb,
 	 *     struct io_comp_batch *,
@@ -801,11 +823,13 @@ const struct inode_operations fsapi_linux_null_inode_operations =
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)) */
 };
 
+#if FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH
 static ssize_t fsapi_linux_file_op_read(
 		struct file *,
 		char __user *,
 		size_t,
 		loff_t *);
+#endif /* FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH */
 
 static ssize_t fsapi_linux_file_op_write(
 		struct file *,
@@ -813,18 +837,31 @@ static ssize_t fsapi_linux_file_op_write(
 		size_t,
 		loff_t *);
 
-#if 0
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 static ssize_t fsapi_linux_file_op_read_iter(
-		struct kiocb *,
-		struct iov_iter *);
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) */
+		struct kiocb *const iocb,
+		struct iov_iter *const iter);
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+static ssize_t fsapi_linux_file_op_aio_read(
+		struct kiocb *const iocb,
+		const struct iovec *const iov,
+		const unsigned long nr_segs,
+		const loff_t pos);
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
 
+#if 0
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 static ssize_t fsapi_linux_file_op_write_iter(
-		struct kiocb *,
-		struct iov_iter *);
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) */
+static ssize_t fsapi_linux_file_op_write_iter(
+		struct kiocb *const iocb,
+		struct iov_iter *const from);
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+static ssize_t fsapi_linux_file_op_aio_write(
+		struct kiocb *iocb,
+		const struct iovec *iov,
+		unsigned long nr_segs,
+		loff_t pos);
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
 #endif
 
 static long fsapi_linux_file_op_unlocked_ioctl(
@@ -892,9 +929,7 @@ static struct file_operations fsapi_linux_file_operations = {
 	 *     char __user *,
 	 *     size_t,
 	 *     loff_t *) */
-#if 1 /* Temporary read path. */
-	.read = fsapi_linux_file_op_read,
-#else
+#if !FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0))
 	.read = new_sync_read,
@@ -904,7 +939,9 @@ static struct file_operations fsapi_linux_file_operations = {
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
 	.read = do_sync_read,
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)) ... */
-#endif
+#else
+	.read = fsapi_linux_file_op_read,
+#endif /* !FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH ... */
 	/* ssize_t (*write)(
 	 *     struct file *,
 	 *     const char __user *,
@@ -923,38 +960,40 @@ static struct file_operations fsapi_linux_file_operations = {
 	.write = do_sync_write,
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
 #endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	/* ssize_t (*read_iter)(
 	 *     struct kiocb *,
 	 *     struct iov_iter *) */
-#if 1 /* Temporary read path. */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
-	.read_iter = NULL,
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
-	.aio_read = NULL,
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
-#else
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	.read_iter = fsapi_linux_file_op_read_iter,
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+	/* ssize_t (*aio_read)(
+	 *     struct kiocb *,
+	 *     const struct iovec *,
+	 *     unsigned long,
+	 *     loff_t) */
 	.aio_read = fsapi_linux_file_op_aio_read,
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
-#endif
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	/* ssize_t (*write_iter)(
 	 *     struct kiocb *,
 	 *     struct iov_iter *) */
-#if 1 /* Temporary read path. */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
+#if 1 /* Temporary write path. */
 	.write_iter = NULL,
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
-	.aio_write = NULL,
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
 #else
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	.write_iter = fsapi_linux_file_op_write_iter,
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
-	.aio_write = fsapi_linux_file_op_aio_write,
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
 #endif
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+	/* ssize_t (*aio_write)(
+	 *     struct kiocb *,
+	 *     const struct iovec *,
+	 *     unsigned long,
+	 *     loff_t) */
+#if 1 /* Temporary write path. */
+	.aio_write = NULL,
+#else
+	.aio_write = fsapi_linux_file_op_aio_write,
+#endif
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
 	/* int (*iopoll)(
 	 *     struct kiocb *kiocb,
 	 *     struct io_comp_batch *,
@@ -1390,20 +1429,30 @@ static struct file_operations fsapi_linux_dir_operations = {
 	 *     size_t,
 	 *     loff_t *) */
 	.write = NULL,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	/* ssize_t (*read_iter)(
 	 *     struct kiocb *,
 	 *     struct iov_iter *) */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	.read_iter = NULL,
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+	/* ssize_t (*aio_read)(
+	 *     struct kiocb *,
+	 *     const struct iovec *,
+	 *     unsigned long,
+	 *     loff_t) */
 	.aio_read = NULL,
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) */
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	/* ssize_t (*write_iter)(
 	 *     struct kiocb *,
 	 *     struct iov_iter *) */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	.write_iter = NULL,
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+	/* ssize_t (*aio_write)(
+	 *     struct kiocb *,
+	 *     const struct iovec *,
+	 *     unsigned long,
+	 *     loff_t) */
 	.aio_write = NULL,
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) */
 	/* int (*iopoll)(
@@ -3389,7 +3438,7 @@ static int fsapi_linux_super_op_show_options(
 	return 0;
 }
 
-
+#if FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH
 typedef struct {
 	char __user *buf;
 	size_t bytes_read;
@@ -3523,6 +3572,7 @@ out:
 
 	return ret;
 }
+#endif /* FSAPI_LINUX_SLOW_SYNCHRONOUS_READ_PATH */
 
 typedef struct {
 	const char __user *buf;
@@ -3624,33 +3674,59 @@ out:
 	return ret;
 }
 
-#if 0
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 static ssize_t fsapi_linux_file_op_read_iter(
-		struct kiocb *iocb,
-		struct iov_iter *iter)
+		struct kiocb *const iocb,
+		struct iov_iter *const iter)
 {
-	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
-		/* struct super_block *sb */
-		iocb->ki_filp->f_inode->i_sb);
-
-	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
-		/* struct inode *inode */
-		iocb->ki_filp->f_inode);
+	ssize_t res = 0;
 
 	fsapi_linux_op_log_enter("iocb=%p, iter=%p",
 		iocb, iter);
 
-	(void) vol;
-	(void) node;
+	res = generic_file_read_iter(
+		/* struct kiocb *iocb */
+		iocb,
+		/* struct iov_iter *iter */
+		iter);
 
-	fsapi_linux_op_log_leave(-EIO, "iocb=%p, iter=%p",
+	fsapi_linux_op_log_leave(res, "iocb=%p, iter=%p",
 		iocb, iter);
 
-	return -EIO;
+	return res;
 }
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+static ssize_t fsapi_linux_file_op_aio_read(
+		struct kiocb *const iocb,
+		const struct iovec *const iov,
+		const unsigned long nr_segs,
+		const loff_t pos)
+{
+	ssize_t res = 0:
 
+	fsapi_linux_op_log_enter("iocb=%p, iov=%p, nr_segs=%lu, "
+		"pos=%" PRId64,
+		iocb, iov, nr_segs, PRAd64(pos));
+
+	res = generic_file_aio_read(
+		/* struct kiocb *iocb */
+		iocb,
+		/* const struct iovec *iov */
+		iov,
+		/* unsigned long nr_segs */
+		nr_segs,
+		/* loff_t pos */
+		pos);
+
+	fsapi_linux_op_log_leave(res, "iocb=%p, iov=%p, nr_segs=%lu, "
+		"pos=%" PRId64,
+		iocb, iov, nr_segs, PRAd64(pos));
+
+	return res;
+}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
+
+#if 0
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 static ssize_t fsapi_linux_file_op_write_iter(
 		struct kiocb *iocb,
@@ -3675,7 +3751,35 @@ static ssize_t fsapi_linux_file_op_write_iter(
 
 	return -EIO;
 }
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) */
+#else
+static ssize_t fsapi_linux_file_op_aio_write(
+		struct kiocb *iocb,
+		const struct iovec *iov,
+		unsigned long nr_segs,
+		loff_t pos)
+{
+	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
+		/* struct super_block *sb */
+		iocb->ki_filp->f_inode->i_sb);
+
+	fsapi_node *const node = fsapi_linux_inode_to_fsapi_node(
+		/* struct inode *inode */
+		iocb->ki_filp->f_inode);
+
+	fsapi_linux_op_log_enter("iocb=%p, iov=%p, nr_segs=%lu, "
+		"pos=%" PRId64,
+		iocb, iov, nr_segs, PRAd64(pos));
+
+	(void) vol;
+	(void) node;
+
+	fsapi_linux_op_log_leave(-EIO, "iocb=%p, iov=%p, nr_segs=%lu, "
+		"pos=%" PRId64,
+		iocb, iov, nr_segs, PRAd64(pos));
+
+	return -EIO;
+}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0) ... */
 #endif
 
 static long fsapi_linux_file_op_unlocked_ioctl(
