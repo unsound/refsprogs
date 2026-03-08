@@ -3961,7 +3961,8 @@ typedef struct {
 
 static int fsapi_node_read_zeroes(
 		fsapi_node_read_context *const context,
-		const size_t bytes_to_zero)
+		const size_t bytes_to_zero,
+		const sys_bool is_hole)
 {
 	int err = 0;
 	u8 zero_data[512];
@@ -3969,6 +3970,19 @@ static int fsapi_node_read_zeroes(
 
 	memset(zero_data, 0, sizeof(zero_data));
 
+	if(is_hole && context->iohandler->handle_hole) {
+		/* We have encountered a hole and the caller has a handler for
+		 * it. Call the 'handle_hole' callback. */
+		err = context->iohandler->handle_hole(
+			/* void *context */
+			context->iohandler->context,
+			/* size_t size */
+			bytes_to_zero);
+		goto out;
+	}
+
+	/* Uninitialized data or a hole with no hole handler. Return zeroes to
+	 * the 'copy_data' handler until the end of the read. */
 	while(remaining_bytes_to_zero) {
 		const size_t cur_bytes_to_zero =
 			sys_min(sizeof(zero_data), remaining_bytes_to_zero);
@@ -4182,22 +4196,7 @@ static int fsapi_node_read_visit_file_extent(
 			 * iteration. */
 			goto out;
 		}
-		else if(context->iohandler->handle_hole) {
-			/* We have encountered a hole and the caller has a
-			 * handler for it. Call the 'handle_hole' callback. */
-			err = context->iohandler->handle_hole(
-				/* void *context */
-				context->iohandler->context,
-				/* size_t size */
-				bytes_to_read);
-			if(err) {
-				goto out;
-			}
-		}
 		else {
-			/* We have encountered a hole with no hole handler.
-			 * Return zeroes until we reach context->cur_offset or
-			 * until the end of the read. */
 			const u64 bytes_to_extent =
 				extent_logical_start - context->cur_offset;
 			const size_t bytes_to_zero =
@@ -4208,7 +4207,9 @@ static int fsapi_node_read_visit_file_extent(
 				/* fsapi_node_read_context *context */
 				context,
 				/* size_t bytes_to_zero */
-				bytes_to_zero);
+				bytes_to_zero,
+				/* sys_bool is_hole */
+				SYS_TRUE);
 			if(err) {
 				goto out;
 			}
@@ -4407,7 +4408,9 @@ int fsapi_node_read(
 			/* fsapi_node_read_context *context */
 			&context,
 			/* size_t bytes_to_zero */
-			context.size);
+			context.size,
+			/* sys_bool is_hole */
+			SYS_TRUE);
 		if(err) {
 			goto out;
 		}
