@@ -4248,12 +4248,6 @@ static int fsapi_node_read_visit_file_extent(
 		/* size_t size */
 		bytes_to_read);
 	if(err) {
-		/* Break code used by the handler when it wants
-		 * to stop the iteration. */
-		if(err == -1) {
-			err = 0;
-		}
-
 		goto out;
 	}
 
@@ -4261,7 +4255,7 @@ static int fsapi_node_read_visit_file_extent(
 	context->size -= bytes_to_read;
 	context->bytes_read_in_iteration += bytes_to_read;
 out:
-	return err;
+	return err ? err : (context->size ? 0 : -1);
 }
 
 static int fsapi_node_read_visit_file_data(
