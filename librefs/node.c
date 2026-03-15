@@ -1836,9 +1836,21 @@ static int parse_block_header(
 			PRAuz(0x0),
 			PRAXz(0x0),
 			PRAbs(4, &block[0x0]));
+		/* Note: 32-bit value at 0x8 has been 0x2 in all observed cases.
+		 * Maybe metadata version? */
 		print_unknown32(prefix, indent + 2, block, &block[0x4]);
+		/* Note: 32-bit value at 0x8 has been 0x0 in all observed cases.
+		 * Reserved field? */
 		print_unknown32(prefix, indent + 2, block, &block[0x8]);
-		print_unknown32(prefix, indent + 2, block, &block[0xC]);
+		/* Note: 32-bit value at 0xC has the same value for all blocks
+		 * on a volume and the value looks randomized. Is this for
+		 * recovery purposes, so that we know what blocks belong to the
+		 * volume?
+		 * Observed values:
+		 * - Win11 24H2 arm64 C drive: 3488976860 / 0xCFF58FDC
+		 * - Win11 25H2 arm64 C drive:  187110836 / 0x0B2715B4 */
+		print_le32_dechex("Filesystem identifier", prefix, indent + 2,
+			block, &block[0xC]);
 		print_le64_dechex("Checkpoint number", prefix, indent + 2,
 			block, &block[0x10]);
 		print_unknown64(prefix, indent + 2, block, &block[0x18]);
@@ -2129,7 +2141,8 @@ static int parse_superblock_v3(
 
 	i += print_unknown32(prefix, indent, sb, &sb->reserved4);
 	i += print_unknown32(prefix, indent, sb, &sb->reserved8);
-	i += print_unknown32(prefix, indent, sb, &sb->reserved12);
+	i += print_le32_dechex("Filesystem identifier", prefix, indent, sb,
+		&sb->reserved12);
 
 	emit(prefix, indent, "Unknown @ %" PRIuz " / 0x%" PRIXz ":",
 		PRAuz(i), PRAXz(i));
