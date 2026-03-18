@@ -56,6 +56,19 @@ struct sys_iohandler {
 		size_t size);
 
 	/**
+	 * The handler callback function for a hole (a non-allocated part of a
+	 * sparse file).
+	 *
+	 * Accepts a size and processes the hole as implemented by the handler.
+	 *
+	 * This callback is optional, and should only be non-@p NULL when the
+	 * handler has a special way of handling holes.
+	 */
+	int (*handle_hole)(
+		void *context,
+		size_t size);
+
+	/**
 	 * Copies data from a memory buffer into the I/O handler's backend.
 	 */
 	int (*copy_data)(

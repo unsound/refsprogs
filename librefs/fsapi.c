@@ -2289,6 +2289,8 @@ static int fsapi_node_get_attributes_visit_symlink(
 
 	(void) type;
 
+	attrs->is_directory = SYS_FALSE;
+
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attrs->size = target_length;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
@@ -2470,6 +2472,7 @@ static int fsapi_node_get_attributes_common(
 	}
 
 	provided_mask = attributes->requested & node->attributes.valid;
+	attributes->is_directory = node->attributes.is_directory;
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attributes->size = node->attributes.size;
 	}
@@ -3958,7 +3961,8 @@ typedef struct {
 
 static int fsapi_node_read_zeroes(
 		fsapi_node_read_context *const context,
-		const size_t bytes_to_zero)
+		const size_t bytes_to_zero,
+		const sys_bool is_hole)
 {
 	int err = 0;
 	u8 zero_data[512];
@@ -3966,6 +3970,19 @@ static int fsapi_node_read_zeroes(
 
 	memset(zero_data, 0, sizeof(zero_data));
 
+	if(is_hole && context->iohandler->handle_hole) {
+		/* We have encountered a hole and the caller has a handler for
+		 * it. Call the 'handle_hole' callback. */
+		err = context->iohandler->handle_hole(
+			/* void *context */
+			context->iohandler->context,
+			/* size_t size */
+			bytes_to_zero);
+		goto out;
+	}
+
+	/* Uninitialized data or a hole with no hole handler. Return zeroes to
+	 * the 'copy_data' handler until the end of the read. */
 	while(remaining_bytes_to_zero) {
 		const size_t cur_bytes_to_zero =
 			sys_min(sizeof(zero_data), remaining_bytes_to_zero);
@@ -4174,10 +4191,12 @@ static int fsapi_node_read_visit_file_extent(
 		goto out;
 	}
 	else if(extent_logical_start > context->cur_offset) {
-		if(context->is_sparse) {
-			/* We have encountered a hole. Return zeroes until we
-			 * reach context->cur_offset or until the end of the
-			 * read. */
+		if(!context->is_sparse) {
+			/* Ignore extent. We'll get back to it in the next
+			 * iteration. */
+			goto out;
+		}
+		else {
 			const u64 bytes_to_extent =
 				extent_logical_start - context->cur_offset;
 			const size_t bytes_to_zero =
@@ -4188,7 +4207,9 @@ static int fsapi_node_read_visit_file_extent(
 				/* fsapi_node_read_context *context */
 				context,
 				/* size_t bytes_to_zero */
-				bytes_to_zero);
+				bytes_to_zero,
+				/* sys_bool is_hole */
+				SYS_TRUE);
 			if(err) {
 				goto out;
 			}
@@ -4196,11 +4217,6 @@ static int fsapi_node_read_visit_file_extent(
 			if(!context->size) {
 				goto out;
 			}
-		}
-		else {
-			/* Ignore extent. We'll get back to it in the next
-			 * iteration. */
-			goto out;
 		}
 	}
 
@@ -4228,16 +4244,10 @@ static int fsapi_node_read_visit_file_extent(
 		/* sys_device *dev */
 		context->vol->dev,
 		/* u64 offset */
-		cur_pos + copy_offset_in_buffer,
+		cur_pos + offset_in_extent + copy_offset_in_buffer,
 		/* size_t size */
 		bytes_to_read);
 	if(err) {
-		/* Break code used by the handler when it wants
-		 * to stop the iteration. */
-		if(err == -1) {
-			err = 0;
-		}
-
 		goto out;
 	}
 
@@ -4245,7 +4255,7 @@ static int fsapi_node_read_visit_file_extent(
 	context->size -= bytes_to_read;
 	context->bytes_read_in_iteration += bytes_to_read;
 out:
-	return err;
+	return err ? err : (context->size ? 0 : -1);
 }
 
 static int fsapi_node_read_visit_file_data(
@@ -4392,7 +4402,9 @@ int fsapi_node_read(
 			/* fsapi_node_read_context *context */
 			&context,
 			/* size_t bytes_to_zero */
-			context.size);
+			context.size,
+			/* sys_bool is_hole */
+			SYS_TRUE);
 		if(err) {
 			goto out;
 		}
@@ -4436,12 +4448,15 @@ int fsapi_node_write(
 int fsapi_node_sync(
 		fsapi_volume *vol,
 		fsapi_node *node,
+		u64 start,
+		u64 length,
 		sys_bool data_only)
 {
 	int err;
 
-	fsapi_log_enter("vol=%p, node=%p, data_only=%u",
-		vol, node, data_only);
+	fsapi_log_enter("vol=%p, node=%p, start=%" PRIu64 ", "
+		"length=%" PRIu64 ", data_only=%u",
+		vol, node, PRAu64(start), PRAu64(length), data_only);
 
 	(void) vol;
 	(void) node;
@@ -4451,8 +4466,9 @@ int fsapi_node_sync(
 	 * moment. */
 	err = 0;
 
-	fsapi_log_leave(err, "vol=%p, node=%p, data_only=%u",
-		vol, node, data_only);
+	fsapi_log_leave(err, "vol=%p, node=%p, start=%" PRIu64 ", "
+		"length=%" PRIu64 ", data_only=%u",
+		vol, node, PRAu64(start), PRAu64(length), data_only);
 
 	return err;
 }
@@ -4637,6 +4653,34 @@ int fsapi_node_remove(
 		name ? name : "",
 		PRAuz(name_length),
 		out_removed_node, out_removed_node ? *out_removed_node : NULL);
+
+	return err;
+}
+
+int fsapi_node_fallocate(
+		fsapi_volume *const vol,
+		fsapi_node *const node,
+		const fsapi_node_fallocate_flags flags,
+		const u64 offset,
+		const u64 length)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, flags=0x%X, offset=%" PRIu64 ", "
+		"length=%" PRIu64,
+		vol, node, flags, PRAu64(offset), PRAu64(length));
+
+	(void) vol;
+	(void) node;
+	(void) flags;
+	(void) offset;
+	(void) length;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, flags=0x%X, offset=%" PRIu64 ", "
+		"length=%" PRIu64,
+		vol, node, flags, PRAu64(offset), PRAu64(length));
 
 	return err;
 }

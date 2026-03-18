@@ -840,7 +840,7 @@ static refsimage_output_stream refsimage_ntfsclone_stream_init(
 	context->fd = fd;
 	memcpy(&context->header.signature, "\0ntfsclone-image", 16);
 	context->header.version.major = 10;
-	context->header.version.minor = 0;
+	context->header.version.minor = 1;
 	memcpy(&context->header.block_size, &block_size_le,
 		sizeof(block_size_le));
 	memcpy(&context->header.device_size, &device_size_le,
@@ -935,7 +935,8 @@ static int refsimage_restore_ntfsclone_image(
 		goto out;
 	}
 	else if(context.header.version.major != 10 ||
-		context.header.version.minor != 0)
+		(context.header.version.minor != 0 &&
+		context.header.version.minor != 1))
 	{
 		fprintf(stderr, "Invalid ntfsclone header: Unsupported version "
 			"%u.%u.",

@@ -26,6 +26,10 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 
+#define SYS_FSNAME "refs"
+
+#define SYS_LOG_PREFIX SYS_FSNAME ": "
+
 #ifndef REFS_SYS_MEMORY_LOGGING
 #define REFS_SYS_MEMORY_LOGGING 0
 #endif
@@ -215,82 +219,82 @@ static inline void sys_log_pnoop(int err, const char *const fmt, ...)
 
 #if SYS_LOG_CRITICAL_ENABLED
 #define sys_log_critical(fmt, ...) \
-	printk(KERN_CRIT "[CRITICAL] " fmt "\n", ##__VA_ARGS__)
+	printk(KERN_CRIT SYS_LOG_PREFIX "[CRITICAL] " fmt "\n", ##__VA_ARGS__)
 #else
 #define sys_log_critical sys_log_noop
 #endif
 
 #if SYS_LOG_ERROR_ENABLED
 #define sys_log_error(fmt, ...) \
-	printk(KERN_ERR "[ERROR] " fmt "\n", ##__VA_ARGS__)
+	printk(KERN_ERR SYS_LOG_PREFIX "[ERROR] " fmt "\n", ##__VA_ARGS__)
 #else
 #define sys_log_error sys_log_noop
 #endif
 
 #if SYS_LOG_ERROR_ENABLED
 #define sys_log_perror(err, fmt, ...) \
-	printk(KERN_ERR "[ERROR] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		sys_strerror(err), (err))
+	printk(KERN_ERR SYS_LOG_PREFIX "[ERROR] " fmt ": %s (%d)\n", \
+		##__VA_ARGS__, sys_strerror(err), (err))
 #else
 #define sys_log_perror sys_log_pnoop
 #endif
 
 #if SYS_LOG_WARNING_ENABLED
 #define sys_log_warning(fmt, ...) \
-	printk(KERN_WARNING "[WARNING] " fmt "\n", ##__VA_ARGS__)
+	printk(KERN_WARNING SYS_LOG_PREFIX "[WARNING] " fmt "\n", ##__VA_ARGS__)
 #else
 #define sys_log_warning sys_log_noop
 #endif
 
 #if SYS_LOG_WARNING_ENABLED
 #define sys_log_pwarning(err, fmt, ...) \
-	printk(KERN_WARNING "[WARNING] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		sys_strerror(err), (err))
+	printk(KERN_WARNING SYS_LOG_PREFIX "[WARNING] " fmt ": %s (%d)\n", \
+		##__VA_ARGS__, sys_strerror(err), (err))
 #else
 #define sys_log_pwarning sys_log_pnoop
 #endif
 
 #if SYS_LOG_INFO_ENABLED
 #define sys_log_info(fmt, ...) \
-	printk(KERN_INFO fmt "\n", ##__VA_ARGS__)
+	printk(KERN_INFO SYS_LOG_PREFIX fmt "\n", ##__VA_ARGS__)
 #else
 #define sys_log_info sys_log_noop
 #endif
 
 #if SYS_LOG_INFO_ENABLED
 #define sys_log_pinfo(err, fmt, ...) \
-	printk(KERN_INFO fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		sys_strerror(err), (err))
+	printk(KERN_INFO SYS_LOG_PREFIX fmt ": %s (%d)\n", \
+		##__VA_ARGS__, sys_strerror(err), (err))
 #else
 #define sys_log_pinfo sys_log_pnoop
 #endif
 
 #if SYS_LOG_DEBUG_ENABLED
 #define sys_log_debug(fmt, ...) \
-	printk(KERN_DEBUG "[DEBUG] " fmt "\n", ##__VA_ARGS__)
+	printk(KERN_DEBUG SYS_LOG_PREFIX "[DEBUG] " fmt "\n", ##__VA_ARGS__)
 #else
 #define sys_log_debug sys_log_noop
 #endif
 
 #if SYS_LOG_DEBUG_ENABLED
 #define sys_log_pdebug(err, fmt, ...) \
-	printk(KERN_DEBUG "[DEBUG] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		sys_strerror(err), (err))
+	printk(KERN_DEBUG SYS_LOG_PREFIX "[DEBUG] " fmt ": %s (%d)\n", \
+		##__VA_ARGS__, sys_strerror(err), (err))
 #else
 #define sys_log_pdebug sys_log_pnoop
 #endif
 
 #if SYS_LOG_TRACE_ENABLED
 #define sys_log_trace(fmt, ...) \
-	printk(KERN_DEBUG "[TRACE] " fmt "\n", ##__VA_ARGS__)
+	printk(KERN_DEBUG SYS_LOG_PREFIX "[TRACE] " fmt "\n", ##__VA_ARGS__)
 #else
 #define sys_log_trace sys_log_noop
 #endif
 
 #if SYS_LOG_TRACE_ENABLED
 #define sys_log_ptrace(err, fmt, ...) \
-	printk(KERN_DEBUG "[TRACE] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		sys_strerror(err), (err))
+	printk(KERN_DEBUG SYS_LOG_PREFIX "[TRACE] " fmt ": %s (%d)\n", \
+		##__VA_ARGS__, sys_strerror(err), (err))
 #else
 #define sys_log_ptrace sys_log_pnoop
 #endif

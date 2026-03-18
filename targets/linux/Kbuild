@@ -1,7 +1,9 @@
+ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+
 obj-m := refs.o
 
 ccflags-y := \
-	-DVERSION=\"$(shell grep AC_INIT ../../configure.ac | cut -d , -f 2 | cut -d '[' -f 2 | cut -d ']' -f 1)\"
+	-DVERSION=\"$(shell grep AC_INIT $(ROOT_DIR)/../../configure.ac | cut -d , -f 2 | cut -d '[' -f 2 | cut -d ']' -f 1)\"
 
 refs-y := \
 	refs_init.o \
