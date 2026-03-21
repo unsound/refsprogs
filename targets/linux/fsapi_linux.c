@@ -1218,20 +1218,20 @@ static struct file_operations fsapi_linux_file_operations = {
 };
 
 static int fsapi_linux_file_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *entry,
 		struct iattr *attr);
 
 static int fsapi_linux_file_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
 		const struct path *path,
 		struct kstat *stat,
@@ -1682,11 +1682,11 @@ static struct dentry* fsapi_linux_dir_inode_op_lookup(
 		unsigned int);
 
 static int fsapi_linux_dir_inode_op_create(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *,
 		struct dentry *,
 		umode_t,
@@ -1702,11 +1702,11 @@ static int fsapi_linux_dir_inode_op_unlink(
 		struct dentry *);
 
 static int fsapi_linux_dir_inode_op_symlink(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *,
 		struct dentry *,
 		const char *);
@@ -1716,11 +1716,11 @@ static struct dentry* fsapi_linux_dir_inode_op_mkdir(
 #else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)) */
 static int fsapi_linux_dir_inode_op_mkdir(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0)) ... */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *,
 		struct dentry *,
 		umode_t);
@@ -1730,22 +1730,22 @@ static int fsapi_linux_dir_inode_op_rmdir(
 		struct dentry *);
 
 static int fsapi_linux_dir_inode_op_mknod(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *,
 		struct dentry *,
 		umode_t,
 		dev_t);
 
 static int fsapi_linux_dir_inode_op_rename(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *,
 		struct dentry *,
 		struct inode *,
@@ -1753,20 +1753,20 @@ static int fsapi_linux_dir_inode_op_rename(
 		unsigned int);
 
 static int fsapi_linux_dir_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *,
 		struct iattr *);
 
 static int fsapi_linux_dir_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		const struct path *,
 		struct kstat *,
 		u32,
@@ -1963,20 +1963,20 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 		struct delayed_call *);
 
 static int fsapi_linux_symlink_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *entry,
 		struct iattr *attr);
 
 static int fsapi_linux_symlink_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
 		const struct path *path,
 		struct kstat *stat,
@@ -2065,20 +2065,20 @@ static const struct inode_operations fsapi_linux_symlink_inode_operations = {
 };
 
 static int fsapi_linux_special_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *entry,
 		struct iattr *attr);
 
 static int fsapi_linux_special_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
 		const struct path *path,
 		struct kstat *stat,
@@ -2564,16 +2564,16 @@ static void fsapi_linux_attributes_to_inode(
 	if(attributes->valid &
 		FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME)
 	{
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)
 		inode_set_ctime(ino,
 			attributes->last_status_change_time.tv_sec,
 			attributes->last_status_change_time.tv_nsec);
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0) */
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(6,5,0) */
 		ino->i_ctime.tv_sec =
 			attributes->last_status_change_time.tv_sec;
 		ino->i_ctime.tv_nsec =
 			attributes->last_status_change_time.tv_nsec;
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0) ... */
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0) ... */
 	}
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
 		ino->i_blocks = (attributes->allocated_size + 511) / 512;
@@ -2984,13 +2984,13 @@ static int fsapi_linux_update_time_common(
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0) ... */
 	}
 	if(flags & S_CTIME) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)
 		inode_set_ctime(inode, attrs.last_status_change_time.tv_sec,
 			attrs.last_status_change_time.tv_nsec);
-#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)) */
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,5,0)) */
 		inode->i_ctime.tv_sec = attrs.last_status_change_time.tv_sec;
 		inode->i_ctime.tv_nsec = attrs.last_status_change_time.tv_nsec;
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0) ... */
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0) ... */
 	}
 	if(flags & S_VERSION) {
 		inode_inc_iversion(inode);
@@ -4176,11 +4176,11 @@ out:
 }
 
 static int fsapi_linux_file_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *entry,
 		struct iattr *attr)
 {
@@ -4216,11 +4216,11 @@ static int fsapi_linux_file_inode_op_setattr(
 }
 
 static int fsapi_linux_file_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
 		const struct path *path,
 #else /* (LINUX_VERSION_CODE < KERNEL_VERSION(4,11,0)) */
@@ -4974,11 +4974,11 @@ out:
 }
 
 static int fsapi_linux_dir_inode_op_create(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *target_inode,
 		struct dentry *dent,
 		umode_t mode,
@@ -5292,11 +5292,11 @@ out:
 }
 
 static int fsapi_linux_dir_inode_op_symlink(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *parent_inode,
 		struct dentry *dent,
 		const char *target)
@@ -5449,11 +5449,11 @@ static struct dentry* fsapi_linux_dir_inode_op_mkdir(
 #else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)) */
 static int fsapi_linux_dir_inode_op_mkdir(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0)) */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *parent_inode,
 		struct dentry *dent,
 		umode_t mode)
@@ -5673,11 +5673,11 @@ out:
 }
 
 static int fsapi_linux_dir_inode_op_mknod(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *parent_inode,
 		struct dentry *dent,
 		umode_t mode,
@@ -5833,11 +5833,11 @@ out:
 }
 
 static int fsapi_linux_dir_inode_op_rename(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *source_dir_inode,
 		struct dentry *dent,
 		struct inode *target_dir_inode,
@@ -5958,11 +5958,11 @@ out:
 }
 
 static int fsapi_linux_dir_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *entry,
 		struct iattr *attr)
 {
@@ -5998,11 +5998,11 @@ static int fsapi_linux_dir_inode_op_setattr(
 }
 
 static int fsapi_linux_dir_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
 		const struct path *path,
 		struct kstat *stat,
@@ -6335,11 +6335,11 @@ out:
 }
 
 static int fsapi_linux_symlink_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *entry,
 		struct iattr *attr)
 {
@@ -6383,11 +6383,11 @@ static int fsapi_linux_symlink_inode_op_setattr(
 }
 
 static int fsapi_linux_symlink_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
 		const struct path *path,
 		struct kstat *stat,
@@ -6559,11 +6559,11 @@ static int fsapi_linux_symlink_inode_op_update_time(
 }
 
 static int fsapi_linux_special_inode_op_setattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct dentry *entry,
 		struct iattr *attr)
 {
@@ -6599,11 +6599,11 @@ static int fsapi_linux_special_inode_op_setattr(
 }
 
 static int fsapi_linux_special_inode_op_getattr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 		struct mnt_idmap *namespace,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
 		struct user_namespace *namespace,
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)) ... */
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0))
 		const struct path *path,
 		struct kstat *stat,
