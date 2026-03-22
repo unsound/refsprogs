@@ -67,7 +67,9 @@ override_dh_auto_install:
 
 	# Copy the sources for the Linux kernel driver to /usr/src to be included in refs-dkms.
 	mkdir -p $(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts
-	cp $(CURDIR)/targets/linux/*.[ch] $(CURDIR)/targets/linux/Kbuild $(CURDIR)/targets/linux/Makefile $(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/
+	cp $(CURDIR)/targets/linux/*.[ch] $(CURDIR)/targets/linux/Makefile $(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/
+	# Fix up the VERSION definition as these sources are outside the autoconf skeleton.
+	sed 's/-DVERSION=\\\".*\\\"/-DVERSION=\\\"$(DEB_VERSION_UPSTREAM)\\\"/g' $(CURDIR)/targets/linux/Kbuild > $(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/Kbuild
 
 	# Generate the post-build script.
 	echo '#!/bin/sh' > '$(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts/refs-dkms-postbuild.sh'
