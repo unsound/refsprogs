@@ -6,7 +6,8 @@ Build-Depends:
  debhelper-compat (= 11),
  chrpath,
  pkg-config,
- libfuse3-dev
+ libfuse3-dev,
+ dh-sequence-dkms
 Standards-Version: 4.6.0
 Homepage: https://github.com/unsound/refsprogs
 
@@ -73,3 +74,17 @@ Depends:
  fuse3-udeb,
 #Provides: ${refsprogs-udeb:Provides}
 Description:  Read-only ReFS FUSE driver and progs,
+
+Package: refs-dkms
+Architecture: all
+Depends: dkms (>> 2.1.1.2-5),
+         file,
+         libc6-dev | libc-dev,
+         ${misc:Depends},
+         ${perl:Depends}
+Recommends: refsprogs (>= ${source:Version}), ${linux:Recommends}
+Provides: refs-modules
+Description: ReFS filesystem kernel modules for Linux
+ refs-dkms uses DKMS to dynamically build a Linux kernel module to provide
+ native read-only support for the ReFS filesystem used by recent versions of
+ Microsoft Windows.

@@ -1,6 +1,8 @@
 #!/usr/bin/make -f
 # -*- makefile -*-
 
+include /usr/share/dpkg/default.mk
+
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
@@ -62,6 +64,46 @@ override_dh_auto_install:
 		echo $${_PROGRAM}; \
 		chrpath --delete debian/tmp/$${_PROGRAM}; \
 	done
+
+	# Copy the sources for the Linux kernel driver to /usr/src to be included in refs-dkms.
+	mkdir -p $(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts
+	cp $(CURDIR)/targets/linux/*.[ch] $(CURDIR)/targets/linux/Kbuild $(CURDIR)/targets/linux/Makefile $(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/
+
+	# Generate the post-build script.
+	echo '#!/bin/sh' > '$(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts/refs-dkms-postbuild.sh'
+	echo '' >> '$(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts/refs-dkms-postbuild.sh'
+	echo 'if [ $$# -ne 2 ]; then echo "usage: $$0 <base dir> <kernel/arch dir>"; exit 1; fi' >> '$(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts/refs-dkms-postbuild.sh'
+	echo '' >> '$(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts/refs-dkms-postbuild.sh'
+	echo 'cp "$${1}/build/Module.symvers" "$${1}/$${2}/"' >> '$(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts/refs-dkms-postbuild.sh'
+	chmod a+x '$(CURDIR)/debian/tmp/usr/src/refs-$(DEB_VERSION_UPSTREAM)/scripts/refs-dkms-postbuild.sh'
+
+override_dh_dkms:
+	# Generate a DKMS configuration file for the refs driver.
+	echo 'PACKAGE_NAME=refs' > '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'PACKAGE_VERSION=$(DEB_VERSION_UPSTREAM)' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'PACKAGE_CONFIG=/etc/dkms/refs.conf' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'NO_WEAK_MODULES="yes"' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'if [ -f \$$kernel_source_dir/.config ]; then' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '    . \$$kernel_source_dir/.config' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '    if [ "\$$CONFIG_PREEMPT_RT" = "y" ]; then' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '        BUILD_EXCLUSIVE_KERNEL="NOT ON PREEMPT_RT"' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '    fi' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'fi' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'POST_BUILD="scripts/refs-dkms-postbuild.sh \"\$${dkms_tree}/\$${PACKAGE_NAME}/\$${PACKAGE_VERSION}\" \"\$${kernelver}/\$${arch}\""' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'AUTOINSTALL="yes"' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'MAKE[0]="make KDIR=\"\$${kernel_source_dir}\""' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'STRIP[0]="\$$(' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '  [[ -r \$${PACKAGE_CONFIG} ]] \\' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '  && source \$${PACKAGE_CONFIG} \\' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '  && shopt -q -s extglob \\' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo '  && echo -n no' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo ')"' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'BUILT_MODULE_NAME[0]="refs"' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'BUILT_MODULE_LOCATION[0]=""' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+	echo 'DEST_MODULE_LOCATION[0]="/extra"' >> '$(CURDIR)/debian/tmp/refs-dkms.dkms'
+
+	dh_dkms
+	rm -f '$(CURDIR)/debian/tmp/refs-dkms.dkms'
 
 #override_dh_gencontrol:
 #	dh_gencontrol -- -Vrefsprogs:Provides="librefs$(SONAME)" -Vrefsprogs-udeb:Provides="librefs-udeb$(SONAME)"

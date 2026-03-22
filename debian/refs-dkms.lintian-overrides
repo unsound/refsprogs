@@ -1,0 +1,1 @@
+binary-package-depends-on-toolchain-package Suggests: debhelper

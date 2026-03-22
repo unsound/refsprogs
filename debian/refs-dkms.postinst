@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+# Source debconf library (see dh_installdebconf(1) and #106070 #626312)
+. /usr/share/debconf/confmodule
+
+# Here the module gets built (automatically handled by dh_dkms)
+
+#DEBHELPER#
+
+
+case $1 in
+	(configure)
+		if [ -x /usr/share/update-notifier/notify-reboot-required ]; then
+			/usr/share/update-notifier/notify-reboot-required
+		fi
+		;;
+esac
