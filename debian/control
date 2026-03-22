@@ -7,7 +7,7 @@ Build-Depends:
  chrpath,
  pkg-config,
  libfuse3-dev,
- dh-sequence-dkms
+ dkms (<< 3.0) | dh-sequence-dkms
 Standards-Version: 4.6.0
 Homepage: https://github.com/unsound/refsprogs
 
