@@ -1,0 +1,3 @@
+/bin/refs-fuse			/sbin/mount.refs
+
+/usr/share/man/man8/refs-fuse.8.gz	/usr/share/man/man8/mount.refs.8.gz

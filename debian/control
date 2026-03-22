@@ -25,6 +25,15 @@ Description: Read-only ReFS FUSE driver,
  refs-fuse uses FUSE (Filesystem in Userspace) to provide support for the ReFS
  filesystem used by recent versions of Microsoft Windows.
 
+Package: refs-fuse-default
+Section: otherosfs
+Architecture: linux-any kfreebsd-any
+Depends:
+ refs-fuse (= ${binary:Version})
+Description: Read-only ReFS FUSE driver (default handler for refs volumes),
+ This package installs symlinks to make refs-fuse the default handler for refs
+ volumes.
+
 Package: refsprogs
 Section: otherosfs
 Architecture: linux-any kfreebsd-any
