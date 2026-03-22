@@ -10,7 +10,7 @@ Build-Depends:
 Standards-Version: 4.6.0
 Homepage: https://github.com/unsound/refsprogs
 
-Package: refsprogs
+Package: refs-fuse
 Section: otherosfs
 Architecture: linux-any kfreebsd-any
 Depends:
@@ -20,14 +20,23 @@ Depends:
  fuse3 [linux-any],
  fuse4bsd [kfreebsd-any]
 #Provides: ${refsprogs:Provides}
-Description: Read-only ReFS FUSE driver and progs,
+Description: Read-only ReFS FUSE driver,
  refs-fuse uses FUSE (Filesystem in Userspace) to provide support for the ReFS
  filesystem used by recent versions of Microsoft Windows.
- .
- The other refsprogs include 'refls', 'refcat', useful for listing and
- retrieving data from ReFS volumes, 'refsimage' for capturing an image of the
- ReFS filesystem and 'redb' / 'refsinfo' which allows access to the metadata
- of the filesystem for debugging and development.
+
+Package: refsprogs
+Section: otherosfs
+Architecture: linux-any kfreebsd-any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ librefs12 (= ${binary:Version}),
+#Provides: ${refsprogs:Provides}
+Description: Read-only ReFS progs,
+ refsprogs includes 'refls', 'refcat', useful for listing and retrieving data
+ from ReFS volumes, 'refsimage' for capturing an image of the ReFS filesystem
+ and 'redb' / 'refsinfo' which allows access to the metadata of the filesystem
+ for debugging and development.
 
 Package: librefs-dev
 Section: libdevel

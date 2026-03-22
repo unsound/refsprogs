@@ -1,2 +1,4 @@
-bin
-usr/share
+bin/redb
+bin/refs[!-]*
+usr/share/*/*/redb*
+usr/share/*/*/refs[!-]*
