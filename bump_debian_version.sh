@@ -16,6 +16,9 @@ git mv debian/librefs[0-9]*.install debian/librefs${LIBRARY_VERSION}.install || 
 # Update library version in debian/control.
 ( sed "s/librefs[0-9][0-9]*/librefs${LIBRARY_VERSION}/g" debian/control > debian/control.new && mv debian/control.new debian/control ) || exit 1
 
+# Update library version in debian/refsprogs-udeb.lintian-overrides.
+( sed "s/librefs[0-9][0-9]*/librefs${LIBRARY_VERSION}/g" debian/refsprogs-udeb.lintian-overrides > debian/refsprogs-udeb.lintian-overrides.new && mv debian/refsprogs-udeb.lintian-overrides.new debian/refsprogs-udeb.lintian-overrides ) || exit 1
+
 # Generate changelog entry.
 echo "refsprogs (${VERSION}-1) main; urgency=medium" > debian/changelog.new || exit 1
 echo "" >> debian/changelog.new || exit 1
