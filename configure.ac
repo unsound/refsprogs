@@ -269,6 +269,7 @@ AC_CONFIG_FILES([
 	include/refs/Makefile
 	librefs/Makefile
 	librefs/librefs.pc
+	targets/Makefile
 	test/Makefile
 	util/Makefile
 	util/redb.8
