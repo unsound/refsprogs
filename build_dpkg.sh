@@ -11,6 +11,25 @@ fi
 
 VERSION=$1
 
+archs=""
+if [ "$(echo `lsb_release -i | cut -d ':' -f 2-`)" == "Debian" ]; then
+    case "$(echo `lsb_release -r | cut -d ':' -f 2-`)" in
+	"10")
+	    archs="arm64 armel armhf i386 mips mips64el mipsel ppc64el s390x"
+	    ;;
+	"13")
+	    archs="arm64 armel armhf i386 ppc64el riscv64 s390x"
+	    ;;
+	*)
+	    ;;
+    esac
+fi
+
+if [ -z "$archs" ]; then
+    echo "Only Debian 10 (buster) and 13 (trixie) can be used to build packages."
+    exit 1
+fi
+
 GIT_DIFF=$(git diff HEAD 2>&1)
 if [ ! -z "$GIT_DIFF" ]; then
     echo "There are uncommitted changes:"
@@ -40,7 +59,7 @@ git clean -f -d -x debian/ && \
 	mv -v refsprogs-$VERSION.tar.gz ../refsprogs_$VERSION.orig.tar.gz && \
 	apt install libfuse3-dev && \
 	dpkg-buildpackage -us -uc --diff-ignore="$IGNORE_REGEX"&& \
-	for i in arm64 armel armhf i386 mips mips64el mipsel ppc64el s390x; do \
+	for i in $archs; do \
 		apt install -y libfuse3-dev:$i && \
 			dpkg-buildpackage -us -uc --diff-ignore="$IGNORE_REGEX" -b --host-arch $i && \
 			apt remove $(dpkg --list | grep "^ii .*:$i" | cut -d ' ' -f 3); \
