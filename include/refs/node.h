@@ -72,8 +72,8 @@ struct refs_node_walk_visitor {
 		u64 node_first_cluster,
 		u64 object_id,
 		const u8 *data,
-		const size_t data_size,
-		const size_t header_offset,
+		size_t data_size,
+		size_t header_offset,
 		size_t header_size);
 	int (*node_header_entry)(
 		void *context,
@@ -91,6 +91,22 @@ struct refs_node_walk_visitor {
 		void *context,
 		const le16 *volume_label,
 		u16 volume_label_length);
+	int (*node_root_entry)(
+		void *context,
+		u16 child_entry_offset,
+		u32 file_flags,
+		u64 node_number,
+		u64 parent_node_object_id,
+		u64 create_time,
+		u64 last_access_time,
+		u64 last_write_time,
+		u64 last_mft_change_time,
+		u64 file_size,
+		u64 allocated_size,
+		const u8 *key,
+		size_t key_size,
+		const u8 *record,
+		size_t record_size);
 	int (*node_long_entry)(
 		void *context,
 		const le16 *file_name,
@@ -123,8 +139,8 @@ struct refs_node_walk_visitor {
 		u64 last_access_time,
 		u64 last_write_time,
 		u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
+		u64 file_size,
+		u64 allocated_size,
 		const u8 *key,
 		size_t key_size,
 		const u8 *record,
@@ -133,6 +149,7 @@ struct refs_node_walk_visitor {
 		void *context,
 		u64 hard_link_id,
 		u64 parent_id,
+		u64 link_count,
 		u16 child_entry_offset,
 		u32 file_flags,
 		u64 node_number,

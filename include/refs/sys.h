@@ -30,6 +30,12 @@ typedef struct sys_iohandler sys_iohandler;
 #include "sys_user.h"
 #endif /* defined(__linux__) && defined(__KERNEL__) ... */
 
+#ifdef S_IFLNK
+#define SYS_S_IFLNK S_IFLNK
+#else
+#define SYS_S_IFLNK 0120000
+#endif /* defined(S_IFLNK) ... */
+
 /**
  * The handler of an I/O operation, implementing a method to process it.
  */
@@ -47,6 +53,19 @@ struct sys_iohandler {
 		void *context,
 		sys_device *dev,
 		u64 offset,
+		size_t size);
+
+	/**
+	 * The handler callback function for a hole (a non-allocated part of a
+	 * sparse file).
+	 *
+	 * Accepts a size and processes the hole as implemented by the handler.
+	 *
+	 * This callback is optional, and should only be non-@p NULL when the
+	 * handler has a special way of handling holes.
+	 */
+	int (*handle_hole)(
+		void *context,
 		size_t size);
 
 	/**

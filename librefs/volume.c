@@ -462,6 +462,7 @@ static int refs_volume_lookup_node_hardlink_entry(
 		void *const _context,
 		const u64 hard_link_id,
 		const u64 parent_id,
+		const u64 link_count,
 		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 node_number,
@@ -481,6 +482,7 @@ static int refs_volume_lookup_node_hardlink_entry(
 
 	int err = 0;
 
+	(void) link_count;
 	(void) file_flags;
 	(void) create_time;
 	(void) last_access_time;
@@ -973,6 +975,81 @@ out:
 	return err;
 }
 
+static int refs_volume_lookup_root_node_visit_root_entry(
+		void *const _context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	refs_volume_lookup_context *const context =
+		(refs_volume_lookup_context*) _context;
+
+	int err = 0;
+
+	sys_log_debug("Visiting root entry with offset %" PRIu16 " in node "
+		"0x%" PRIX64 "...",
+		PRAu16(child_entry_offset), PRAX64(parent_node_object_id));
+
+	(void) file_flags;
+	(void) parent_node_object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+
+	context->found = SYS_TRUE;
+	context->is_short_entry = SYS_FALSE;
+	context->is_directory = SYS_TRUE;
+
+	context->node_number = node_number;
+	if(context->entry_offset) {
+		*context->entry_offset = child_entry_offset;
+	}
+
+	if(context->key) {
+		err = sys_malloc(key_size, context->key);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->key, key, key_size);
+	}
+
+	if(context->key_size) {
+		*context->key_size = key_size;
+	}
+
+	if(context->record) {
+		err = sys_malloc(record_size, context->record);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->record, record, record_size);
+	}
+
+	if(context->record_size) {
+		*context->record_size = record_size;
+	}
+
+	err = -1;
+out:
+	return err;
+}
+
 int refs_volume_lookup_by_posix_path(
 		refs_volume *const vol,
 		const char *const path,
@@ -1000,24 +1077,68 @@ int refs_volume_lookup_by_posix_path(
 	if(!start_object_id && !cur_path_length) {
 		/* The request is for the root directory. We can't supply a
 		 * record for it, only the object ID. */
+		const u64 root_object_id = 0x600;
+		refs_volume_lookup_context context;
+		refs_node_walk_visitor visitor;
+
+		memset(&context, 0, sizeof(context));
+		memset(&visitor, 0, sizeof(visitor));
+
+		context.entry_offset = out_entry_offset;
+		context.key = out_key;
+		context.key_size = out_key_size;
+		context.record = out_record;
+		context.record_size = out_record_size;
+
+		visitor.context = &context;
+		visitor.node_root_entry =
+			refs_volume_lookup_root_node_visit_root_entry;
+
+		sys_log_debug("Searching for node number of 0x600 root....");
+
+		err = refs_node_walk(
+			/* refs_device *dev */
+			vol->dev,
+			/* const REFS_BOOT_SECTOR *bs */
+			vol->bs,
+			/* REFS_SUPERBLOCK **sb */
+			&vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&vol->block_map,
+			/* refs_node_cache **node_cache */
+			&vol->node_cache,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&root_object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+		if(err == -1) {
+			err = 0;
+		}
+		else if(err) {
+			sys_log_perror(err, "Error searching for node number "
+				"of 0x600 root");
+			goto out;
+		}
+
+		sys_log_debug("Found node number of 0x600 root: 0x%" PRIX64,
+			PRAX64(context.node_number));
+
 		if(out_parent_directory_object_id) {
-			*out_parent_directory_object_id = 0x600;
+			*out_parent_directory_object_id = root_object_id;
 		}
 
 		if(out_directory_object_id) {
-			*out_directory_object_id = 0x600;
+			*out_directory_object_id = root_object_id;
 		}
 
 		if(out_node_number) {
-			*out_node_number = 0;
-		}
-
-		if(out_record) {
-			*out_record = NULL;
-		}
-
-		if(out_record_size) {
-			*out_record_size = 0;
+			*out_node_number = context.node_number;
 		}
 
 		goto out;
@@ -1034,6 +1155,18 @@ int refs_volume_lookup_by_posix_path(
 
 		if(out_node_number) {
 			*out_node_number = 0;
+		}
+
+		if(out_entry_offset) {
+			*out_entry_offset = 0;
+		}
+
+		if(out_key) {
+			*out_key = NULL;
+		}
+
+		if(out_key_size) {
+			*out_key_size = 0;
 		}
 
 		if(out_record) {

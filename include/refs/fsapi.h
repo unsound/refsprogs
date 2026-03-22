@@ -594,6 +594,8 @@ int fsapi_node_write(
 int fsapi_node_sync(
 		fsapi_volume *vol,
 		fsapi_node *node,
+		u64 start,
+		u64 length,
 		sys_bool data_only);
 
 int fsapi_node_create(
@@ -629,6 +631,24 @@ int fsapi_node_remove(
 		const char *name,
 		size_t name_length,
 		fsapi_node **out_removed_node);
+
+typedef enum {
+	FSAPI_NODE_FALLOCATE_FLAG_KEEP_SIZE = 0x1,
+	FSAPI_NODE_FALLOCATE_FLAG_PUNCH_HOLE = 0x2,
+	FSAPI_NODE_FALLOCATE_FLAG_NO_HIDE_STALE = 0x4,
+	FSAPI_NODE_FALLOCATE_FLAG_COLLAPSE_RANGE = 0x8,
+	FSAPI_NODE_FALLOCATE_FLAG_ZERO_RANGE = 0x10,
+	FSAPI_NODE_FALLOCATE_FLAG_INSERT_RANGE = 0x20,
+	FSAPI_NODE_FALLOCATE_FLAG_UNSHARE_RANGE = 0x40,
+	FSAPI_NODE_FALLOCATE_FLAG_WRITE_ZEROES = 0x80,
+} fsapi_node_fallocate_flags;
+
+int fsapi_node_fallocate(
+		fsapi_volume *vol,
+		fsapi_node *node,
+		fsapi_node_fallocate_flags flags,
+		u64 offset,
+		u64 length);
 
 /**
  * List the extended attributes of a node.

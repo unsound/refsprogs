@@ -598,14 +598,20 @@ static int fsapi_volume_get_attributes_common(
 
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE) {
 		out_attrs->block_size = vol->vol->cluster_size;
+		sys_log_debug("block_size: %" PRIu32,
+			PRAu32(out_attrs->block_size));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT) {
 		out_attrs->block_count = vol->vol->cluster_count;
+		sys_log_debug("block_count: %" PRIu64,
+			PRAu64(out_attrs->block_count));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT;
 	}
 	if(out_attrs->requested & FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS) {
 		out_attrs->free_blocks = 0;
+		sys_log_debug("free_blocks: %" PRIu64,
+			PRAu64(out_attrs->free_blocks));
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS;
 	}
 
@@ -663,6 +669,9 @@ static int fsapi_volume_get_attributes_common(
 
 		out_attrs->volume_name = vol->volume_label_cstr;
 		out_attrs->volume_name_length = vol->volume_label_cstr_length;
+		sys_log_debug("volume_name: %.*s",
+			(int) sys_min(INT_MAX, out_attrs->volume_name_length),
+			out_attrs->volume_name);
 		out_attrs->valid |= FSAPI_VOLUME_ATTRIBUTE_TYPE_VOLUME_NAME;
 	}
 out:
@@ -1018,6 +1027,91 @@ static int fsapi_lookup_by_posix_path_compare(
 		b_node->path);
 
 	return res;
+}
+
+typedef struct {
+	sys_bool found;
+	sys_bool is_short_entry;
+	u64 node_number;
+	u16 *entry_offset;
+	u8 **key;
+	size_t *key_size;
+	u8 **record;
+	size_t *record_size;
+} refs_fsapi_lookup_context;
+
+static int refs_fsapi_lookup_visit_root_entry(
+		void *const _context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	refs_fsapi_lookup_context *const context =
+		(refs_fsapi_lookup_context*) _context;
+
+	int err = 0;
+
+	sys_log_debug("Visiting root entry with offset %" PRIu16 " in node "
+		"0x%" PRIX64 "...",
+		PRAu16(child_entry_offset), PRAX64(parent_node_object_id));
+
+	(void) file_flags;
+	(void) parent_node_object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+
+	context->found = SYS_TRUE;
+	context->is_short_entry = SYS_FALSE;
+
+	context->node_number = node_number;
+	if(context->entry_offset) {
+		*context->entry_offset = child_entry_offset;
+	}
+
+	if(context->key) {
+		err = sys_malloc(key_size, context->key);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->key, key, key_size);
+	}
+
+	if(context->key_size) {
+		*context->key_size = key_size;
+	}
+
+	if(context->record) {
+		err = sys_malloc(record_size, context->record);
+		if(err) {
+			goto out;
+		}
+
+		memcpy(*context->record, record, record_size);
+	}
+
+	if(context->record_size) {
+		*context->record_size = record_size;
+	}
+
+	err = -1;
+out:
+	return err;
 }
 
 static int fsapi_lookup_by_posix_path(
@@ -1609,6 +1703,98 @@ static int fsapi_lookup_by_posix_path(
 		cache_locked = SYS_TRUE;
 	}
 
+	if(cached_node->is_short_entry && cached_node->directory_object_id) {
+		/* Attempt to resolve the corresponding long value, the first
+		 * entry in its tree. */
+		refs_fsapi_lookup_context context;
+		u16 long_value_entry_offset = 0;
+		u8 *long_value_key = NULL;
+		size_t long_value_key_size = 0;
+		u8 *long_value_record = NULL;
+		size_t long_value_record_size = 0;
+		refs_node_walk_visitor visitor;
+
+		sys_log_debug("Resolving long entry of directory on lookup.");
+
+		memset(&context, 0, sizeof(context));
+		memset(&visitor, 0, sizeof(visitor));
+
+		context.entry_offset = &long_value_entry_offset ;
+		context.key = &long_value_key;
+		context.key_size = &long_value_key_size;
+		context.record = &long_value_record;
+		context.record_size = &long_value_record_size;
+
+		visitor.context = &context;
+		visitor.node_root_entry = refs_fsapi_lookup_visit_root_entry;
+
+		err = refs_node_walk(
+			/* sys_device *dev */
+			vol->vol->dev,
+			/* const REFS_BOOT_SECTOR *bs */
+			vol->vol->bs,
+			/* REFS_SUPERBLOCK_HEADER **sb */
+			&vol->vol->sb,
+			/* REFS_LEVEL1_NODE **primary_level1_node */
+			&vol->vol->primary_level1_node,
+			/* REFS_LEVEL1_NODE **secondary_level1_node */
+			&vol->vol->secondary_level1_node,
+			/* refs_block_map **block_map */
+			&vol->vol->block_map,
+			/* refs_node_cache **node_cache */
+			&vol->vol->node_cache,
+			/* const u64 *start_node */
+			NULL,
+			/* const u64 *object_id */
+			&cached_node->directory_object_id,
+			/* refs_node_walk_visitor *visitor */
+			&visitor);
+		if(err == -1) {
+			err = 0;
+		}
+		else if(err) {
+			goto out;
+		}
+
+		if(context.found) {
+			sys_log_debug("Successfully resolved short entry to "
+				"%s entry at offset %" PRIu16 " in node "
+				"0x%" PRIX64,
+				context.is_short_entry ? "short" : "long",
+				PRAu16(long_value_entry_offset),
+				PRAu64(context.node_number));
+
+			if(cached_node->key) {
+				sys_free(cached_node->key_size,
+					&cached_node->key);
+			}
+
+			if(cached_node->record) {
+				sys_free(cached_node->record_size,
+					&cached_node->record);
+			}
+
+			cached_node->is_short_entry = context.is_short_entry;
+			cached_node->node_number = context.node_number;
+			cached_node->entry_offset = long_value_entry_offset;
+			cached_node->key = long_value_key;
+			cached_node->key_size = long_value_key_size;
+			cached_node->record = long_value_record;
+			cached_node->record_size = long_value_record_size;
+		}
+		else {
+			if(long_value_key) {
+				sys_free(long_value_key_size,
+					&long_value_key);
+			}
+
+			if(long_value_record) {
+				sys_free(long_value_record_size,
+					&long_value_record);
+			}
+		}
+	}
+
 	if(out_node) {
 		if(cached_node->next) {
 			/* The node came from the node cache and needs to be
@@ -1666,6 +1852,7 @@ static int fsapi_fill_attributes(
 		u32 file_flags,
 		u64 node_number,
 		u64 parent_node_object_id,
+		const u64 link_count,
 		u64 create_time,
 		u64 last_access_time,
 		u64 last_write_time,
@@ -1683,24 +1870,24 @@ static int fsapi_fill_attributes(
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		attrs->mode = 0;
-#ifdef S_IFLNK
 		if(file_flags & REFS_FILE_ATTRIBUTE_REPARSE_POINT) {
-			attrs->mode |= S_IFLNK;
+			attrs->mode |= SYS_S_IFLNK;
 		}
-		else
-#endif
-		if(is_directory) {
+		else if(is_directory) {
 			attrs->mode |= S_IFDIR;
 		}
 		else {
 			attrs->mode |= S_IFREG;
 		}
 		attrs->mode |= 0777U;
+		sys_log_debug("mode: 0%" PRIo32, PRAo32(attrs->mode));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_MODE;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT) {
-		attrs->link_count = is_directory ? 2 /* TODO */ : 1;
+		attrs->link_count = is_directory ? 2 /* TODO */ : link_count;
+		sys_log_debug("link_count: %" PRIu64,
+			PRAu64(attrs->link_count));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LINK_COUNT;
 	}
 
@@ -1711,6 +1898,8 @@ static int fsapi_fill_attributes(
 		 * be a good intermediate solution. */
 		attrs->inode_number =
 			(node_number << 16) | child_entry_offset;
+		sys_log_debug("inode_number: %" PRIu64,
+			PRAu64(attrs->inode_number));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_INODE_NUMBER;
 	}
 
@@ -1718,7 +1907,10 @@ static int fsapi_fill_attributes(
 		attrs->creation_time.tv_sec =
 			(create_time - filetime_offset) / 10000000;
 		attrs->creation_time.tv_nsec =
-			(create_time - filetime_offset) % 10000000;
+			((create_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("creation_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->creation_time.tv_sec),
+			PRAu64(attrs->creation_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME;
 	}
 
@@ -1727,7 +1919,11 @@ static int fsapi_fill_attributes(
 		attrs->last_status_change_time.tv_sec =
 			(last_mft_change_time - filetime_offset) / 10000000;
 		attrs->last_status_change_time.tv_nsec =
-			(last_mft_change_time - filetime_offset) % 10000000;
+			((last_mft_change_time - filetime_offset) % 10000000) *
+			100;
+		sys_log_debug("last_status_change_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_status_change_time.tv_sec),
+			PRAu64(attrs->last_status_change_time.tv_nsec));
 		attrs->valid |=
 			FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME;
 	}
@@ -1736,7 +1932,10 @@ static int fsapi_fill_attributes(
 		attrs->last_data_change_time.tv_sec =
 			(last_write_time - filetime_offset) / 10000000;
 		attrs->last_data_change_time.tv_nsec =
-			(last_write_time - filetime_offset) % 10000000;
+			((last_write_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("last_data_change_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_data_change_time.tv_sec),
+			PRAu64(attrs->last_data_change_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME;
 	}
 
@@ -1744,17 +1943,23 @@ static int fsapi_fill_attributes(
 		attrs->last_data_access_time.tv_sec =
 			(last_access_time - filetime_offset) / 10000000;
 		attrs->last_data_access_time.tv_nsec =
-			(last_access_time - filetime_offset) % 10000000;
+			((last_access_time - filetime_offset) % 10000000) * 100;
+		sys_log_debug("last_data_access_time: %" PRIu64 ".%09" PRIu64,
+			PRAu64(attrs->last_data_access_time.tv_sec),
+			PRAu64(attrs->last_data_access_time.tv_nsec));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attrs->size = file_size;
+		sys_log_debug("size: %" PRIu64, PRAu64(attrs->size));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE) {
 		attrs->allocated_size = allocated_size;
+		sys_log_debug("allocated_size: %" PRIu64,
+			PRAu64(attrs->allocated_size));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_ALLOCATED_SIZE;
 	}
 
@@ -1778,6 +1983,8 @@ static int fsapi_fill_attributes(
 
 		if(attrs->bsd_flags) {
 			attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_BSD_FLAGS;
+			sys_log_debug("bsd_flags: 0x%" PRIX64,
+				PRAX64(attrs->bsd_flags));
 		}
 	}
 
@@ -1791,6 +1998,8 @@ static int fsapi_fill_attributes(
 			attrs->windows_flags |= REFS_FILE_ATTRIBUTE_NORMAL;
 		}
 
+		sys_log_debug("windows_flags: 0x%" PRIX64,
+			PRAX64(attrs->windows_flags));
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_WINDOWS_FLAGS;
 	}
 
@@ -1801,6 +2010,60 @@ typedef struct {
 	refs_volume *vol;
 	fsapi_node_attributes *attrs;
 } fsapi_node_get_attributes_context;
+
+static int fsapi_node_get_attributes_visit_root_entry(
+		void *const _context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	fsapi_node_get_attributes_context *const context =
+		(fsapi_node_get_attributes_context*) _context;
+
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	return fsapi_fill_attributes(
+		/* fsapi_node_attributes *attrs */
+		context->attrs,
+		/* sys_bool is_directory */
+		SYS_TRUE,
+		/* u16 child_entry_offset */
+		child_entry_offset,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 node_number */
+		node_number,
+		/* u64 parent_node_object_id */
+		parent_node_object_id,
+		/* u64 link_count */
+		1,
+		/* u64 create_time */
+		create_time,
+		/* u64 last_access_time */
+		last_access_time,
+		/* u64 last_write_time */
+		last_write_time,
+		/* u64 last_mft_change_time */
+		last_mft_change_time,
+		/* u64 file_size */
+		file_size,
+		/* u64 allocated_size */
+		allocated_size);
+}
 
 static int fsapi_node_get_attributes_visit_short_entry(
 		void *const _context,
@@ -1850,6 +2113,8 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
+		/* u64 link_count */
+		1,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -1931,7 +2196,7 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		/* fsapi_node_attributes *attrs */
 		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
-		SYS_FALSE,
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
 		child_entry_offset,
 		/* u32 file_flags */
@@ -1940,6 +2205,8 @@ static int fsapi_node_get_attributes_visit_long_entry(
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_node_object_id,
+		/* u64 link_count */
+		1,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -1958,6 +2225,7 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		void *const context,
 		const u64 hard_link_id,
 		const u64 parent_id,
+		const u64 link_count,
 		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 node_number,
@@ -1983,7 +2251,7 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		/* fsapi_node_attributes *attrs */
 		((fsapi_node_get_attributes_context*) context)->attrs,
 		/* sys_bool is_directory */
-		SYS_FALSE,
+		(file_flags & 0x10000000UL) ? SYS_TRUE : SYS_FALSE,
 		/* u16 child_entry_offset */
 		child_entry_offset,
 		/* u32 file_flags */
@@ -1992,6 +2260,8 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 		node_number,
 		/* u64 parent_node_object_id */
 		parent_id,
+		/* u64 link_count */
+		link_count,
 		/* u64 create_time */
 		create_time,
 		/* u64 last_access_time */
@@ -2007,10 +2277,10 @@ static int fsapi_node_get_attributes_visit_hardlink_entry(
 }
 
 static int fsapi_node_get_attributes_visit_symlink(
-		void *context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length)
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
 {
 	fsapi_node_attributes *const attrs =
 		((fsapi_node_get_attributes_context*) context)->attrs;
@@ -2019,16 +2289,16 @@ static int fsapi_node_get_attributes_visit_symlink(
 
 	(void) type;
 
+	attrs->is_directory = SYS_FALSE;
+
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attrs->size = target_length;
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
-#ifdef S_IFLNK
 	if(attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
-		attrs->mode = S_IFLNK | (attrs->mode & ~S_IFMT);
+		attrs->mode = SYS_S_IFLNK | (attrs->mode & ~S_IFMT);
 	}
-#endif
 
 	if((attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) &&
 		!(attrs->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
@@ -2087,7 +2357,9 @@ static int fsapi_node_get_attributes_common(
 		context.attrs = &node->attributes;
 		visitor.context = &context;
 
-		if(node->directory_object_id == 0x600) {
+		if((!node->key || !node->record) &&
+			node->directory_object_id == 0x600)
+		{
 			/* Root directory. */
 			err = fsapi_fill_attributes(
 				/* fsapi_node_attributes *attrs */
@@ -2095,15 +2367,17 @@ static int fsapi_node_get_attributes_common(
 				/* sys_bool is_directory */
 				SYS_TRUE,
 				/* u16 child_entry_offset */
-				0,
+				node->entry_offset,
 				/* u32 file_flags */
 				REFS_FILE_ATTRIBUTE_SYSTEM |
 				REFS_FILE_ATTRIBUTE_DIRECTORY |
 				REFS_FILE_ATTRIBUTE_ARCHIVE,
 				/* u64 node_number */
-				0,
+				node->node_number,
 				/* u64 parent_node_object_id */
-				0x600,
+				node->parent_directory_object_id,
+				/* u64 link_count */
+				1,
 				/* u64 create_time */
 				filetime_offset,
 				/* u64 last_access_time */
@@ -2116,6 +2390,9 @@ static int fsapi_node_get_attributes_common(
 				0,
 				/* u64 allocated_size */
 				0);
+			if(err) {
+				goto out;
+			}
 		}
 		else if(node->is_short_entry) {
 			visitor.node_short_entry =
@@ -2147,8 +2424,13 @@ static int fsapi_node_get_attributes_common(
 				node->record_size,
 				/* void *context */
 				NULL);
+			if(err) {
+				goto out;
+			}
 		}
 		else {
+			visitor.node_root_entry =
+				fsapi_node_get_attributes_visit_root_entry;
 			visitor.node_long_entry =
 				fsapi_node_get_attributes_visit_long_entry;
 			visitor.node_hardlink_entry =
@@ -2183,10 +2465,14 @@ static int fsapi_node_get_attributes_common(
 				node->record_size,
 				/* void *context */
 				NULL);
+			if(err) {
+				goto out;
+			}
 		}
 	}
 
 	provided_mask = attributes->requested & node->attributes.valid;
+	attributes->is_directory = node->attributes.is_directory;
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_SIZE) {
 		attributes->size = node->attributes.size;
 	}
@@ -2387,6 +2673,15 @@ int fsapi_volume_mount(
 	fsapi_node *root_node = NULL;
 	sys_bool cache_lock_initialized = SYS_FALSE;
 	refs_volume *rvol = NULL;
+	u64 parent_directory_object_id = 0;
+	u64 directory_object_id = 0;
+	sys_bool is_short_entry = SYS_FALSE;
+	u64 node_number = 0;
+	u16 entry_offset = 0;
+	u8 *key = NULL;
+	size_t key_size = 0;
+	u8 *record = NULL;
+	size_t record_size = 0;
 
 	fsapi_log_enter("dev=%p, read_only=%u, custom_mount_options=%p, "
 		"out_vol=%p (->%p), out_root_node=%p (->%p), out_attrs=%p",
@@ -2430,35 +2725,70 @@ int fsapi_volume_mount(
 		goto out;
 	}
 
+	err = refs_volume_lookup_by_posix_path(
+		/* refs_volume *vol */
+		rvol,
+		/* const char *path */
+		"/",
+		/* size_t path_length */
+		1,
+		/* const u64 *start_object_id */
+		NULL,
+		/* u64 *out_parent_directory_object_id */
+		&parent_directory_object_id,
+		/* u64 *out_directory_object_id */
+		&directory_object_id,
+		/* sys_bool *out_is_short_entry */
+		&is_short_entry,
+		/* u64 *out_node_number */
+		&node_number,
+		/* u16 *out_entry_offset */
+		&entry_offset,
+		/* u8 **out_key */
+		&key,
+		/* size_t *out_key_size */
+		&key_size,
+		/* u8 **out_record */
+		&record,
+		/* size_t *out_record_size */
+		&record_size);
+	if(err) {
+		goto out;
+	}
+
+	sys_log_debug("Looked up root directory by posix path. Node number: "
+		"0x%" PRIX64,
+		PRAX64(node_number));
+
 	fsapi_node_init(
 		/* fsapi_node *node */
 		root_node,
 		/* fsapi_node_path_element *path */
 		NULL,
 		/* u64 parent_directory_object_id */
-		0x500, /* ? */
+		parent_directory_object_id,
 		/* u64 node_number */
-		0,
+		node_number,
 		/* u64 directory_object_id */
-		0x600,
+		directory_object_id,
 		/* u64 hard_link_parent_object_id */
 		0,
 		/* u64 hard_link_id */
 		0,
 		/* sys_bool is_short_entry */
-		SYS_TRUE, /* Technically no entry, maybe? */
+		is_short_entry,
 		/* sys_bool is_unresolved_hard_link */
-		0,
+		SYS_FALSE,
 		/* u16 entry_offset */
-		0,
+		entry_offset,
 		/* u8 *key */
-		NULL,
+		key,
 		/* size_t key_size */
-		0,
+		key_size,
 		/* u8 *record */
-		NULL,
+		record,
 		/* size_t record_size */
-		0,
+		record_size,
 		/* fsapi_node *prev */
 		NULL,
 		/* fsapi_node *next */
@@ -3071,6 +3401,8 @@ static int fsapi_node_list_filldir(
 			node_number,
 			/* u64 parent_node_object_id */
 			parent_node_object_id,
+			/* u64 link_count */
+			1,
 			/* u64 create_time */
 			create_time,
 			/* u64 last_access_time */
@@ -3368,10 +3700,10 @@ out:
 }
 
 static int fsapi_node_list_visit_symlink(
-		void *_context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length)
+		void *const _context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
 {
 	fsapi_readdir_context *const context =
 		(fsapi_readdir_context*) _context;
@@ -3385,12 +3717,10 @@ static int fsapi_node_list_visit_symlink(
 		context->attributes->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SIZE;
 	}
 
-#ifdef S_IFLNK
 	if(context->attributes->requested & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		context->attributes->mode =
-			S_IFLNK | (context->attributes->mode & ~S_IFMT);
+			SYS_S_IFLNK | (context->attributes->mode & ~S_IFMT);
 	}
-#endif
 
 	if(context->attributes->requested &
 		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET)
@@ -3631,7 +3961,8 @@ typedef struct {
 
 static int fsapi_node_read_zeroes(
 		fsapi_node_read_context *const context,
-		const size_t bytes_to_zero)
+		const size_t bytes_to_zero,
+		const sys_bool is_hole)
 {
 	int err = 0;
 	u8 zero_data[512];
@@ -3639,6 +3970,19 @@ static int fsapi_node_read_zeroes(
 
 	memset(zero_data, 0, sizeof(zero_data));
 
+	if(is_hole && context->iohandler->handle_hole) {
+		/* We have encountered a hole and the caller has a handler for
+		 * it. Call the 'handle_hole' callback. */
+		err = context->iohandler->handle_hole(
+			/* void *context */
+			context->iohandler->context,
+			/* size_t size */
+			bytes_to_zero);
+		goto out;
+	}
+
+	/* Uninitialized data or a hole with no hole handler. Return zeroes to
+	 * the 'copy_data' handler until the end of the read. */
 	while(remaining_bytes_to_zero) {
 		const size_t cur_bytes_to_zero =
 			sys_min(sizeof(zero_data), remaining_bytes_to_zero);
@@ -3756,6 +4100,7 @@ static int fsapi_node_read_visit_hardlink_entry(
 		void *const _context,
 		const u64 hard_link_id,
 		const u64 parent_id,
+		const u64 link_count,
 		const u16 child_entry_offset,
 		const u32 file_flags,
 		const u64 node_number,
@@ -3777,6 +4122,7 @@ static int fsapi_node_read_visit_hardlink_entry(
 
 	(void) hard_link_id;
 	(void) parent_id;
+	(void) link_count;
 	(void) child_entry_offset;
 	(void) file_flags;
 	(void) node_number;
@@ -3845,10 +4191,12 @@ static int fsapi_node_read_visit_file_extent(
 		goto out;
 	}
 	else if(extent_logical_start > context->cur_offset) {
-		if(context->is_sparse) {
-			/* We have encountered a hole. Return zeroes until we
-			 * reach context->cur_offset or until the end of the
-			 * read. */
+		if(!context->is_sparse) {
+			/* Ignore extent. We'll get back to it in the next
+			 * iteration. */
+			goto out;
+		}
+		else {
 			const u64 bytes_to_extent =
 				extent_logical_start - context->cur_offset;
 			const size_t bytes_to_zero =
@@ -3859,7 +4207,9 @@ static int fsapi_node_read_visit_file_extent(
 				/* fsapi_node_read_context *context */
 				context,
 				/* size_t bytes_to_zero */
-				bytes_to_zero);
+				bytes_to_zero,
+				/* sys_bool is_hole */
+				SYS_TRUE);
 			if(err) {
 				goto out;
 			}
@@ -3867,11 +4217,6 @@ static int fsapi_node_read_visit_file_extent(
 			if(!context->size) {
 				goto out;
 			}
-		}
-		else {
-			/* Ignore extent. We'll get back to it in the next
-			 * iteration. */
-			goto out;
 		}
 	}
 
@@ -3899,16 +4244,10 @@ static int fsapi_node_read_visit_file_extent(
 		/* sys_device *dev */
 		context->vol->dev,
 		/* u64 offset */
-		cur_pos + copy_offset_in_buffer,
+		cur_pos + offset_in_extent + copy_offset_in_buffer,
 		/* size_t size */
 		bytes_to_read);
 	if(err) {
-		/* Break code used by the handler when it wants
-		 * to stop the iteration. */
-		if(err == -1) {
-			err = 0;
-		}
-
 		goto out;
 	}
 
@@ -3916,7 +4255,7 @@ static int fsapi_node_read_visit_file_extent(
 	context->size -= bytes_to_read;
 	context->bytes_read_in_iteration += bytes_to_read;
 out:
-	return err;
+	return err ? err : (context->size ? 0 : -1);
 }
 
 static int fsapi_node_read_visit_file_data(
@@ -4063,7 +4402,9 @@ int fsapi_node_read(
 			/* fsapi_node_read_context *context */
 			&context,
 			/* size_t bytes_to_zero */
-			context.size);
+			context.size,
+			/* sys_bool is_hole */
+			SYS_TRUE);
 		if(err) {
 			goto out;
 		}
@@ -4107,12 +4448,15 @@ int fsapi_node_write(
 int fsapi_node_sync(
 		fsapi_volume *vol,
 		fsapi_node *node,
+		u64 start,
+		u64 length,
 		sys_bool data_only)
 {
 	int err;
 
-	fsapi_log_enter("vol=%p, node=%p, data_only=%u",
-		vol, node, data_only);
+	fsapi_log_enter("vol=%p, node=%p, start=%" PRIu64 ", "
+		"length=%" PRIu64 ", data_only=%u",
+		vol, node, PRAu64(start), PRAu64(length), data_only);
 
 	(void) vol;
 	(void) node;
@@ -4122,8 +4466,9 @@ int fsapi_node_sync(
 	 * moment. */
 	err = 0;
 
-	fsapi_log_leave(err, "vol=%p, node=%p, data_only=%u",
-		vol, node, data_only);
+	fsapi_log_leave(err, "vol=%p, node=%p, start=%" PRIu64 ", "
+		"length=%" PRIu64 ", data_only=%u",
+		vol, node, PRAu64(start), PRAu64(length), data_only);
 
 	return err;
 }
@@ -4312,6 +4657,34 @@ int fsapi_node_remove(
 	return err;
 }
 
+int fsapi_node_fallocate(
+		fsapi_volume *const vol,
+		fsapi_node *const node,
+		const fsapi_node_fallocate_flags flags,
+		const u64 offset,
+		const u64 length)
+{
+	int err;
+
+	fsapi_log_enter("vol=%p, node=%p, flags=0x%X, offset=%" PRIu64 ", "
+		"length=%" PRIu64,
+		vol, node, flags, PRAu64(offset), PRAu64(length));
+
+	(void) vol;
+	(void) node;
+	(void) flags;
+	(void) offset;
+	(void) length;
+
+	err = EROFS;
+
+	fsapi_log_leave(err, "vol=%p, node=%p, flags=0x%X, offset=%" PRIu64 ", "
+		"length=%" PRIu64,
+		vol, node, flags, PRAu64(offset), PRAu64(length));
+
+	return err;
+}
+
 typedef struct {
 	refs_volume *vol;
 	sys_bool show_eas;
@@ -4405,8 +4778,7 @@ int fsapi_node_list_extended_attributes(
 	fsapi_log_enter("vol=%p, node=%p, context=%p, xattr_handler=%p",
 		vol, node, context, xattr_handler);
 
-	if(node == vol->root_node || node->is_short_entry) {
-		/* TODO: Check where root node's streams and EAs are located. */
+	if((!node->key || !node->record) || node->is_short_entry) {
 		err = 0;
 		goto out;
 	}
@@ -4666,8 +5038,7 @@ int fsapi_node_read_extended_attribute(
 		iohandler, out_xattr_size,
 		PRAu64(out_xattr_size ? *out_xattr_size : 0));
 
-	if(node == vol->root_node || node->is_short_entry) {
-		/* TODO: Check where root node's streams and EAs are located. */
+	if((!node->key || !node->record) || node->is_short_entry) {
 		err = ENOENT;
 		goto out;
 	}
