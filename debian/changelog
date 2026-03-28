@@ -1,3 +1,9 @@
+refsprogs (2026.3.22-2) main; urgency=medium
+
+  * Fix broken refs-dkms package install hook.
+
+ -- Erik Larsson <catacombae@gmail.com>  Sat, 28 Mar 2026 05:59:43 +0100
+
 refsprogs (2026.3.22-1) main; urgency=medium
 
   * New upstream release.

@@ -1,3 +1,7 @@
+Version 2026.3.22-2 (Mar 28)
+
+     * Fix broken refs-dkms package install hook.
+
 Version 2026.3.22-1 (Mar 22)
 
      * New upstream release.
