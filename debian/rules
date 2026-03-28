@@ -23,7 +23,7 @@ upstream:
 	lynx -dump http://github.com/unsound/refsprogs/releases > debian/local/changelog
 
 %:
-	dh ${@}
+	dh ${@} --with autoreconf,dkms --parallel
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
