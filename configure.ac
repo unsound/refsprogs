@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2025.12.21],[catacombae@gmail.com])
-LIBREFS_VERSION="12"
+AC_INIT([refsprogs],[2026.3.22],[catacombae@gmail.com])
+LIBREFS_VERSION="13"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -269,6 +269,7 @@ AC_CONFIG_FILES([
 	include/refs/Makefile
 	librefs/Makefile
 	librefs/librefs.pc
+	targets/Makefile
 	test/Makefile
 	util/Makefile
 	util/redb.8

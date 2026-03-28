@@ -29,6 +29,7 @@ SUBDIRS = \
 	include \
 	librefs \
 	util \
+	targets \
 	test
 
 doc_DATA = AUTHORS COPYING ChangeLog NEWS README
