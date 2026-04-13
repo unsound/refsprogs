@@ -1,3 +1,7 @@
+Version 2026.3.22-3 (Apr 14)
+
+     * Fix broken build for Linux 7.0.
+
 Version 2026.3.22-2 (Mar 28)
 
      * Fix broken refs-dkms package install hook.
