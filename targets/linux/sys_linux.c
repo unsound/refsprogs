@@ -251,7 +251,7 @@ static int sys_device_pread_common(sys_device *const dev, const u64 offset,
 				/* struct address_space *mapping */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,10,0))
 				sb->s_bdev->bd_mapping,
-#else
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,10,0)) */
 				sb->s_bdev->bd_inode->i_mapping,
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,10,0)) ... */
 				/* gfp_t gfp_mask */
@@ -276,7 +276,7 @@ static int sys_device_pread_common(sys_device *const dev, const u64 offset,
 			sb->s_blocksize,
 			/* gfp_t gfp */
 			__GFP_MOVABLE);
-#else
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0)) */
 		bh = __getblk(
 			/* struct block_device *bdev */
 			sb->s_bdev,
@@ -321,7 +321,7 @@ static int sys_device_pread_common(sys_device *const dev, const u64 offset,
 					REQ_OP_READ,
 					/* blk_opf_t op_flags */
 					bh_flags,
-#else
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(4,8,0)) */
 					/* int rw */
 					READ | bh_flags,
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0)) ... */

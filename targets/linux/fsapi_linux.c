@@ -286,6 +286,26 @@
 #define FSAPI_IFELSE_LINUX_6_18(a, b) b
 #endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,19,0))
+#define FSAPI_IF_LINUX_6_19(...) __VA_ARGS__
+#define FSAPI_NOT_LINUX_6_19(...)
+#define FSAPI_IFELSE_LINUX_6_19(a, b) a
+#else
+#define FSAPI_IF_LINUX_6_19(...)
+#define FSAPI_NOT_LINUX_6_19(...) __VA_ARGS__
+#define FSAPI_IFELSE_LINUX_6_19(a, b) b
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+#define FSAPI_IF_LINUX_7_0(...) __VA_ARGS__
+#define FSAPI_NOT_LINUX_7_0(...)
+#define FSAPI_IFELSE_LINUX_7_0(a, b) a
+#else
+#define FSAPI_IF_LINUX_7_0(...)
+#define FSAPI_NOT_LINUX_7_0(...) __VA_ARGS__
+#define FSAPI_IFELSE_LINUX_7_0(a, b) b
+#endif
+
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0))
 #define SSIZE_MAX LONG_MAX
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)) */
@@ -379,10 +399,12 @@ static int fsapi_linux_super_op_statfs(
 		struct dentry *,
 		struct kstatfs *);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0))
 static int fsapi_linux_super_op_remount_fs(
 		struct super_block *,
 		int *,
 		char *);
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0)) */
 
 #if 0
 static void fsapi_linux_super_op_umount_begin(
@@ -483,11 +505,13 @@ static const struct super_operations fsapi_linux_super_operations = {
 	 *     struct dentry *,
 	 *     struct kstatfs *) */
 	.statfs = fsapi_linux_super_op_statfs,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0))
 	/* int (*remount_fs)(
 	 *     struct super_block *,
 	 *     int *,
 	 *     char *) */
 	.remount_fs = fsapi_linux_super_op_remount_fs,
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0)) */
 	/* void (*umount_begin)(
 	 *     struct super_block *) */
 	.umount_begin = NULL /* fsapi_linux_super_op_umount_begin */,
@@ -1257,6 +1281,10 @@ static int fsapi_linux_file_inode_op_fiemap(
 
 static int fsapi_linux_file_inode_op_update_time(
 		struct inode *,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *,
@@ -1392,9 +1420,10 @@ static struct inode_operations fsapi_linux_file_inode_operations = {
 	.fiemap = fsapi_linux_file_inode_op_fiemap,
 	/* int (*update_time)(
 	 *     struct inode *,
+	 *     enum fs_update_time type,(>=7.0)
 	 *     struct timespec *,(<=4.17)
 	 *     struct timespec64 *,(>=4.18, <=6.5)
-	 *     int) */
+	 *     unsigned (>=7.0) int) */
 	.update_time = fsapi_linux_file_inode_op_update_time,
 	/* int (*atomic_open)(
 	 *     struct inode *,
@@ -1785,6 +1814,10 @@ static int fsapi_linux_dir_inode_op_fiemap(
 
 static int fsapi_linux_dir_inode_op_update_time(
 		struct inode *,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *,
@@ -1920,9 +1953,10 @@ static const struct inode_operations fsapi_linux_dir_inode_operations = {
 	.fiemap = fsapi_linux_dir_inode_op_fiemap,
 	/* int (*update_time)(
 	 *     struct inode *,
+	 *     enum fs_update_time type,(>=7.0)
 	 *     struct timespec *,(<=4.17)
 	 *     struct timespec64 *,(>=4.18, <=6.5)
-	 *     int) */
+	 *     unsigned (>=7.0) int) */
 	.update_time = fsapi_linux_dir_inode_op_update_time,
 	/* int (*atomic_open)(
 	 *     struct inode *,
@@ -2002,6 +2036,10 @@ static int fsapi_linux_symlink_inode_op_fiemap(
 
 static int fsapi_linux_symlink_inode_op_update_time(
 		struct inode *,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *,
@@ -2058,9 +2096,10 @@ static const struct inode_operations fsapi_linux_symlink_inode_operations = {
 	.fiemap = fsapi_linux_symlink_inode_op_fiemap,
 	/* int (*update_time)(
 	 *     struct inode *,
+	 *     enum fs_update_time type,(>=7.0)
 	 *     struct timespec *,(<=4.17)
 	 *     struct timespec64 *,(>=4.18, <=6.5)
-	 *     int) */
+	 *     unsigned (>=7.0) int) */
 	.update_time = fsapi_linux_symlink_inode_op_update_time,
 };
 
@@ -2098,6 +2137,10 @@ static ssize_t fsapi_linux_special_inode_op_listxattr(
 
 static int fsapi_linux_special_inode_op_update_time(
 		struct inode *,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *,
@@ -2132,9 +2175,10 @@ static const struct inode_operations fsapi_linux_special_inode_operations = {
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)) */
 	/* int (*update_time)(
 	 *     struct inode *,
+	 *     enum fs_update_time type,(>=7.0)
 	 *     struct timespec *,(<=4.17)
 	 *     struct timespec64 *,(>=4.18, <=6.5)
-	 *     int) */
+	 *     unsigned (>=7.0) int) */
 	.update_time = fsapi_linux_special_inode_op_update_time,
 };
 
@@ -2897,6 +2941,9 @@ out:
 
 static int fsapi_linux_update_time_common(
 		struct inode *inode,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *time,
@@ -2939,15 +2986,15 @@ static int fsapi_linux_update_time_common(
 		goto out;
 	}
 
-	if(flags & S_ATIME) {
+	if(FSAPI_IFELSE_LINUX_7_0(type == FS_UPD_ATIME, flags & S_ATIME)) {
 		attrs.last_data_access_time = systime;
 		attrs.valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME;
 	}
-	if(flags & S_MTIME) {
+	if(FSAPI_IFELSE_LINUX_7_0(type == FS_UPD_CMTIME, flags & S_MTIME)) {
 		attrs.last_data_change_time = systime;
 		attrs.valid |= FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_CHANGE_TIME;
 	}
-	if(flags & S_CTIME) {
+	if(FSAPI_IFELSE_LINUX_7_0(type == FS_UPD_CMTIME, flags & S_CTIME)) {
 		attrs.last_status_change_time = systime;
 		attrs.valid |=
 			FSAPI_NODE_ATTRIBUTE_TYPE_LAST_STATUS_CHANGE_TIME;
@@ -2965,7 +3012,7 @@ static int fsapi_linux_update_time_common(
 		goto out;
 	}
 
-	if(flags & S_ATIME) {
+	if(FSAPI_IFELSE_LINUX_7_0(type == FS_UPD_ATIME, flags & S_ATIME)) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 		inode_set_atime(inode, attrs.last_data_access_time.tv_sec,
 			attrs.last_data_access_time.tv_nsec);
@@ -2974,7 +3021,7 @@ static int fsapi_linux_update_time_common(
 		inode->i_atime.tv_nsec = attrs.last_data_access_time.tv_nsec;
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0) ... */
 	}
-	if(flags & S_MTIME) {
+	if(FSAPI_IFELSE_LINUX_7_0(type == FS_UPD_CMTIME, flags & S_MTIME)) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 		inode_set_mtime(inode, attrs.last_data_change_time.tv_sec,
 			attrs.last_data_change_time.tv_nsec);
@@ -2983,7 +3030,7 @@ static int fsapi_linux_update_time_common(
 		inode->i_mtime.tv_nsec = attrs.last_data_change_time.tv_nsec;
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0) ... */
 	}
-	if(flags & S_CTIME) {
+	if(FSAPI_IFELSE_LINUX_7_0(type == FS_UPD_CMTIME, flags & S_CTIME)) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)
 		inode_set_ctime(inode, attrs.last_status_change_time.tv_sec,
 			attrs.last_status_change_time.tv_nsec);
@@ -2992,9 +3039,11 @@ static int fsapi_linux_update_time_common(
 		inode->i_ctime.tv_nsec = attrs.last_status_change_time.tv_nsec;
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0) ... */
 	}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0)
 	if(flags & S_VERSION) {
 		inode_inc_iversion(inode);
 	}
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0) */
 out:
 	return ret;
 }
@@ -3462,6 +3511,7 @@ out:
 	return ret;
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0))
 static int fsapi_linux_super_op_remount_fs(
 		struct super_block *sb,
 		int *flags,
@@ -3475,6 +3525,7 @@ static int fsapi_linux_super_op_remount_fs(
 
 	return -EIO;
 }
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,0,0)) */
 
 static int fsapi_linux_super_op_show_options(
 		struct seq_file *sf,
@@ -4355,6 +4406,10 @@ static int fsapi_linux_file_inode_op_fiemap(
 
 static int fsapi_linux_file_inode_op_update_time(
 		struct inode *inode,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *time,
@@ -4377,6 +4432,8 @@ static int fsapi_linux_file_inode_op_update_time(
 	ret = fsapi_linux_update_time_common(
 		/* struct inode *inode */
 		inode,
+		/* enum fs_update_time type */
+		FSAPI_IF_LINUX_7_0(type,)
 		/* struct timespec[64] *time */
 		FSAPI_NOT_LINUX_6_6(time,)
 		/* int flags */
@@ -6135,6 +6192,10 @@ static int fsapi_linux_dir_inode_op_fiemap(
 
 static int fsapi_linux_dir_inode_op_update_time(
 		struct inode *inode,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *time,
@@ -6157,6 +6218,8 @@ static int fsapi_linux_dir_inode_op_update_time(
 	ret = fsapi_linux_update_time_common(
 		/* struct inode *inode */
 		inode,
+		/* enum fs_update_time type */
+		FSAPI_IF_LINUX_7_0(type,)
 		/* struct timespec[64] *time */
 		FSAPI_NOT_LINUX_6_6(time,)
 		/* int flags */
@@ -6520,6 +6583,10 @@ static int fsapi_linux_symlink_inode_op_fiemap(
 
 static int fsapi_linux_symlink_inode_op_update_time(
 		struct inode *inode,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *time,
@@ -6542,6 +6609,8 @@ static int fsapi_linux_symlink_inode_op_update_time(
 	ret = fsapi_linux_update_time_common(
 		/* struct inode *inode */
 		inode,
+		/* enum fs_update_time type */
+		FSAPI_IF_LINUX_7_0(type,)
 		/* struct timespec[64] *time */
 		FSAPI_NOT_LINUX_6_6(time,)
 		/* int flags */
@@ -6708,6 +6777,10 @@ static ssize_t fsapi_linux_special_inode_op_listxattr(
 
 static int fsapi_linux_special_inode_op_update_time(
 		struct inode *inode,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0))
+		enum fs_update_time type,
+		unsigned
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,0,0)) */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0))
 		struct timespec64 *time,
@@ -6730,6 +6803,8 @@ static int fsapi_linux_special_inode_op_update_time(
 	ret = fsapi_linux_update_time_common(
 		/* struct inode *inode */
 		inode,
+		/* enum fs_update_time type */
+		FSAPI_IF_LINUX_7_0(type,)
 		/* struct timespec[64] *time */
 		FSAPI_NOT_LINUX_6_6(time,)
 		/* int flags */
