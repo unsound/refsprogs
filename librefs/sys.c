@@ -149,21 +149,36 @@ int sys_unistr_decode(const refschar *ins, const size_t ins_len,
 				outs_tmp = &outs_tmp[1];
 			}
 			else if(utf8_code_units == 2) {
-				outs_tmp[0] = (u8) (0xC0 | (code_point >> 6));
-				outs_tmp[1] = (u8) (0x80 | (code_point & 0x3F));
+				outs_tmp[0] =
+					(u8) (0xC0U | ((code_point >> 6) &
+					0x1FU));
+				outs_tmp[1] =
+					(u8) (0x80U | (code_point & 0x3FU));
 				outs_tmp = &outs_tmp[2];
 			}
 			else if(utf8_code_units == 3) {
-				outs_tmp[0] = (u8) (0xE0 | (code_point >> 12));
-				outs_tmp[1] = (u8) (0x80 | (code_point >> 6));
-				outs_tmp[2] = (u8) (0x80 | (code_point & 0x3F));
+				outs_tmp[0] =
+					(u8) (0xE0U | ((code_point >> 12) &
+					0xFU));
+				outs_tmp[1] =
+					(u8) (0x80U | ((code_point >> 6) &
+					0x3FU));
+				outs_tmp[2] =
+					(u8) (0x80U | (code_point & 0x3FU));
 				outs_tmp = &outs_tmp[3];
 			}
 			else {
-				outs_tmp[0] = (u8) (0xF0 | (code_point >> 18));
-				outs_tmp[1] = (u8) (0x80 | (code_point >> 12));
-				outs_tmp[2] = (u8) (0x80 | (code_point >> 6));
-				outs_tmp[3] = (u8) (0x80 | (code_point & 0x3F));
+				outs_tmp[0] =
+					(u8) (0xF0U | ((code_point >> 18) &
+					0x7U));
+				outs_tmp[1] =
+					(u8) (0x80U | ((code_point >> 12) &
+					0x3FU));
+				outs_tmp[2] =
+					(u8) (0x80U | ((code_point >> 6) &
+					0x3FU));
+				outs_tmp[3] =
+					(u8) (0x80U | (code_point & 0x3FU));
 				outs_tmp = &outs_tmp[4];
 			}
 
