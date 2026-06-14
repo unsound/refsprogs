@@ -9524,7 +9524,7 @@ int parse_level3_long_value(
 	{
 		/* Overflow guard. */
 		sys_log_warning("Invalid start/end offsets for attribute "
-			"offsets array: %" PRIu32 " / %" PRIu32 "(%s)",
+			"offsets array: %" PRIu32 " / %" PRIu32 " (%s)",
 			PRAu32(value_offsets_start), PRAu32(value_offsets_end),
 			(value_offsets_end < value_offsets_start) ?
 			"invalid start/end order" : "would overflow type");
@@ -9541,15 +9541,15 @@ int parse_level3_long_value(
 			PRAu16(value_size));
 		number_of_attributes = 0;
 	}
-	else if(value_offsets_start >= value_size ||
+	else if(value_offsets_start > value_size ||
 		value_offsets_end > value_size ||
 		value_offsets_end - value_offsets_start !=
 		number_of_attributes * 4)
 	{
 		sys_log_warning("Invalid start/end offsets for attribute "
-			"offsets array: %" PRIu32 " / %" PRIu32 "(%s)",
+			"offsets array: %" PRIu32 " / %" PRIu32 " (%s)",
 			PRAu32(value_offsets_start), PRAu32(value_offsets_end),
-			(value_offsets_start >= value_size ||
+			(value_offsets_start > value_size ||
 			value_offsets_end > value_size) ? "overflows value" :
 			"doesn't match the number of attributes");
 		goto out;
