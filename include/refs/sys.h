@@ -36,6 +36,139 @@ typedef struct sys_iohandler sys_iohandler;
 #define SYS_S_IFLNK 0120000
 #endif /* defined(S_IFLNK) ... */
 
+#define PRIb8 "d%d%d%d%d%d%d%d"
+#define PRIb16 "d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+#define PRIb32 "d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+#define PRIb64 \
+	"d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d" \
+	"d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+
+#define PRAb8(arg) \
+	(((uint8_t) (arg)) >> 7) & 0x1, \
+	(((uint8_t) (arg)) >> 6) & 0x1, \
+	(((uint8_t) (arg)) >> 5) & 0x1, \
+	(((uint8_t) (arg)) >> 4) & 0x1, \
+	(((uint8_t) (arg)) >> 3) & 0x1, \
+	(((uint8_t) (arg)) >> 2) & 0x1, \
+	(((uint8_t) (arg)) >> 1) & 0x1, \
+	((uint8_t) (arg)) & 0x1
+#define PRAb16(arg) \
+	(((uint16_t) (arg)) >> 15) & 0x1, \
+	(((uint16_t) (arg)) >> 14) & 0x1, \
+	(((uint16_t) (arg)) >> 13) & 0x1, \
+	(((uint16_t) (arg)) >> 12) & 0x1, \
+	(((uint16_t) (arg)) >> 11) & 0x1, \
+	(((uint16_t) (arg)) >> 10) & 0x1, \
+	(((uint16_t) (arg)) >> 9) & 0x1, \
+	(((uint16_t) (arg)) >> 8) & 0x1, \
+	(((uint16_t) (arg)) >> 7) & 0x1, \
+	(((uint16_t) (arg)) >> 6) & 0x1, \
+	(((uint16_t) (arg)) >> 5) & 0x1, \
+	(((uint16_t) (arg)) >> 4) & 0x1, \
+	(((uint16_t) (arg)) >> 3) & 0x1, \
+	(((uint16_t) (arg)) >> 2) & 0x1, \
+	(((uint16_t) (arg)) >> 1) & 0x1, \
+	((uint16_t) (arg)) & 0x1
+#define PRAb32(arg) \
+	(((uint32_t) (arg)) >> 31) & 0x1, \
+	(((uint32_t) (arg)) >> 30) & 0x1, \
+	(((uint32_t) (arg)) >> 29) & 0x1, \
+	(((uint32_t) (arg)) >> 28) & 0x1, \
+	(((uint32_t) (arg)) >> 27) & 0x1, \
+	(((uint32_t) (arg)) >> 26) & 0x1, \
+	(((uint32_t) (arg)) >> 25) & 0x1, \
+	(((uint32_t) (arg)) >> 24) & 0x1, \
+	(((uint32_t) (arg)) >> 23) & 0x1, \
+	(((uint32_t) (arg)) >> 22) & 0x1, \
+	(((uint32_t) (arg)) >> 21) & 0x1, \
+	(((uint32_t) (arg)) >> 20) & 0x1, \
+	(((uint32_t) (arg)) >> 19) & 0x1, \
+	(((uint32_t) (arg)) >> 18) & 0x1, \
+	(((uint32_t) (arg)) >> 17) & 0x1, \
+	(((uint32_t) (arg)) >> 16) & 0x1, \
+	(((uint32_t) (arg)) >> 15) & 0x1, \
+	(((uint32_t) (arg)) >> 14) & 0x1, \
+	(((uint32_t) (arg)) >> 13) & 0x1, \
+	(((uint32_t) (arg)) >> 12) & 0x1, \
+	(((uint32_t) (arg)) >> 11) & 0x1, \
+	(((uint32_t) (arg)) >> 10) & 0x1, \
+	(((uint32_t) (arg)) >> 9) & 0x1, \
+	(((uint32_t) (arg)) >> 8) & 0x1, \
+	(((uint32_t) (arg)) >> 7) & 0x1, \
+	(((uint32_t) (arg)) >> 6) & 0x1, \
+	(((uint32_t) (arg)) >> 5) & 0x1, \
+	(((uint32_t) (arg)) >> 4) & 0x1, \
+	(((uint32_t) (arg)) >> 3) & 0x1, \
+	(((uint32_t) (arg)) >> 2) & 0x1, \
+	(((uint32_t) (arg)) >> 1) & 0x1, \
+	((uint32_t) (arg)) & 0x1
+#define PRAb64(arg) \
+	(((uint64_t) (arg)) >> 63) & 0x1, \
+	(((uint64_t) (arg)) >> 62) & 0x1, \
+	(((uint64_t) (arg)) >> 61) & 0x1, \
+	(((uint64_t) (arg)) >> 60) & 0x1, \
+	(((uint64_t) (arg)) >> 59) & 0x1, \
+	(((uint64_t) (arg)) >> 58) & 0x1, \
+	(((uint64_t) (arg)) >> 57) & 0x1, \
+	(((uint64_t) (arg)) >> 56) & 0x1, \
+	(((uint64_t) (arg)) >> 55) & 0x1, \
+	(((uint64_t) (arg)) >> 54) & 0x1, \
+	(((uint64_t) (arg)) >> 53) & 0x1, \
+	(((uint64_t) (arg)) >> 52) & 0x1, \
+	(((uint64_t) (arg)) >> 51) & 0x1, \
+	(((uint64_t) (arg)) >> 50) & 0x1, \
+	(((uint64_t) (arg)) >> 49) & 0x1, \
+	(((uint64_t) (arg)) >> 48) & 0x1, \
+	(((uint64_t) (arg)) >> 47) & 0x1, \
+	(((uint64_t) (arg)) >> 46) & 0x1, \
+	(((uint64_t) (arg)) >> 45) & 0x1, \
+	(((uint64_t) (arg)) >> 44) & 0x1, \
+	(((uint64_t) (arg)) >> 43) & 0x1, \
+	(((uint64_t) (arg)) >> 42) & 0x1, \
+	(((uint64_t) (arg)) >> 41) & 0x1, \
+	(((uint64_t) (arg)) >> 40) & 0x1, \
+	(((uint64_t) (arg)) >> 40) & 0x1, \
+	(((uint64_t) (arg)) >> 39) & 0x1, \
+	(((uint64_t) (arg)) >> 38) & 0x1, \
+	(((uint64_t) (arg)) >> 37) & 0x1, \
+	(((uint64_t) (arg)) >> 36) & 0x1, \
+	(((uint64_t) (arg)) >> 35) & 0x1, \
+	(((uint64_t) (arg)) >> 34) & 0x1, \
+	(((uint64_t) (arg)) >> 33) & 0x1, \
+	(((uint64_t) (arg)) >> 32) & 0x1, \
+	(((uint64_t) (arg)) >> 31) & 0x1, \
+	(((uint64_t) (arg)) >> 30) & 0x1, \
+	(((uint64_t) (arg)) >> 29) & 0x1, \
+	(((uint64_t) (arg)) >> 28) & 0x1, \
+	(((uint64_t) (arg)) >> 27) & 0x1, \
+	(((uint64_t) (arg)) >> 26) & 0x1, \
+	(((uint64_t) (arg)) >> 25) & 0x1, \
+	(((uint64_t) (arg)) >> 24) & 0x1, \
+	(((uint64_t) (arg)) >> 23) & 0x1, \
+	(((uint64_t) (arg)) >> 22) & 0x1, \
+	(((uint64_t) (arg)) >> 21) & 0x1, \
+	(((uint64_t) (arg)) >> 20) & 0x1, \
+	(((uint64_t) (arg)) >> 19) & 0x1, \
+	(((uint64_t) (arg)) >> 18) & 0x1, \
+	(((uint64_t) (arg)) >> 17) & 0x1, \
+	(((uint64_t) (arg)) >> 16) & 0x1, \
+	(((uint64_t) (arg)) >> 15) & 0x1, \
+	(((uint64_t) (arg)) >> 14) & 0x1, \
+	(((uint64_t) (arg)) >> 13) & 0x1, \
+	(((uint64_t) (arg)) >> 12) & 0x1, \
+	(((uint64_t) (arg)) >> 11) & 0x1, \
+	(((uint64_t) (arg)) >> 10) & 0x1, \
+	(((uint64_t) (arg)) >> 9) & 0x1, \
+	(((uint64_t) (arg)) >> 8) & 0x1, \
+	(((uint64_t) (arg)) >> 7) & 0x1, \
+	(((uint64_t) (arg)) >> 6) & 0x1, \
+	(((uint64_t) (arg)) >> 5) & 0x1, \
+	(((uint64_t) (arg)) >> 4) & 0x1, \
+	(((uint64_t) (arg)) >> 3) & 0x1, \
+	(((uint64_t) (arg)) >> 2) & 0x1, \
+	(((uint64_t) (arg)) >> 1) & 0x1, \
+	((uint64_t) (arg)) & 0x1
+
 /**
  * The handler of an I/O operation, implementing a method to process it.
  */
