@@ -7312,7 +7312,11 @@ static int parse_attribute_non_resident_data_value(
 	}
 	/* 0xB8 */
 	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
+		j += print_unknown32(prefix, indent, value, &value[j]);
+	}
+	/* 0xC0 */
+	if(is_v35plus && value_end - j >= 8) {
+		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
 
 	emit(prefix, indent, "%s @ %" PRIuz " / 0x%" PRIXz ":",
@@ -7345,7 +7349,7 @@ static int parse_attribute_non_resident_data_value(
 			indent + 1, extent_list_start, &value[j]);
 	}
 	/* 0xD0 */
-	if(is_v35plus && value_end - j >= 4) {
+	if(value_end - j >= 4) {
 		extent_index_offset = read_le32(&value[j]);
 		j += print_le32_dechex("Offset of extent index", prefix,
 			indent + 1, extent_list_start, &value[j]);
