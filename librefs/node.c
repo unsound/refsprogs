@@ -7311,11 +7311,11 @@ static int parse_attribute_non_resident_data_value(
 		j += print_unknown64(prefix, indent, value, &value[j]);
 	}
 	/* 0xB8 */
-	if(value_end - j >= 8) {
+	if(value_end - j >= 4) {
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
 	/* 0xC0 */
-	if(is_v35plus && value_end - j >= 8) {
+	if(is_v35plus && value_end - j >= 4) {
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
 
