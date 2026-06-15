@@ -118,16 +118,14 @@ static int refsimage_node_header(
 		 * to the bitmap (node consists of more than one cluster). */
 		u8 i;
 
-		if(object_id &&
-			node_number != le64_to_cpu(header->v3.block_numbers[0]))
-		{
+		if(node_number != le64_to_cpu(header->v3.block_numbers[0])) {
 			sys_log_warning("Mismatching first block number for "
 				"node %" PRIu64 ": %" PRIu64 " Ignoring "
 				"additional numbers...",
 				PRAu64(node_number),
 				PRAu64(le64_to_cpu(header->v3.
 				block_numbers[0])));
-			set_bit(context->bitmap, node_number);
+			set_bit(context->bitmap, node_first_cluster);
 			goto out;
 		}
 
