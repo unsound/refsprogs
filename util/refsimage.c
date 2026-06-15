@@ -224,6 +224,54 @@ static int refsimage_node_volume_label_entry(
 	return 0;
 }
 
+static int refsimage_node_root_entry(
+		void *const context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	(void) context;
+	(void) child_entry_offset;
+	(void) file_flags;
+	(void) node_number;
+	(void) parent_node_object_id;
+	(void) create_time;
+	(void) last_access_time;
+	(void) last_write_time;
+	(void) last_mft_change_time;
+	(void) file_size;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	sys_log_debug("%s entry with child entry offset %" PRIu16 ", file "
+		"flags 0x%" PRIX32 ", node number %" PRIu64 ", parent node "
+		"object ID %" PRIu64 ", create time %" PRIu64 ", last access "
+		"time %" PRIu64 ", last write time %" PRIu64 ", last MFT "
+		"change time %" PRIu64 ", file size %" PRIu64 ", allocated "
+		"size %" PRIu64 "...",
+		"Root", PRAu16(child_entry_offset), PRAX32(file_flags),
+		PRAu64(node_number), PRAu64(parent_node_object_id),
+		PRAu64(create_time), PRAu64(last_access_time),
+		PRAu64(last_write_time), PRAu64(last_mft_change_time),
+		PRAu64(file_size), PRAu64(allocated_size));
+
+	return 0;
+}
+
 static int refsimage_node_long_entry(
 		void *const context,
 		const le16 *const file_name,
@@ -260,6 +308,18 @@ static int refsimage_node_long_entry(
 	(void) key_size;
 	(void) record;
 	(void) record_size;
+
+	sys_log_debug("%s entry with child entry offset %" PRIu16 ", file "
+		"flags 0x%" PRIX32 ", node number %" PRIu64 ", parent node "
+		"object ID %" PRIu64 ", create time %" PRIu64 ", last access "
+		"time %" PRIu64 ", last write time %" PRIu64 ", last MFT "
+		"change time %" PRIu64 ", file size %" PRIu64 ", allocated "
+		"size %" PRIu64 "...",
+		"Long", PRAu16(child_entry_offset), PRAX32(file_flags),
+		PRAu64(node_number), PRAu64(parent_node_object_id),
+		PRAu64(create_time), PRAu64(last_access_time),
+		PRAu64(last_write_time), PRAu64(last_mft_change_time),
+		PRAu64(file_size), PRAu64(allocated_size));
 
 	return 0;
 }
@@ -305,6 +365,18 @@ static int refsimage_node_short_entry(
 	(void) record;
 	(void) record_size;
 
+	sys_log_debug("%s entry with child entry offset %" PRIu16 ", file "
+		"flags 0x%" PRIX32 ", node number %" PRIu64 ", parent node "
+		"object ID %" PRIu64 ", create time %" PRIu64 ", last access "
+		"time %" PRIu64 ", last write time %" PRIu64 ", last MFT "
+		"change time %" PRIu64 ", file size %" PRIu64 ", allocated "
+		"size %" PRIu64 "...",
+		"Short", PRAu16(child_entry_offset), PRAX32(file_flags),
+		PRAu64(node_number), PRAu64(parent_node_object_id),
+		PRAu64(create_time), PRAu64(last_access_time),
+		PRAu64(last_write_time), PRAu64(last_mft_change_time),
+		PRAu64(file_size), PRAu64(allocated_size));
+
 	return 0;
 }
 
@@ -344,6 +416,18 @@ static int refsimage_node_hardlink_entry(
 	(void) key_size;
 	(void) record;
 	(void) record_size;
+
+	sys_log_debug("%s entry with child entry offset %" PRIu16 ", file "
+		"flags 0x%" PRIX32 ", node number %" PRIu64 ", parent node "
+		"object ID %" PRIu64 ", create time %" PRIu64 ", last access "
+		"time %" PRIu64 ", last write time %" PRIu64 ", last MFT "
+		"change time %" PRIu64 ", file size %" PRIu64 ", allocated "
+		"size %" PRIu64 "...",
+		"Hard link", PRAu16(child_entry_offset), PRAX32(file_flags),
+		PRAu64(node_number), PRAu64(parent_id),
+		PRAu64(create_time), PRAu64(last_access_time),
+		PRAu64(last_write_time), PRAu64(last_mft_change_time),
+		PRAu64(file_size), PRAu64(allocated_size));
 
 	return 0;
 }
@@ -507,6 +591,24 @@ static int refsimage_node_stream_extent(
 		set_bit(context->bitmap, i);
 	}
 out:
+	return 0;
+}
+
+static int refsimage_node_symlink(
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length)
+{
+	sys_log_debug("Symlink with type %d, target \"%.*s\" (length: "
+		"%" PRIuz ")",
+		type, (int) target_length, target, PRAuz(target_length));
+
+	(void) context;
+	(void) type;
+	(void) target;
+	(void) target_length;
+
 	return 0;
 }
 
@@ -1322,6 +1424,7 @@ int main(int argc, char **argv)
 	visitor.node_allocation_entry = refsimage_node_allocation_entry;
 	visitor.node_regular_entry = refsimage_node_regular_entry;
 	visitor.node_volume_label_entry = refsimage_node_volume_label_entry;
+	visitor.node_root_entry = refsimage_node_root_entry;
 	visitor.node_long_entry = refsimage_node_long_entry;
 	visitor.node_short_entry = refsimage_node_short_entry;
 	visitor.node_hardlink_entry = refsimage_node_hardlink_entry;
@@ -1330,6 +1433,7 @@ int main(int argc, char **argv)
 	visitor.node_ea = refsimage_node_ea;
 	visitor.node_stream = refsimage_node_stream;
 	visitor.node_stream_extent = refsimage_node_stream_extent;
+	visitor.node_symlink = refsimage_node_symlink;
 	visitor.context = &context;
 
 	err = refs_node_walk(
