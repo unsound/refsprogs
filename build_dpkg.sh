@@ -62,14 +62,11 @@ git clean -f -d -x debian/ && \
 	./configure && \
 	make dist && \
 	mv -v refsprogs-$VERSION.tar.gz ../refsprogs_$VERSION.orig.tar.gz && \
-	apt install libfuse3-dev && \
+	apt install -y libfuse3-dev && \
 	dpkg-buildpackage -us -uc --diff-ignore="$IGNORE_REGEX" && \
+	apt remove -y libfuse3-dev && \
 	for i in $archs; do \
 		apt install -y libfuse3-dev:$i && \
-			dpkg-buildpackage -us -uc --diff-ignore="$IGNORE_REGEX" -b --host-arch $i; \
-		if [ "$host_arch" == "$i" ]; then \
-			apt remove -y $(dpkg --list | grep "^ii .*:$i" | cut -d ' ' -f 3); \
-		else \
-			dpkg --force-remove-protected --remove $(dpkg --list | grep "^ii .*:$i" | cut -d ' ' -f 3); \
-		fi; \
+			dpkg-buildpackage -us -uc --diff-ignore="$IGNORE_REGEX" -b --host-arch $i && \
+			( dpkg --force-remove-protected --remove $(dpkg --list | grep "^ii .*:$i" | cut -d ' ' -f 3) || dpkg --remove $(dpkg --list | grep "^ii .*:$i" | cut -d ' ' -f 3) ); \
 	done
