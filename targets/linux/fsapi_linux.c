@@ -3327,7 +3327,9 @@ static void fsapi_linux_super_op_evict_inode(
 	inode->i_private = NULL;
 
 	truncate_inode_pages_final(&inode->i_data);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7,1,0))
 	invalidate_inode_buffers(inode);
+#endif
 	clear_inode(inode);
 
 	fsapi_linux_op_log_leave(0, "inode=%p", inode);
@@ -4658,7 +4660,8 @@ static int fsapi_linux_dir_op_iterate(
 	/* Offset 0 and 1 are reserved for the synthesized '.'/'..' entries. */
 	if(offset == 0) {
 		sys_log_debug("Calling actor for . with len 1, pos 0x0, "
-			"inode %lu, DT_DIR.", filp->f_inode->i_ino);
+			"inode %llu, DT_DIR.",
+			(unsigned long long) filp->f_inode->i_ino);
 
 		actor->pos = offset;
 		abort = !dir_emit(
