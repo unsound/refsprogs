@@ -1,3 +1,9 @@
+refsprogs (2026.6.18-1) main; urgency=medium
+
+  * New upstream release.
+
+ -- Erik Larsson <catacombae@gmail.com>  Thu, 18 Jun 2026 10:04:33 +0200
+
 refsprogs (2026.3.22-3) main; urgency=medium
 
   * Fix broken build for Linux 7.0.
