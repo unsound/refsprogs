@@ -31,7 +31,8 @@ override_dh_auto_configure:
 		--exec-prefix=/ \
 		--enable-mount-helper \
 		--disable-ldconfig \
-		$(CONFIGURE_FLAGS)
+		$(CONFIGURE_FLAGS) \
+		PKG_CONFIG_PATH=/usr/lib/$(DEB_HOST_MULTIARCH)/pkgconfig
 
 override_dh_auto_install:
 	dh_auto_install
