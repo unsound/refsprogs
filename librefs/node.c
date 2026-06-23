@@ -8082,7 +8082,7 @@ static int parse_attribute_named_stream_extent_value(
 
 	int err = 0;
 	u16 j = j_start;
-	u16 k = 0;
+	u32 k = 0;
 	u32 num_extents = 0;
 
 	/* 0x60 */
