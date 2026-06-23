@@ -8075,7 +8075,7 @@ static int parse_attribute_named_stream_extent_value(
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
-	const sys_bool is_v3 =
+	const sys_bool v3 =
 		(crawl_context->bs->version_major >= 2) ? SYS_TRUE : SYS_FALSE;
 	const u32 block_index_unit = crawl_context->block_index_unit;
 	const u16 j_start = *jp;
@@ -8084,6 +8084,7 @@ static int parse_attribute_named_stream_extent_value(
 	u16 j = j_start;
 	u32 k = 0;
 	u32 num_extents = 0;
+	u8 extent_size;
 
 	/* 0x60 */
 	if(value_size - j >= 4) {
@@ -8254,7 +8255,8 @@ static int parse_attribute_named_stream_extent_value(
 	}
 
 	/* Iterate over extents in stream. */
-	for(k = 0; k < num_extents && (value_size - j) >= 24; ++k) {
+	extent_size = v3 ? 24 : 32;
+	for(k = 0; k < num_extents && (value_size - j) >= extent_size; ++k) {
 		const u64 first_physical_block =
 			logical_to_physical_block_number(
 				/* refs_node_crawl_context *crawl_context */
@@ -8290,14 +8292,14 @@ static int parse_attribute_named_stream_extent_value(
 			PRAu32(k + 1), PRAu32(num_extents),
 			PRAuz(j), PRAuz(j));
 
-		if(!is_v3) {
+		if(!v3) {
 			/* v1: 0x110 */
 			j += print_le64_dechex("Block count", prefix,
 				indent + 1,
 				data, &data[j]);
 		}
 
-		/* v3: 0x110 */
+		/* v1: 0x118 v3: 0x110 */
 		j += print_le64_dechex("First block", prefix, indent + 1, data,
 			&data[j]);
 		emit(prefix, indent + 2,
@@ -8307,15 +8309,15 @@ static int parse_attribute_named_stream_extent_value(
 			PRAX64(first_physical_block),
 			PRAu64(first_physical_block * block_index_unit));
 
-		/* v3: 0x118 */
+		/* v1: 0x120 v3: 0x118 */
 		j += print_le32_dechex("Flags", prefix, indent + 1, data,
 			&data[j]);
 
-		/* v3: 0x11C */
+		/* v1: 0x124 v3: 0x11C */
 		j += print_le64_dechex("Logical block", prefix, indent + 1,
 			data, &data[j]);
 
-		/* v3: 0x124 */
+		/* v1: 0x12C v3: 0x124 */
 		j += print_le32_dechex("Number of clusters in "
 			"extent (?)", prefix, indent + 1, data, &data[j]);
 	}
