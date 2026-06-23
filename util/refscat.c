@@ -585,7 +585,8 @@ static int refscat_node_stream_extent(
 {
 	refscat_print_data_ctx *const context =
 		(refscat_print_data_ctx*) _context;
-	const u64 extent_size = cluster_count * context->vol->cluster_size;
+	const u64 extent_size =
+		((u64) cluster_count) * context->vol->cluster_size;
 	const u64 valid_extent_size =
 		sys_min(extent_size, context->remaining_bytes);
 	const u64 aligned_extent_size =
