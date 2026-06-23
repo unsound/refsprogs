@@ -51,9 +51,9 @@ if [ ! -z "$GIT_CLEAN" ]; then
     exit 1
 fi
 
-if [ ! -f ../refsprogs_$VERSION-orig.tar.gz ]; then
+if [ ! -f ../refsprogs_$VERSION.orig.tar.gz ]; then
     echo "Creating source tarball..."
-    ( ./autogen.sh && ./configure && make dist && mv -vn refsprogs-$VERSION.tar.gz ../refsprogs_$VERSION-orig.tar.gz && make maintainer-clean ) || exit 1
+    ( ./autogen.sh && ./configure && make dist && mv -vn refsprogs-$VERSION.tar.gz ../refsprogs_$VERSION.orig.tar.gz && make maintainer-clean ) || exit 1
 fi
 
 echo "Building debian packages..."
