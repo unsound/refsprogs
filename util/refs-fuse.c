@@ -50,6 +50,12 @@ typedef unsigned int mode_t;
 #include "fsapi.h"
 #include "layout.h"
 
+#if REFS_FUSE_USE_LOWLEVEL_API
+#ifndef FUSE_ROOT_ID
+#define FUSE_ROOT_ID 1
+#endif /* !defined(FUSE_ROOT_ID) */
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
+
 #ifndef FUSE_STAT
 /* The FUSE_STAT declaration is Dokan-specific, so for non-Dokan builds we
  * simply define it to 'stat'. */
@@ -890,6 +896,8 @@ out:
 }
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API */
 
+#if !REFS_FUSE_USE_LOWLEVEL_API || \
+	defined(HAVE_STRUCT_FUSE_LOWLEVEL_OPS_GETXATTR)
 typedef struct {
 	char *buf;
 	size_t size;
@@ -929,6 +937,7 @@ static int refs_fuse_op_listxattr_xattr_handler(
 out:
 	return err;
 }
+#endif /* !REFS_FUSE_USE_LOWLEVEL_API || defined(... */
 
 #if !REFS_FUSE_USE_LOWLEVEL_API
 static int refs_fuse_op_listxattr(const char *path, char *buf, size_t size)
@@ -1196,11 +1205,11 @@ out:
 static void refs_fuse_ll_op_forget(
 		fuse_req_t req,
 		fuse_ino_t ino,
-#if FUSE_VERSION >= 30
+#if FUSE_VERSION >= 30 || defined(__OpenBSD__)
 		uint64_t nlookup
 #else
 		unsigned long nlookup
-#endif /* FUSE_VERSION >= 30 ... */
+#endif /* FUSE_VERSION >= 30 || defined(__OpenBSD__) ... */
 		)
 {
 	fsapi_volume *const vol =
@@ -1810,6 +1819,7 @@ out:
 	}
 }
 
+#ifdef HAVE_STRUCT_FUSE_LOWLEVEL_OPS_GETXATTR
 #ifdef __APPLE__
 static void refs_fuse_ll_op_getxattr(
 		fuse_req_t req,
@@ -1971,6 +1981,7 @@ out:
 		sys_free(size, &buf);
 	}
 }
+#endif /* defined(HAVE_STRUCT_FUSE_LOWLEVEL_OPS_GETXATTR) */
 
 static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	/* void (*lookup) (fuse_req_t req, fuse_ino_t parent,
@@ -1998,6 +2009,7 @@ static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	/* void (*readdir) (fuse_req_t req, fuse_ino_t ino, size_t size,
 	 *         off_t off, struct fuse_file_info *fi); */
 	.readdir = refs_fuse_ll_op_readdir,
+#ifdef HAVE_STRUCT_FUSE_LOWLEVEL_OPS_GETXATTR
 #ifdef __APPLE__
 	/* void (*getxattr) (fuse_req_t req, fuse_ino_t ino, const char *name,
 	 *         size_t size, uint32_t position); */
@@ -2008,6 +2020,7 @@ static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	.getxattr = refs_fuse_ll_op_getxattr,
 	/* void (*listxattr) (fuse_req_t req, fuse_ino_t ino, size_t size); */
 	.listxattr = refs_fuse_ll_op_listxattr,
+#endif /* defined(HAVE_STRUCT_FUSE_LOWLEVEL_OPS_GETXATTR) */
 };
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API ... */
 
@@ -2183,6 +2196,7 @@ int main(int argc, char **argv)
 		fuse_daemonize(0);
 	}
 
+#ifdef HAVE_FUSE_SESSION_LOOP_MT
 	err = fuse_session_loop_mt(
 		/* struct fuse_session *se */
 		ses
@@ -2197,6 +2211,11 @@ int main(int argc, char **argv)
 #endif /* FUSE_VERSION >= 32 */
 #endif /* FUSE_VERSION >= 30 */
 		);
+#else /* !defined(HAVE_FUSE_SESSION_LOOP_MT) */
+	err = fuse_session_loop(
+		/* struct fuse_session *se */
+		ses);
+#endif /* defined(HAVE_FUSE_SESSION_LOOP_MT) ... */
 
 #if FUSE_VERSION < 30
 	fuse_session_remove_chan(
