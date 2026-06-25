@@ -7501,6 +7501,7 @@ static int parse_attribute_non_resident_data_value(
 
 	int err = 0;
 	u16 j = *jp;
+	u32 payload_offset = 0;
 	const u8 *extent_list_start = NULL;
 	size_t extent_list_start_offset = 0;
 	u32 extent_list_free_space_offset = 0;
@@ -7512,7 +7513,9 @@ static int parse_attribute_non_resident_data_value(
 
 	/* 0x00 */
 	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
+		payload_offset = read_le32(&value[j]);
+		j += print_le32_dechex("Payload offset", prefix, indent, value,
+			&value[j]);
 	}
 	/* 0x04 */
 	if(value_end - j >= 4) {
@@ -7607,9 +7610,16 @@ static int parse_attribute_non_resident_data_value(
 	if(value_end - j >= 4) {
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
-	/* 0xC0 */
-	if(is_v35plus && value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
+	if(!payload_offset) {
+		/* 0xC0 */
+		if(is_v35plus && value_end - j >= 4) {
+			j += print_unknown32(prefix, indent, value, &value[j]);
+		}
+	}
+	else if((j - j_start) < payload_offset) {
+		print_data_with_base(prefix, indent, j, value_size, &value[j],
+			payload_offset - (j - j_start));
+		j = j_start + payload_offset;
 	}
 
 	emit(prefix, indent, "%s @ %" PRIuz " / 0x%" PRIXz ":",
