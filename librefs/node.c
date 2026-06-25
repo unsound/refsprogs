@@ -122,6 +122,64 @@ typedef enum {
 
 /* Forward declarations. */
 
+static int parse_generic_block_body(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const size_t indent,
+		const sys_bool is_v3,
+		const u64 object_id,
+		const u64 block_number,
+		const u64 block_queue_index,
+		const u8 level,
+		const u8 *const block,
+		const u32 block_size,
+		const u32 offset_in_block,
+		refs_node_block_queue *const block_queue,
+		const u16 fixed_no_kv_entry_size,
+		void *const context,
+		int (*const parse_key)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
+			const char *prefix,
+			size_t indent,
+			u64 object_id,
+			sys_bool is_index,
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_offset,
+			u16 key_size,
+			u32 entry_size,
+			void *context),
+		sys_bool (*const should_add_subnode)(
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_size,
+			void *context),
+		int (*const parse_leaf_value)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
+			const char *prefix,
+			size_t indent,
+			u64 node_number,
+			u64 object_id,
+			const u8 *key,
+			const u8 *value,
+			u16 key_offset,
+			u16 key_size,
+			u16 value_offset,
+			u16 value_size,
+			u16 entry_offset,
+			u16 entry_key,
+			u32 entry_index,
+			u32 entry_size,
+			u32 num_entries,
+			void *context),
+		int (*const leaf_entry_handler)(
+			void *context,
+			const u8 *data,
+			u32 data_size,
+			u32 node_type));
+
 static int parse_extent_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -3517,8 +3575,6 @@ static int parse_generic_block(
 {
 	static const char *const prefix = "\t";
 
-	const u32 block_index_unit = crawl_context->block_index_unit;
-
 	refs_node_print_visitor *const print_visitor =
 		(visitor && visitor->print_visitor.print_message) ?
 		&visitor->print_visitor : NULL;
@@ -3530,17 +3586,6 @@ static int parse_generic_block(
 	u64 object_id = 0;
 	const u8 *entry = NULL;
 	u32 entry_size = 0;
-	u32 first_table_entry_end = 0;
-	u32 flags = 0;
-	u32 value_offsets_start = 0;
-	u32 value_offsets_end = 0;
-	u32 values_count = 0;
-	u16 *value_offsets = NULL;
-	sys_bool is_index_node = SYS_FALSE;
-	u32 value_offsets_start_real = 0;
-	u32 value_offsets_end_real = 0;
-	u32 j = 0;
-	sys_bool added_subnode = SYS_FALSE;
 
 	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
 		"cluster_number=%" PRIu64 ", block_number=%" PRIu64 ", "
@@ -3631,6 +3676,229 @@ static int parse_generic_block(
 	}
 
 	i += entry_size;
+
+	err = parse_generic_block_body(
+		/* refs_node_crawl_context *crawl_context */
+		crawl_context,
+		/* refs_node_walk_visitor *visitor */
+		visitor,
+		/* size_t indent */
+		indent,
+		/* sys_bool is_v3 */
+		is_v3,
+		/* u64 object_id */
+		object_id,
+		/* u64 block_number */
+		block_number,
+		/* u64 block_queue_index */
+		block_queue_index,
+		/* u8 level */
+		level,
+		/* const u8 *block */
+		block,
+		/* u32 block_size */
+		block_size,
+		/* u32 offset_in_block */
+		i,
+		/* refs_node_block_queue *block_queue */
+		block_queue,
+		/* u16 fixed_no_kv_entry_size */
+		fixed_no_kv_entry_size,
+		/* void *context */
+		context,
+		/* int (*parse_key)(
+		 *     refs_node_crawl_context *crawl_context,
+		 *     refs_node_walk_visitor *visitor,
+		 *     const char *prefix,
+		 *     size_t indent,
+		 *     u64 object_id,
+		 *     sys_bool is_index,
+		 *     sys_bool is_v3,
+		 *     const u8 *key,
+		 *     u16 key_offset,
+		 *     u16 key_size,
+		 *     u32 entry_size,
+		 *     void *context) */
+		parse_key,
+		/* sys_bool (*should_add_subnode)(
+		 *     sys_bool is_v3,
+		 *     const u8 *key,
+		 *     u16 key_size,
+		 *     void *context) */
+		should_add_subnode,
+		/* int (*parse_leaf_value)(
+		 *     refs_node_crawl_context *crawl_context,
+		 *     refs_node_walk_visitor *visitor,
+		 *     const char *prefix,
+		 *     size_t indent,
+		 *     u64 node_number,
+		 *     u64 object_id,
+		 *     const u8 *key,
+		 *     const u8 *value,
+		 *     u16 key_offset,
+		 *     u16 key_size,
+		 *     u16 value_offset,
+		 *     u16 value_size,
+		 *     u16 entry_offset,
+		 *     u16 entry_key,
+		 *     u32 entry_index,
+		 *     u32 entry_size,
+		 *     u32 num_entries,
+		 *     void *context) */
+		parse_leaf_value,
+		/* int (*leaf_entry_handler)(
+		 *     void *context,
+		 *     const u8 *data,
+		 *     u32 data_size,
+		 *     u32 node_type) */
+		leaf_entry_handler);
+
+	/* Avoid duplicate printout of trailing data. */
+	i = block_size;
+out:
+	if(i < block_size) {
+		print_data_with_base(prefix, indent, i, block_size, &block[i],
+			block_size - i);
+	}
+
+	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
+		"cluster_number=%" PRIu64 ", block_number=%" PRIu64 ", "
+		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
+		"block_size=%" PRIu32 ", block_queue=%p, "
+		"fixed_no_kv_entry_size=%" PRIu16 ", context=%p, parse_key=%p, "
+		"should_add_subnode=%p, parse_leaf_value=%p, "
+		"leaf_entry_handler=%p): Leaving.",
+		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
+		PRAu64(cluster_number), PRAu64(block_number),
+		PRAu64(block_queue_index), PRAu8(level), block,
+		PRAu32(block_size), block_queue, PRAu16(fixed_no_kv_entry_size),
+		context, parse_key, should_add_subnode, parse_leaf_value,
+		leaf_entry_handler);
+
+	return err;
+}
+
+static int parse_generic_block_body(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const size_t indent,
+		const sys_bool is_v3,
+		const u64 object_id,
+		const u64 block_number,
+		const u64 block_queue_index,
+		const u8 level,
+		const u8 *const block,
+		const u32 block_size,
+		const u32 offset_in_block,
+		refs_node_block_queue *const block_queue,
+		const u16 fixed_no_kv_entry_size,
+		void *const context,
+		int (*const parse_key)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
+			const char *prefix,
+			size_t indent,
+			u64 object_id,
+			sys_bool is_index,
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_offset,
+			u16 key_size,
+			u32 entry_size,
+			void *context),
+		sys_bool (*const should_add_subnode)(
+			sys_bool is_v3,
+			const u8 *key,
+			u16 key_size,
+			void *context),
+		int (*const parse_leaf_value)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
+			const char *prefix,
+			size_t indent,
+			u64 node_number,
+			u64 object_id,
+			const u8 *key,
+			const u8 *value,
+			u16 key_offset,
+			u16 key_size,
+			u16 value_offset,
+			u16 value_size,
+			u16 entry_offset,
+			u16 entry_key,
+			u32 entry_index,
+			u32 entry_size,
+			u32 num_entries,
+			void *context),
+		int (*const leaf_entry_handler)(
+			void *context,
+			const u8 *data,
+			u32 data_size,
+			u32 node_type))
+{
+	static const char *const prefix = "\t";
+
+	const u32 block_index_unit = crawl_context->block_index_unit;
+
+	refs_node_print_visitor *const print_visitor =
+		(visitor && visitor->print_visitor.print_message) ?
+		&visitor->print_visitor : NULL;
+
+	int err = 0;
+	u32 i = offset_in_block;
+	const u8 *entry = NULL;
+	u32 entry_size = 0;
+	u32 first_table_entry_end = 0;
+	u32 flags = 0;
+	u32 value_offsets_start = 0;
+	u32 value_offsets_end = 0;
+	u32 values_count = 0;
+	u16 *value_offsets = NULL;
+	sys_bool is_index_node = SYS_FALSE;
+	u32 value_offsets_start_real = 0;
+	u32 value_offsets_end_real = 0;
+	u32 j = 0;
+	sys_bool added_subnode = SYS_FALSE;
+
+	sys_log_trace("%s("
+		"crawl_context=%p, "
+		"visitor=%p, "
+		"indent=%" PRIuz ", "
+		"is_v3=%d, "
+		"object_id=%" PRIu64 ", "
+		"block_number=%" PRIu64 ", "
+		"block_queue_index=%" PRIu64 ", "
+		"level=%" PRIu8 ", "
+		"block=%p, "
+		"block_size=%" PRIu32 ", "
+		"header_size=%" PRIu32 ", "
+		"block_queue=%p, "
+		"fixed_no_kv_entry_size=%" PRIu16 ", "
+		"context=%p, "
+		"parse_key=%p, "
+		"should_add_subnode=%p, "
+		"parse_leaf_value=%p, "
+		"leaf_entry_handler=%p): Entering...",
+		__FUNCTION__,
+		crawl_context,
+		visitor,
+		PRAuz(indent),
+		is_v3,
+		PRAu64(object_id),
+		PRAu64(block_number),
+		PRAu64(block_queue_index),
+		PRAu8(level),
+		block,
+		PRAu32(block_size),
+		PRAu32(offset_in_block),
+		block_queue,
+		PRAu16(fixed_no_kv_entry_size),
+		context,
+		parse_key,
+		should_add_subnode,
+		parse_leaf_value,
+		leaf_entry_handler);
+
 	first_table_entry_end = i;
 
 	entry = &block[i];
@@ -4171,18 +4439,43 @@ out:
 			&value_offsets);
 	}
 
-	sys_log_trace("%s(crawl_context=%p, visitor=%p, indent=%" PRIuz ", "
-		"cluster_number=%" PRIu64 ", block_number=%" PRIu64 ", "
-		"block_queue_index=%" PRIu64 ", level=%" PRIu8 ", block=%p, "
-		"block_size=%" PRIu32 ", block_queue=%p, "
-		"fixed_no_kv_entry_size=%" PRIu16 ", context=%p, parse_key=%p, "
-		"should_add_subnode=%p, parse_leaf_value=%p, "
+	sys_log_trace("%s("
+		"crawl_context=%p, "
+		"visitor=%p, "
+		"indent=%" PRIuz ", "
+		"is_v3=%d, "
+		"object_id=%" PRIu64 ", "
+		"block_number=%" PRIu64 ", "
+		"block_queue_index=%" PRIu64 ", "
+		"level=%" PRIu8 ", "
+		"block=%p, "
+		"block_size=%" PRIu32 ", "
+		"header_size=%" PRIu32 ", "
+		"block_queue=%p, "
+		"fixed_no_kv_entry_size=%" PRIu16 ", "
+		"context=%p, "
+		"parse_key=%p, "
+		"should_add_subnode=%p, "
+		"parse_leaf_value=%p, "
 		"leaf_entry_handler=%p): Leaving.",
-		__FUNCTION__, crawl_context, visitor, PRAuz(indent),
-		PRAu64(cluster_number), PRAu64(block_number),
-		PRAu64(block_queue_index), PRAu8(level), block,
-		PRAu32(block_size), block_queue, PRAu16(fixed_no_kv_entry_size),
-		context, parse_key, should_add_subnode, parse_leaf_value,
+		__FUNCTION__,
+		crawl_context,
+		visitor,
+		PRAuz(indent),
+		is_v3,
+		PRAu64(object_id),
+		PRAu64(block_number),
+		PRAu64(block_queue_index),
+		PRAu8(level),
+		block,
+		PRAu32(block_size),
+		PRAu32(offset_in_block),
+		block_queue,
+		PRAu16(fixed_no_kv_entry_size),
+		context,
+		parse_key,
+		should_add_subnode,
+		parse_leaf_value,
 		leaf_entry_handler);
 
 	return err;
