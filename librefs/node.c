@@ -178,7 +178,7 @@ static int parse_generic_block_body(
 			void *context,
 			const u8 *data,
 			u32 data_size,
-			u32 node_type));
+			u8 flags));
 
 static int parse_extent_leaf_value(
 		refs_node_crawl_context *const crawl_context,
@@ -2971,36 +2971,66 @@ static int parse_block_allocation_entry(
 		const size_t indent,
 		const sys_bool is_v3,
 		const u8 *const entry,
-		const u32 entry_size,
+		const u32 buffer_size,
 		const u32 entry_offset,
-		u32 *const out_flags,
+		u32 *const out_entry_size,
+		u32 *const out_free_space_offset,
+		u8 *const out_flags,
 		u32 *const out_value_offsets_start,
 		u32 *const out_value_offsets_end,
 		u32 *const out_value_count)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
+	const size_t required_size =
+		(is_v3 ? 0x20 : 0x18) + sizeof(le32);
 
 	int err = 0;
+	u32 entry_size = 0;
 	u32 i = 0;
 
-	if(out_flags) {
-		*out_flags = read_le32(&entry[0xC]);
+	if(buffer_size < sizeof(le32)) {
+		sys_log_error("Not enough data to parse the allocation entry "
+			"size field. Buffer size: %" PRIuz, PRAuz(buffer_size));
+		err = EINVAL;
+		goto out;
 	}
 
-	if(out_value_offsets_start) {
-		*out_value_offsets_start = read_le32(&entry[0x10]);
-	}
+	entry_size = read_le32(&entry[0x0]);
 
-	if(out_value_count) {
-		*out_value_count = read_le32(&entry[0x14]);
+	if(entry_size > buffer_size || entry_size < required_size) {
+		sys_log_error("Not enough data to parse the allocation entry "
+			"required fields. Buffer size: %" PRIuz " Required "
+			"size: %" PRIuz,
+			PRAuz(buffer_size), PRAuz(required_size));
+		err = EINVAL;
 	}
+	else {
+		if(out_entry_size) {
+			*out_entry_size = entry_size;
+		}
 
-	if(out_value_offsets_end) {
-		*out_value_offsets_end =
-			is_v3 ? ((entry_size >= 0x24) ?
-			read_le32(&entry[0x20]) : 0) :
-			read_le32(&entry[0x18]);
+		if(out_free_space_offset) {
+			*out_free_space_offset = read_le32(&entry[0x4]);
+		}
+
+		if(out_flags) {
+			*out_flags = entry[0xD];
+		}
+
+		if(out_value_offsets_start) {
+			*out_value_offsets_start = read_le32(&entry[0x10]);
+		}
+
+		if(out_value_count) {
+			*out_value_count = read_le32(&entry[0x14]);
+		}
+
+		if(out_value_offsets_end) {
+			*out_value_offsets_end =
+				is_v3 ? read_le32(&entry[0x20]) :
+				read_le32(&entry[0x18]);
+		}
 	}
 
 	if(!print_visitor) {
@@ -3571,7 +3601,7 @@ static int parse_generic_block(
 			void *context,
 			const u8 *data,
 			u32 data_size,
-			u32 node_type))
+			u8 flags))
 {
 	static const char *const prefix = "\t";
 
@@ -3750,7 +3780,7 @@ static int parse_generic_block(
 		 *     void *context,
 		 *     const u8 *data,
 		 *     u32 data_size,
-		 *     u32 node_type) */
+		 *     u8 flags) */
 		leaf_entry_handler);
 
 	/* Avoid duplicate printout of trailing data. */
@@ -3834,7 +3864,7 @@ static int parse_generic_block_body(
 			void *context,
 			const u8 *data,
 			u32 data_size,
-			u32 node_type))
+			u8 flags))
 {
 	static const char *const prefix = "\t";
 
@@ -3849,7 +3879,7 @@ static int parse_generic_block_body(
 	const u8 *entry = NULL;
 	u32 entry_size = 0;
 	u32 first_table_entry_end = 0;
-	u32 flags = 0;
+	u8 flags = 0;
 	u32 value_offsets_start = 0;
 	u32 value_offsets_end = 0;
 	u32 values_count = 0;
@@ -3902,7 +3932,6 @@ static int parse_generic_block_body(
 	first_table_entry_end = i;
 
 	entry = &block[i];
-	entry_size = read_le32(entry);
 
 	emit(prefix, indent, "Node allocation entry @ %" PRIu32 " / "
 		"0x%" PRIX32 ":",
@@ -3919,11 +3948,15 @@ static int parse_generic_block_body(
 		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 		/* const u8 *entry */
 		entry,
-		/* u32 entry_size */
-		entry_size,
+		/* u32 buffer_size */
+		block_size - i,
 		/* u32 entry_offset */
 		i,
-		/* u32 *out_flags */
+		/* u32 *out_entry_size */
+		&entry_size,
+		/* u32 *out_free_space_offset */
+		NULL,
+		/* u8 *out_flags */
 		&flags,
 		/* u32 *out_value_offsets_start */
 		&value_offsets_start,
@@ -3948,9 +3981,9 @@ static int parse_generic_block_body(
 		}
 	}
 
-	/* We now consider 0x100 to be the flag indicating whether a node is an
-	 * index node. TODO: Check this with all available images. */
-	if(flags & 0x100) {
+	/* We consider 0x1 to be the flag indicating whether a node is an index
+	 * node. TODO: Check this with all available images. */
+	if(flags & 0x1) {
 		is_index_node = SYS_TRUE;
 	}
 
@@ -4177,7 +4210,7 @@ static int parse_generic_block_body(
 					entry,
 					/* u32 data_size */
 					entry_size,
-					/* u32 node_type */
+					/* u8 flags */
 					flags);
 				if(err) {
 					goto out;
@@ -6137,7 +6170,7 @@ static int parse_level2_block(
 		 *     void *context,
 		 *     const u8 *data,
 		 *     u32 data_size,
-		 *     u32 node_type) */
+		 *     u8 flags) */
 		NULL);
 	if(err) {
 		goto out;
@@ -7459,7 +7492,7 @@ static int parse_extent_tree(
 				 *     void *context,
 				 *     const u8 *data,
 				 *     u32 data_size,
-				 *     u32 node_type) */
+				 *     u8 flags) */
 				NULL);
 			if(err) {
 				break;
@@ -7502,10 +7535,10 @@ static int parse_attribute_non_resident_data_value(
 	int err = 0;
 	u16 j = *jp;
 	u32 payload_offset = 0;
-	const u8 *extent_list_start = NULL;
 	size_t extent_list_start_offset = 0;
+	u32 block_allocation_entry_size = 0;
 	u32 extent_list_free_space_offset = 0;
-	u32 extent_list_flags = 0;
+	u8 extent_list_flags = 0;
 	u32 extent_index_offset = 0;
 	u32 number_of_extents = 0;
 	u32 extent_list_size = 0;
@@ -7626,60 +7659,41 @@ static int parse_attribute_non_resident_data_value(
 		"Extent list",
 		PRAuz((uintptr_t) &value[j] - (uintptr_t) value),
 		PRAXz((uintptr_t) &value[j] - (uintptr_t) value));
-	extent_list_start = &value[j];
 	extent_list_start_offset = j;
 
-	/* 0xC0 */
-	if(value_end - j >= 4) {
-		j += print_le32_dechex("Offset of first extent", prefix,
-			indent + 1, extent_list_start, &value[j]);
-	}
-	/* 0xC4 */
-	if(value_end - j >= 4) {
-		extent_list_free_space_offset = read_le32(&value[j]);
-		j += print_le32_dechex("Offset of free space", prefix,
-			indent + 1, extent_list_start, &value[j]);
-	}
-	/* 0xC8 */
-	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent + 1, extent_list_start,
-			&value[j]);
-	}
-	/* 0xCC */
-	if(value_end - j >= 4) {
-		extent_list_flags = read_le32(&value[j]);
-		j += print_le32_dechex("Extent list flags", prefix,
-			indent + 1, extent_list_start, &value[j]);
-	}
-	/* 0xD0 */
-	if(value_end - j >= 4) {
-		extent_index_offset = read_le32(&value[j]);
-		j += print_le32_dechex("Offset of extent index", prefix,
-			indent + 1, extent_list_start, &value[j]);
-	}
-	/* 0xD4 */
-	if(value_end - j >= 4) {
-		number_of_extents = read_le32(&value[j]);
-		j += print_le32_dechex("Number of extents", prefix, indent + 1,
-			extent_list_start, &value[j]);
-	}
-	/* 0xD8 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent + 1, extent_list_start,
-			&value[j]);
+	emit(prefix, indent + 1, "Block allocation entry:");
+	err = parse_block_allocation_entry(
+		/* refs_node_walk_visitor *visitor */
+		visitor,
+		/* const char *prefix */
+		prefix,
+		/* size_t indent */
+		indent + 2,
+		/* sys_bool is_v3 */
+		is_v3,
+		/* const u8 *entry */
+		&value[j],
+		/* u32 buffer_size */
+		value_size - (value_end - j),
+		/* u32 entry_offset */
+		0,
+		/* u32 *out_entry_size */
+		&block_allocation_entry_size,
+		/* u32 *out_free_space_offset */
+		&extent_list_free_space_offset,
+		/* u8 *out_flags */
+		&extent_list_flags,
+		/* u32 *out_value_offsets_start */
+		&extent_index_offset,
+		/* u32 *out_value_offsets_end */
+		&extent_list_size,
+		/* u32 *out_value_count */
+		&number_of_extents);
+	if(err) {
+		goto out;
 	}
 
-	/* 0xE0 */
-	if(is_v3 && value_end - j >= 8) {
-		extent_list_size = read_le32(&value[j]);
-		j += print_le32_dechex("Size of extents list", prefix,
-			indent + 1, extent_list_start, &value[j]);
-		j += print_unknown32(prefix, indent + 1, extent_list_start,
-			&value[j]);
-	}
-	else {
-		extent_list_size = value_end - extent_list_start_offset;
-	}
+	j += block_allocation_entry_size;
 
 	for(k = 0; k < number_of_extents; ++k) {
 		const u8 *cur_extent = NULL;
@@ -7784,14 +7798,26 @@ static int parse_attribute_non_resident_data_value(
 				extent_list_free_space_offset;
 		}
 
-		sys_log_debug("Size of extent: %" PRIu32,
-			PRAu32(cur_extent_end - j));
+		if(cur_extent_end < j) {
+			sys_log_critical("Current extent end precedes current "
+				"offset: %" PRIuz " < %" PRIu16,
+				PRAuz(cur_extent_end), PRAu16(j));
+			err = EINVAL;
+			goto out;
+		}
+
+		sys_log_debug("Cur extent end: %" PRIuz,
+			PRAuz(cur_extent_end));
+		sys_log_debug("j: %" PRIu16, PRAu16(j));
+		sys_log_debug("Size of extent: %" PRIuz,
+			PRAuz(cur_extent_end - j));
 
 		cur_extent = &value[j];
 
 		if(extent_list_flags & 0x1) {
-			/* This means that the extents are located in a subtree
-			 * and these entries are index entries. */
+			/* Flags indicate an index node. This means that the
+			 * extents are located in a subtree and these entries
+			 * are index entries. */
 			err = parse_extent_tree(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
@@ -8827,7 +8853,7 @@ static int parse_non_resident_attribute_list_value(
 			 *     void *context,
 			 *     const u8 *data,
 			 *     u32 data_size,
-			 *     u32 node_type) */
+			 *     u8 flags) */
 			NULL);
 		if(err == -1) {
 			goto out;
@@ -9808,11 +9834,15 @@ int parse_level3_long_value(
 		(crawl_context->bs->version_major >= 3) ? SYS_TRUE : SYS_FALSE,
 		/* const u8 *entry */
 		&value[i],
-		/* u32 entry_size */
+		/* u32 buffer_size */
 		attribute_size,
 		/* u32 entry_offset */
 		i,
-		/* u32 *out_flags */
+		/* u32 *out_entry_size */
+		NULL,
+		/* u32 *out_free_space_offset */
+		NULL,
+		/* u8 *out_flags */
 		NULL,
 		/* u32 *out_value_offsets_start */
 		&value_offsets_start,
@@ -10998,7 +11028,7 @@ static int parse_level3_block(
 		 *     void *context,
 		 *     const u8 *data,
 		 *     u32 data_size,
-		 *     u32 node_type) */
+		 *     u8 flags) */
 		NULL);
 	if(err) {
 		goto out;
@@ -11616,7 +11646,7 @@ static int crawl_volume_metadata(
 				 *     void *context,
 				 *     const u8 *data,
 				 *     u32 data_size,
-				 *     u32 node_type) */
+				 *     u8 flags) */
 				NULL);
 			if(err) {
 				goto out;
