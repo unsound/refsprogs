@@ -7643,57 +7643,60 @@ static int parse_attribute_non_resident_data_value(
 	if(value_end - j >= 4) {
 		j += print_unknown32(prefix, indent, value, &value[j]);
 	}
-	if(!payload_offset) {
-		/* 0xC0 */
-		if(is_v35plus && value_end - j >= 4) {
-			j += print_unknown32(prefix, indent, value, &value[j]);
+	if(j_start + payload_offset < value_end) {
+		if(!payload_offset) {
+			/* 0xC0 */
+			if(is_v35plus && value_end - j >= 4) {
+				j += print_unknown32(prefix, indent, value,
+					&value[j]);
+			}
 		}
-	}
-	else if((j - j_start) < payload_offset) {
-		print_data_with_base(prefix, indent, j, value_size, &value[j],
-			payload_offset - (j - j_start));
-		j = j_start + payload_offset;
-	}
+		else if((j - j_start) < payload_offset) {
+			print_data_with_base(prefix, indent, j, value_size,
+				&value[j], payload_offset - (j - j_start));
+			j = j_start + payload_offset;
+		}
 
-	emit(prefix, indent, "%s @ %" PRIuz " / 0x%" PRIXz ":",
-		"Extent list",
-		PRAuz((uintptr_t) &value[j] - (uintptr_t) value),
-		PRAXz((uintptr_t) &value[j] - (uintptr_t) value));
-	extent_list_start_offset = j;
+		emit(prefix, indent, "%s @ %" PRIuz " / 0x%" PRIXz ":",
+			"Extent list",
+			PRAuz((uintptr_t) &value[j] - (uintptr_t) value),
+			PRAXz((uintptr_t) &value[j] - (uintptr_t) value));
+		extent_list_start_offset = j;
 
-	emit(prefix, indent + 1, "Block allocation entry:");
-	err = parse_block_allocation_entry(
-		/* refs_node_walk_visitor *visitor */
-		visitor,
-		/* const char *prefix */
-		prefix,
-		/* size_t indent */
-		indent + 2,
-		/* sys_bool is_v3 */
-		is_v3,
-		/* const u8 *entry */
-		&value[j],
-		/* u32 buffer_size */
-		value_size - (value_end - j),
-		/* u32 entry_offset */
-		0,
-		/* u32 *out_entry_size */
-		&block_allocation_entry_size,
-		/* u32 *out_free_space_offset */
-		&extent_list_free_space_offset,
-		/* u8 *out_flags */
-		&extent_list_flags,
-		/* u32 *out_value_offsets_start */
-		&extent_index_offset,
-		/* u32 *out_value_offsets_end */
-		&extent_list_size,
-		/* u32 *out_value_count */
-		&number_of_extents);
-	if(err) {
-		goto out;
+		emit(prefix, indent + 1, "Block allocation entry:");
+		err = parse_block_allocation_entry(
+			/* refs_node_walk_visitor *visitor */
+			visitor,
+			/* const char *prefix */
+			prefix,
+			/* size_t indent */
+			indent + 2,
+			/* sys_bool is_v3 */
+			is_v3,
+			/* const u8 *entry */
+			&value[j],
+			/* u32 buffer_size */
+			value_size - (value_end - j),
+			/* u32 entry_offset */
+			0,
+			/* u32 *out_entry_size */
+			&block_allocation_entry_size,
+			/* u32 *out_free_space_offset */
+			&extent_list_free_space_offset,
+			/* u8 *out_flags */
+			&extent_list_flags,
+			/* u32 *out_value_offsets_start */
+			&extent_index_offset,
+			/* u32 *out_value_offsets_end */
+			&extent_list_size,
+			/* u32 *out_value_count */
+			&number_of_extents);
+		if(err) {
+			goto out;
+		}
+
+		j += block_allocation_entry_size;
 	}
-
-	j += block_allocation_entry_size;
 
 	for(k = 0; k < number_of_extents; ++k) {
 		const u8 *cur_extent = NULL;
