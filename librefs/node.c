@@ -154,6 +154,8 @@ static int parse_generic_block_body(
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
+			u32 entry_index,
+			u32 num_entries,
 			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
@@ -3345,6 +3347,8 @@ static int parse_generic_entry(
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
+			u32 entry_index,
+			u32 num_entries,
 			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
@@ -3474,7 +3478,19 @@ static int parse_generic_entry(
 	{
 		add_subnode =
 			(!should_add_subnode ||
-			should_add_subnode(is_v3, key, key_size, context)) ?
+			should_add_subnode(
+				/* sys_bool is_v3 */
+				is_v3,
+				/* const u8 *key */
+				key,
+				/* u16 key_size */
+				key_size,
+				/* u32 entry_index */
+				entry_index,
+				/* u32 num_entries */
+				num_entries,
+				/* void *context */
+				context)) ?
 			SYS_TRUE : SYS_FALSE;
 
 		err = parse_index_value(
@@ -3577,6 +3593,8 @@ static int parse_generic_block(
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
+			u32 entry_index,
+			u32 num_entries,
 			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
@@ -3754,6 +3772,8 @@ static int parse_generic_block(
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
+		 *     u32 entry_index,
+		 *     u32 num_entries,
 		 *     void *context) */
 		should_add_subnode,
 		/* int (*parse_leaf_value)(
@@ -3840,6 +3860,8 @@ static int parse_generic_block_body(
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
+			u32 entry_index,
+			u32 num_entries,
 			void *context),
 		int (*const parse_leaf_value)(
 			refs_node_crawl_context *crawl_context,
@@ -4169,6 +4191,8 @@ static int parse_generic_block_body(
 				 *     sys_bool is_v3,
 				 *     const u8 *key,
 				 *     u16 key_size,
+				 *     u32 entry_index,
+				 *     u32 num_entries,
 				 *     void *context) */
 				(should_add_subnode && !added_subnode) ?
 					should_add_subnode : NULL,
@@ -4392,6 +4416,8 @@ static int parse_generic_block_body(
 					 *     sys_bool is_v3,
 					 *     const u8 *key,
 					 *     u16 key_size,
+					 *     u32 entry_index,
+					 *     u32 num_entries,
 					 *     void *context) */
 					NULL,
 					/* int (*parse_leaf_value)(
@@ -4525,6 +4551,8 @@ static sys_bool parse_level2_0x2_should_add_subnode(
 		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
+		const u32 entry_index,
+		const u32 num_entries,
 		void *const _context)
 {
 	level2_0x2_leaf_parse_context *const context =
@@ -4576,7 +4604,9 @@ static sys_bool parse_level2_0x2_should_add_subnode(
 		 * is usually the case in other filesystems. */
 		sys_log_debug("%s: %" PRIu64 " < %" PRIu64, __FUNCTION__,
 			PRAu64(object_id), PRAu64(context->object_id));
-		if(object_id < context->object_id) {
+		if(object_id < context->object_id &&
+			entry_index != num_entries - 1)
+		{
 			res = SYS_FALSE;
 		}
 	}
@@ -6144,6 +6174,8 @@ static int parse_level2_block(
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
+		 *     u32 entry_index,
+		 *     u32 num_entries,
 		 *     void *context) */
 		(object_id == 0x2) ? parse_level2_0x2_should_add_subnode : NULL,
 		/* int (*parse_leaf_value)(
@@ -7346,6 +7378,8 @@ static int parse_extent_tree(
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
+		 *     u32 entry_index,
+		 *     u32 num_entries,
 		 *     void *context) */
 		NULL,
 		/* int (*parse_leaf_value)(
@@ -7466,6 +7500,8 @@ static int parse_extent_tree(
 				 *     sys_bool is_v3,
 				 *     const u8 *key,
 				 *     u16 key_size,
+				 *     u32 entry_index,
+				 *     u32 num_entries,
 				 *     void *context) */
 				NULL,
 				/* int (*parse_leaf_value)(
@@ -8830,6 +8866,8 @@ static int parse_non_resident_attribute_list_value(
 			 *     sys_bool is_v3,
 			 *     const u8 *key,
 			 *     u16 key_size,
+			 *     u32 entry_index,
+			 *     u32 num_entries,
 			 *     void *context) */
 			NULL,
 			/* int *parse_leaf_value)(
@@ -11005,6 +11043,8 @@ static int parse_level3_block(
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
+		 *     u32 entry_index,
+		 *     u32 num_entries,
 		 *     void *context) */
 		NULL,
 		/* int (*parse_leaf_value)(
@@ -11621,6 +11661,8 @@ static int crawl_volume_metadata(
 				 *     sys_bool is_v3,
 				 *     const u8 *key,
 				 *     u16 key_size,
+				 *     u32 entry_index,
+				 *     u32 num_entries,
 				 *     void *context) */
 				NULL,
 				/* int (*parse_leaf_value)(
