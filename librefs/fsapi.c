@@ -4964,7 +4964,8 @@ static int fsapi_node_read_extended_attribute_visit_stream_extent(
 	fsapi_node_read_extended_attribute_context *const context =
 		(fsapi_node_read_extended_attribute_context*) _context;
 	const u64 read_offset = first_physical_block * block_index_unit;
-	const u64 extent_size = cluster_count * context->vol->cluster_size;
+	const u64 extent_size =
+		((u64) cluster_count) * context->vol->cluster_size;
 	const u64 valid_extent_size =
 		sys_min(extent_size, context->remaining_bytes);
 

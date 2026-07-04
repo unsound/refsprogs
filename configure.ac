@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2026.6.18],[catacombae@gmail.com])
-LIBREFS_VERSION="14"
+AC_INIT([refsprogs],[2026.6.27],[catacombae@gmail.com])
+LIBREFS_VERSION="15"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -247,6 +247,24 @@ if test "x$enable_refs_fuse" = "xyes"; then
 		fi
 		;;
 	esac
+
+	SAVED_CFLAGS="$CFLAGS"
+	SAVED_LIBS="$LIBS"
+
+	CFLAGS="$FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
+	LIBS="$FUSE_MODULE_LIBS"
+	AC_CHECK_FUNCS([ \
+		fuse_session_loop_mt \
+	])
+
+	AC_CHECK_MEMBERS(
+		[struct fuse_lowlevel_ops.getxattr],
+		[],
+		[],
+		[[#include <fuse_lowlevel.h>]]
+	)
+	CFLAGS="$SAVED_CFLAGS"
+	LIBS="$SAVED_LIBS"
 fi
 
 AC_SYS_LARGEFILE
