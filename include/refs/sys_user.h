@@ -75,10 +75,7 @@ typedef u64 le64;
 
 typedef le16 refschar;
 
-typedef struct {
-	u64 tv_sec;
-	u32 tv_nsec;
-} sys_timespec;
+typedef struct timeval sys_difftime;
 
 #ifdef _WIN32
 typedef HANDLE sys_mutex;
@@ -212,152 +209,49 @@ static inline u8 sys_fls64(u64 value)
 #endif /* defined(HAVE_FLSLL) ... */
 }
 
-#ifndef SYS_LOG_CRITICAL_ENABLED
-#define SYS_LOG_CRITICAL_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_ERROR_ENABLED
-#define SYS_LOG_ERROR_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_WARNING_ENABLED
-#define SYS_LOG_WARNING_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_INFO_ENABLED
-#define SYS_LOG_INFO_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_DEBUG_ENABLED
-#define SYS_LOG_DEBUG_ENABLED 0
-#endif
-
-#ifndef SYS_LOG_TRACE_ENABLED
-#define SYS_LOG_TRACE_ENABLED 0
-#endif
-
 static inline const char* sys_strerror(int err)
 {
 	return strerror(err);
 }
 
-/**
- * No-op log handler that only exists to be able to statically check the format
- * string and arguments for errors when logging is turned off.
- *
- * @param[in] fmt
- *      @p printf format string for constructing the log message.
- * @param[in] ...
- *      Arguments to the @p printf format string (if any).
- */
-static inline void sys_log_noop(const char *fmt, ...)
-	__attribute__((format(printf, 1, 2)));
-
-static inline void sys_log_noop(const char *const fmt, ...)
-{
-	(void) fmt;
-}
-
-/**
- * No-op error-suffixed log handler that only exists to be able to statically
- * check the format string and arguments for errors when logging is turned off.
- *
- * @param[in] err
- *      The error thrown by the system.
- * @param[in] fmt
- *      @p printf format string for constructing the log message.
- * @param[in] ...
- *      Arguments to the @p printf format string (if any).
- */
-static inline void sys_log_pnoop(int err, const char *fmt, ...)
-	__attribute__((format(printf, 2, 3)));
-
-static inline void sys_log_pnoop(int err, const char *const fmt, ...)
-{
-	(void) err;
-	(void) fmt;
-}
-
-#if SYS_LOG_CRITICAL_ENABLED
-#define sys_log_critical(fmt, ...) \
-	fprintf(stderr, "[CRITICAL] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_critical sys_log_noop
-#endif
-
-#if SYS_LOG_ERROR_ENABLED
-#define sys_log_error(fmt, ...) \
-	fprintf(stderr, "[ERROR] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_error sys_log_noop
-#endif
-
-#if SYS_LOG_ERROR_ENABLED
-#define sys_log_perror(err, fmt, ...) \
-	fprintf(stderr, "[ERROR] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_perror sys_log_pnoop
-#endif
-
-#if SYS_LOG_WARNING_ENABLED
-#define sys_log_warning(fmt, ...) \
-	fprintf(stderr, "[WARNING] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_warning sys_log_noop
-#endif
-
-#if SYS_LOG_WARNING_ENABLED
-#define sys_log_pwarning(err, fmt, ...) \
-	fprintf(stderr, "[WARNING] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_pwarning sys_log_pnoop
-#endif
-
-#if SYS_LOG_INFO_ENABLED
-#define sys_log_info(fmt, ...) \
+#define __do_sys_log_stderr(fmt, ...) \
 	fprintf(stderr, fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_info sys_log_noop
-#endif
 
-#if SYS_LOG_INFO_ENABLED
-#define sys_log_pinfo(err, fmt, ...) \
+#define __do_sys_log_pstderr(err, fmt, ...) \
 	fprintf(stderr, fmt ": %s (%d)\n", ##__VA_ARGS__, strerror(err), (err))
-#else
-#define sys_log_pinfo sys_log_pnoop
-#endif
 
-#if SYS_LOG_DEBUG_ENABLED
-#define sys_log_debug(fmt, ...) \
-	fprintf(stderr, "[DEBUG] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_debug sys_log_noop
-#endif
+#define __do_sys_log_critical(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
 
-#if SYS_LOG_DEBUG_ENABLED
-#define sys_log_pdebug(err, fmt, ...) \
-	fprintf(stderr, "[DEBUG] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_pdebug sys_log_pnoop
-#endif
+#define __do_sys_log_error(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
 
-#if SYS_LOG_TRACE_ENABLED
-#define sys_log_trace(fmt, ...) \
-	fprintf(stderr, "[TRACE] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_trace sys_log_noop
-#endif
+#define __do_sys_log_perror(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
 
-#if SYS_LOG_TRACE_ENABLED
-#define sys_log_ptrace(err, fmt, ...) \
-	fprintf(stderr, "[TRACE] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_ptrace sys_log_pnoop
-#endif
+#define __do_sys_log_warning(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_pwarning(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_info(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_pinfo(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_debug(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_pdebug(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_trace(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_ptrace(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
 
 #define SYS_TRUE 1
 #define SYS_FALSE 0

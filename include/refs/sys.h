@@ -22,7 +22,302 @@
 #ifndef _REFS_SYS_H
 #define _REFS_SYS_H
 
+#ifndef SYS_LOG_CRITICAL_ENABLED
+#define SYS_LOG_CRITICAL_ENABLED 1
+#endif
+
+#ifndef SYS_LOG_ERROR_ENABLED
+#define SYS_LOG_ERROR_ENABLED 1
+#endif
+
+#ifndef SYS_LOG_WARNING_ENABLED
+#define SYS_LOG_WARNING_ENABLED 1
+#endif
+
+#ifndef SYS_LOG_INFO_ENABLED
+#define SYS_LOG_INFO_ENABLED 1
+#endif
+
+#ifndef SYS_LOG_DEBUG_ENABLED
+#define SYS_LOG_DEBUG_ENABLED 0
+#endif
+
+#ifndef SYS_LOG_TRACE_ENABLED
+#define SYS_LOG_TRACE_ENABLED 0
+#endif
+
+#ifndef SYS_LOG_INDENT
+/* Indentation currently requires the __thread attribute to be supported, so
+ * that would exclude most kernel mode code. */
+#define SYS_LOG_INDENT 0
+#endif /* SYS_LOG_INDENT */
+
+#ifndef SYS_LOG_PROFILING
+/* Profiling currently requires gettimeofday, which isn't a perfect profiling
+ * method (clock_gettime is TODO), however it works well enough for our purposes
+ * at the moment. */
+#define SYS_LOG_PROFILING 0
+#endif
+
 typedef struct sys_iohandler sys_iohandler;
+
+#if SYS_LOG_INDENT
+#ifndef SYS_LOG_INDENT_SIZE
+#define SYS_LOG_INDENT_SIZE 4
+#endif /* !defined(SYS_LOG_INDENT_SIZE) */
+
+#ifndef SYS_LOG_INDENT_CHAR
+#define SYS_LOG_INDENT_CHAR ' '
+#endif /* !defined(SYS_LOG_INDENT_CHAR) */
+
+#ifndef SYS_LOG_INDENT_MAX
+#define SYS_LOG_INDENT_MAX 32
+#endif /* !defined(SYS_LOG_INDENT_MAX) */
+
+extern __thread int __sys_log_indent;
+
+#define __sys_log_indent_declarations \
+	char __sys_log_indent_buffer[SYS_LOG_INDENT_MAX * \
+		SYS_LOG_INDENT_SIZE + 1]
+
+#define __sys_log_indent_prepare \
+	do { \
+		const int __sys_log_indent_limit = \
+			sys_min(__sys_log_indent, SYS_LOG_INDENT_MAX); \
+		\
+		memset(__sys_log_indent_buffer, SYS_LOG_INDENT_CHAR, \
+			__sys_log_indent_limit * SYS_LOG_INDENT_SIZE); \
+		__sys_log_indent_buffer[__sys_log_indent_limit * \
+			SYS_LOG_INDENT_SIZE] = '\0'; \
+	} while(0)
+
+#define __sys_log_indent_fmt "%s"
+#define __sys_log_indent_arg __sys_log_indent_buffer
+#define __sys_log_indent_increment ++__sys_log_indent
+#define __sys_log_indent_decrement --__sys_log_indent
+#else
+#define __sys_log_indent_declarations \
+	do {} while(0)
+
+#define __sys_log_indent_prepare \
+	do {} while(0)
+
+#define __sys_log_indent_fmt "%s"
+#define __sys_log_indent_arg ""
+#define __sys_log_indent_increment do {} while(0)
+#define __sys_log_indent_decrement do {} while(0)
+#endif /* SYS_LOG_INDENT ... */
+
+/**
+ * No-op log handler that only exists to be able to statically check the format
+ * string and arguments for errors when logging is turned off.
+ *
+ * @param[in] fmt
+ *      @p printf format string for constructing the log message.
+ * @param[in] ...
+ *      Arguments to the @p printf format string (if any).
+ */
+static inline void __sys_log_noop(const char *fmt, ...)
+	__attribute__((format(printf, 1, 2)));
+
+static inline void __sys_log_noop(const char *const fmt, ...)
+{
+	(void) fmt;
+}
+
+/**
+ * No-op error-suffixed log handler that only exists to be able to statically
+ * check the format string and arguments for errors when logging is turned off.
+ *
+ * @param[in] err
+ *      The error thrown by the system.
+ * @param[in] fmt
+ *      @p printf format string for constructing the log message.
+ * @param[in] ...
+ *      Arguments to the @p printf format string (if any).
+ */
+static inline void __sys_log_pnoop(int err, const char *fmt, ...)
+	__attribute__((format(printf, 2, 3)));
+
+static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
+{
+	(void) err;
+	(void) fmt;
+}
+
+#define __do_sys_log_generic(level, prefix, fmt, ...) \
+	do { \
+		__sys_log_indent_declarations; \
+		__sys_log_indent_prepare; \
+		__do_sys_log_##level(__sys_log_indent_fmt prefix fmt, \
+			__sys_log_indent_arg, ##__VA_ARGS__); \
+	} while(0)
+
+#define __do_sys_log_pgeneric(err, level, prefix, fmt, ...) \
+	do { \
+		__sys_log_indent_declarations; \
+		__sys_log_indent_prepare; \
+		__do_sys_log_p##level(err, __sys_log_indent_fmt prefix fmt, \
+			__sys_log_indent_arg, ##__VA_ARGS__); \
+	} while(0)
+
+#define __sys_log_critical_prefix "[CRITICAL] "
+#define __sys_log_error_prefix "[ERROR] "
+#define __sys_log_warning_prefix "[WARNING] "
+#define __sys_log_info_prefix ""
+#define __sys_log_debug_prefix "[DEBUG] "
+#define __sys_log_trace_prefix "[TRACE] "
+
+#if SYS_LOG_CRITICAL_ENABLED
+#define sys_log_critical(fmt, ...) \
+	__do_sys_log_generic(critical, __sys_log_critical_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_critical __sys_log_noop
+#endif
+
+#if SYS_LOG_ERROR_ENABLED
+#define sys_log_error(fmt, ...) \
+	__do_sys_log_generic(error, __sys_log_error_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_error __sys_log_noop
+#endif
+
+#if SYS_LOG_ERROR_ENABLED
+#define sys_log_perror(err, fmt, ...) \
+	__do_sys_log_pgeneric(err, error, __sys_log_error_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_perror __sys_log_pnoop
+#endif
+
+#if SYS_LOG_WARNING_ENABLED
+#define sys_log_warning(fmt, ...) \
+	__do_sys_log_generic(warning, __sys_log_warning_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_warning __sys_log_noop
+#endif
+
+#if SYS_LOG_WARNING_ENABLED
+#define sys_log_pwarning(err, fmt, ...) \
+	__do_sys_log_pgeneric(err, warning, __sys_log_warning_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_pwarning __sys_log_pnoop
+#endif
+
+#if SYS_LOG_INFO_ENABLED
+#define sys_log_info(fmt, ...) \
+	__do_sys_log_generic(info, __sys_log_info_prefix, fmt, ##__VA_ARGS__)
+#else
+#define sys_log_info __sys_log_noop
+#endif
+
+#if SYS_LOG_INFO_ENABLED
+#define sys_log_pinfo(err, fmt, ...) \
+	__do_sys_log_pgeneric(err, info, __sys_log_info_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_pinfo __sys_log_pnoop
+#endif
+
+#if SYS_LOG_DEBUG_ENABLED
+#define sys_log_debug(fmt, ...) \
+	__do_sys_log_generic(debug, __sys_log_debug_prefix, fmt, ##__VA_ARGS__)
+#else
+#define sys_log_debug __sys_log_noop
+#endif
+
+#if SYS_LOG_DEBUG_ENABLED
+#define sys_log_pdebug(err, fmt, ...) \
+	__do_sys_log_pgeneric(err, debug, __sys_log_debug_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_pdebug __sys_log_pnoop
+#endif
+
+#if SYS_LOG_TRACE_ENABLED
+#define sys_log_trace(fmt, ...) \
+	__do_sys_log_generic(trace, __sys_log_trace_prefix, fmt, ##__VA_ARGS__)
+#else
+#define sys_log_trace __sys_log_noop
+#endif
+
+#if SYS_LOG_TRACE_ENABLED
+#define sys_log_ptrace(err, fmt, ...) \
+	__do_sys_log_pgeneric(err, trace, __sys_log_trace_prefix, fmt, \
+		##__VA_ARGS__)
+#else
+#define sys_log_ptrace __sys_log_pnoop
+#endif
+
+#if SYS_LOG_PROFILING
+#define __sys_log_enter_time_declarations \
+	sys_difftime __sys_log_enter_start_ts; \
+	sys_difftime __sys_log_enter_end_ts
+#define __sys_log_get_difftime(difftp) \
+	gettimeofday((difftp), NULL)
+#define __sys_log_profiling_fmt " (%" PRIu64 " ns)"
+#define __sys_log_profiling_arg \
+	, PRAu64((__sys_log_enter_end_ts.tv_sec * 1000000000ULL + \
+	__sys_log_enter_end_ts.tv_usec * 1000ULL) - \
+	(__sys_log_enter_start_ts.tv_sec * 1000000000ULL + \
+	__sys_log_enter_start_ts.tv_usec * 1000ULL))
+#else
+#define __sys_log_enter_time_declarations \
+	do {} while(0)
+#define __sys_log_get_difftime(difftp) \
+	do {} while(0)
+#define __sys_log_profiling_fmt ""
+#define __sys_log_profiling_arg
+#endif /* SYS_LOG_PROFILING ... */
+
+#define __sys_log_do_enter(level, fmt, ...) \
+	__sys_log_enter_time_declarations; \
+	do { \
+		sys_log_##level("Entering %s(" fmt ")...", \
+			__FUNCTION__, ##__VA_ARGS__); \
+		__sys_log_indent_increment; \
+		__sys_log_get_difftime(&__sys_log_enter_start_ts); \
+	} while(0)
+
+#define __sys_log_do_leave(level, fmt, ...) \
+	do { \
+		__sys_log_get_difftime(&__sys_log_enter_end_ts); \
+		__sys_log_indent_decrement; \
+		sys_log_##level("Leaving %s(" fmt ")." \
+			__sys_log_profiling_fmt, \
+			__FUNCTION__, ##__VA_ARGS__ __sys_log_profiling_arg); \
+	} while(0)
+
+#if SYS_LOG_INFO_ENABLED
+#define sys_log_enter_info(...) __sys_log_do_enter(info, __VA_ARGS__)
+#define sys_log_leave_info(...) __sys_log_do_leave(info, __VA_ARGS__)
+#else
+#define sys_log_enter_info(...) __sys_log_noop(__VA_ARGS__)
+#define sys_log_leave_info(...) __sys_log_noop(__VA_ARGS__)
+#endif
+
+#if SYS_LOG_DEBUG_ENABLED
+#define sys_log_enter_debug(...) __sys_log_do_enter(debug, __VA_ARGS__)
+#define sys_log_leave_debug(...) __sys_log_do_leave(debug, __VA_ARGS__)
+#else
+#define sys_log_enter_debug(...) __sys_log_noop(__VA_ARGS__)
+#define sys_log_leave_debug(...) __sys_log_noop(__VA_ARGS__)
+#endif
+
+#if SYS_LOG_TRACE_ENABLED
+#define sys_log_enter_trace(...) __sys_log_do_enter(trace, __VA_ARGS__)
+#define sys_log_leave_trace(...) __sys_log_do_leave(trace, __VA_ARGS__)
+#else
+#define sys_log_enter_trace(...) __sys_log_noop(__VA_ARGS__)
+#define sys_log_leave_trace(...) __sys_log_noop(__VA_ARGS__)
+#endif
+
+#define sys_log_enter(...) sys_log_enter_trace(__VA_ARGS__)
+#define sys_log_leave(...) sys_log_leave_trace(__VA_ARGS__)
 
 #if defined(__linux__) && defined(__KERNEL__)
 #include "sys_linux.h"

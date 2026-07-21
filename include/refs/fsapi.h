@@ -26,6 +26,11 @@
 
 typedef struct fsapi_volume fsapi_volume;
 
+typedef struct {
+	u64 tv_sec;
+	u32 tv_nsec;
+} fsapi_timespec;
+
 typedef enum {
 	FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE = 0x1,
 	FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT = 0x2,
@@ -164,28 +169,28 @@ typedef struct {
 	 * The time when this node was created, expressed as UNIX time (number
 	 * of seconds and nanoseconds since 00:00:00, January 1, 1970 UTC).
 	 */
-	sys_timespec creation_time;
+	fsapi_timespec creation_time;
 
 	/**
 	 * The time when this node's metadata was last changed, expressed as
 	 * UNIX time (number of seconds and nanoseconds since 00:00:00, January
 	 * 1, 1970 UTC).
 	 */
-	sys_timespec last_status_change_time;
+	fsapi_timespec last_status_change_time;
 
 	/**
 	 * The time when this node's data was last changed, expressed as UNIX
 	 * time (number of seconds and nanoseconds since 00:00:00, January 1,
 	 * 1970 UTC).
 	 */
-	sys_timespec last_data_change_time;
+	fsapi_timespec last_data_change_time;
 
 	/**
 	 * The time when this node's data was last accessed, expressed as UNIX
 	 * time (number of seconds and nanoseconds since 00:00:00, January 1,
 	 * 1970 UTC).
 	 */
-	sys_timespec last_data_access_time;
+	fsapi_timespec last_data_access_time;
 
 	/**
 	 * The BSD file flags of the node.
