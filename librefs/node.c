@@ -50,10 +50,10 @@
 typedef struct {
 	u64 start;
 	u64 length;
-} block_range;
+} refs_block_range;
 
 struct refs_block_map {
-	block_range *entries;
+	refs_block_range *entries;
 	size_t length;
 };
 
@@ -122,7 +122,7 @@ typedef enum {
 
 /* Forward declarations. */
 
-static int parse_generic_block_body(
+static int refs_node_parse_generic_block_body(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const size_t indent,
@@ -182,7 +182,7 @@ static int parse_generic_block_body(
 			u32 data_size,
 			u8 flags));
 
-static int parse_extent_leaf_value(
+static int refs_node_parse_extent_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -202,7 +202,7 @@ static int parse_extent_leaf_value(
 		const u32 num_entries,
 		void *const context);
 
-static int parse_attribute_leaf_value(
+static int refs_node_parse_attribute_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -222,7 +222,7 @@ static int parse_attribute_leaf_value(
 		const u32 num_entries,
 		void *const context);
 
-static int parse_level3_leaf_value(
+static int refs_node_parse_level3_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -242,7 +242,7 @@ static int parse_level3_leaf_value(
 		const u32 num_entries,
 		void *const context);
 
-static int parse_level3_block(
+static int refs_node_parse_level3_block(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
@@ -629,16 +629,21 @@ static int refs_node_cache_item_compare(
 	const refs_node_cache_item *const b =
 		(const refs_node_cache_item*) b_node->value;
 
+	int ret;
+
 	(void) self;
 
 	if(a->start_block < b->start_block) {
-		return -1;
+		ret = -1;
 	}
 	else if(a->start_block > b->start_block) {
-		return 1;
+		ret = 1;
+	}
+	else {
+		ret = 0;
 	}
 
-	return 0;
+	return ret;
 }
 
 int refs_node_cache_create(
@@ -861,6 +866,7 @@ static const u8* refs_node_cache_search(
 {
 	refs_node_cache_item search_item;
 	refs_node_cache_item *cache_item = NULL;
+	u8 *ret;
 
 	memset(&search_item, 0, sizeof(search_item));
 	search_item.start_block = start_block;
@@ -884,7 +890,9 @@ static const u8* refs_node_cache_search(
 			cache_item);
 	}
 
-	return cache_item ? cache_item->data : NULL;
+	ret = cache_item ? cache_item->data : NULL;
+
+	return ret;
 }
 
 static int refs_node_cache_insert(
@@ -1052,31 +1060,44 @@ out:
 	return err;
 }
 
-static const char* entry_type_to_string(u16 entry_type)
+static const char* refs_node_entry_type_to_string(
+		const u16 entry_type)
 {
+	const char *ret;
+
 	switch(entry_type) {
 	case 0x0:
-		return "metadata";
+		ret = "metadata";
+		break;
 	case 0x1:
-		return "long";
+		ret = "long";
+		break;
 	case 0x2:
-		return "short";
+		ret = "short";
+		break;
 	default:
-		return "unknown";
+		ret = "unknown";
+		break;
 	}
+
+	return ret;
 }
 
-static u64 logical_to_physical_block_number(
+static u64 refs_node_crawl_context_logical_to_physical_block(
 		refs_node_crawl_context *const crawl_context,
 		const u64 logical_block_number)
 {
-	return refs_node_logical_to_physical_block_number(
+	u64 physical_block_number;
+
+	physical_block_number = refs_node_logical_to_physical_block_number(
 		/* const REFS_BOOT_SECTOR *bs */
 		crawl_context->bs,
 		/* const refs_block_map *mapping_table */
 		crawl_context->block_map,
 		/* u64 logical_block_number */
 		logical_block_number);
+
+	return physical_block_number;
 }
 
 u64 refs_node_logical_to_physical_block_number(
@@ -1278,7 +1299,8 @@ static int refs_node_get_node_data(
 		}
 
 		if(!physical_blocks[i]) {
-			physical_blocks[i] = logical_to_physical_block_number(
+			physical_blocks[i] =
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -1352,7 +1374,7 @@ out:
 	return err;
 }
 
-static void print_file_flags(
+static void refs_node_print_file_flags(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -1459,7 +1481,7 @@ static void print_file_flags(
 	}
 }
 
-static u32 parse_superblock_level1_block_list(
+static u32 refs_node_parse_superblock_level1_block_list(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -1473,6 +1495,7 @@ static u32 parse_superblock_level1_block_list(
 		visitor ? &visitor->print_visitor : NULL;
 
 	u32 i;
+	u32 ret;
 
 	emit(prefix, indent, "Level 1 blocks (%" PRIu32 " bytes @ %" PRIu32 " "
 		"/ 0x%" PRIX32 "):",
@@ -1493,10 +1516,12 @@ static u32 parse_superblock_level1_block_list(
 		}
 	}
 
-	return i * 8;
+	ret = i * 8;
+
+	return ret;
 }
 
-static void parse_node_reference_v1(
+static void refs_node_parse_node_reference_v1(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -1515,7 +1540,7 @@ static void parse_node_reference_v1(
 	logical_block = read_le64(&data[0]);
 	if(logical_block) {
 		physical_block =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -1548,7 +1573,7 @@ static void parse_node_reference_v1(
 	print_le64_hex("Checksum", prefix, indent, base, &data[16]);
 }
 
-static void parse_node_reference_v3(
+static void refs_node_parse_node_reference_v3(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -1567,7 +1592,7 @@ static void parse_node_reference_v3(
 	logical_block = read_le64(&data[0]);
 	if(logical_block) {
 		physical_block =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -1585,7 +1610,7 @@ static void parse_node_reference_v3(
 	logical_block = read_le64(&data[8]);
 	if(logical_block) {
 		physical_block =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -1603,7 +1628,7 @@ static void parse_node_reference_v3(
 	logical_block = read_le64(&data[16]);
 	if(logical_block) {
 		physical_block =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -1621,7 +1646,7 @@ static void parse_node_reference_v3(
 	logical_block = read_le64(&data[24]);
 	if(logical_block) {
 		physical_block =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -1654,7 +1679,7 @@ static void parse_node_reference_v3(
 	print_le64_hex("Checksum", prefix, indent, base, &data[40]);
 }
 
-static void parse_node_reference(
+static void refs_node_parse_node_reference(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const sys_bool is_v3,
@@ -1664,7 +1689,7 @@ static void parse_node_reference(
 		const u8 *const data)
 {
 	if(is_v3) {
-		parse_node_reference_v3(
+		refs_node_parse_node_reference_v3(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -1679,7 +1704,7 @@ static void parse_node_reference(
 			data);
 	}
 	else {
-		parse_node_reference_v1(
+		refs_node_parse_node_reference_v1(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -1695,7 +1720,7 @@ static void parse_node_reference(
 	}
 }
 
-static int parse_node_reference_list_v1(
+static int refs_node_parse_node_reference_list_v1(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -1746,7 +1771,7 @@ static int parse_node_reference_list_v1(
 			PRAu32(reference_index),
 			PRAu32(reference_offset),
 			PRAX32(reference_offset));
-		parse_node_reference_v1(
+		refs_node_parse_node_reference_v1(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -1804,7 +1829,7 @@ out:
 	return err;
 }
 
-static int parse_node_reference_list_v3(
+static int refs_node_parse_node_reference_list_v3(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -1857,7 +1882,7 @@ static int parse_node_reference_list_v3(
 			PRAu32(reference_index),
 			PRAu32(reference_offset),
 			PRAX32(reference_offset));
-		parse_node_reference_v3(
+		refs_node_parse_node_reference_v3(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -1918,7 +1943,7 @@ out:
 	return err;
 }
 
-static int parse_block_header(
+static int refs_node_parse_block_header(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -2106,7 +2131,7 @@ out:
 	return err;
 }
 
-static int parse_superblock_v1(
+static int refs_node_parse_superblock_v1(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u8 *const block,
@@ -2169,7 +2194,7 @@ static int parse_superblock_v1(
 
 	if(level_1_block_list_offset < self_reference_offset) {
 		i = level_1_block_list_offset;
-		i += parse_superblock_level1_block_list(
+		i += refs_node_parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2192,7 +2217,7 @@ static int parse_superblock_v1(
 
 		i = self_reference_offset;
 
-		err = parse_node_reference_list_v1(
+		err = refs_node_parse_node_reference_list_v1(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -2235,7 +2260,7 @@ static int parse_superblock_v1(
 
 		i = self_reference_offset;
 
-		err = parse_node_reference_list_v1(
+		err = refs_node_parse_node_reference_list_v1(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -2267,7 +2292,7 @@ static int parse_superblock_v1(
 	}
 	else {
 		i = level_1_block_list_offset;
-		i += parse_superblock_level1_block_list(
+		i += refs_node_parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2294,7 +2319,7 @@ out:
 	return err;
 }
 
-static int parse_superblock_v3(
+static int refs_node_parse_superblock_v3(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u8 *const block,
@@ -2380,7 +2405,7 @@ static int parse_superblock_v3(
 
 	if(level_1_block_list_offset < self_reference_offset) {
 		i = level_1_block_list_offset;
-		i += parse_superblock_level1_block_list(
+		i += refs_node_parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2403,7 +2428,7 @@ static int parse_superblock_v3(
 
 		i = self_reference_offset;
 
-		err = parse_node_reference_list_v3(
+		err = refs_node_parse_node_reference_list_v3(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -2445,7 +2470,7 @@ static int parse_superblock_v3(
 
 		i = self_reference_offset;
 
-		err = parse_node_reference_list_v3(
+		err = refs_node_parse_node_reference_list_v3(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -2477,7 +2502,7 @@ static int parse_superblock_v3(
 	}
 	else {
 		i = level_1_block_list_offset;
-		i += parse_superblock_level1_block_list(
+		i += refs_node_parse_superblock_level1_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2504,7 +2529,7 @@ out:
 	return err;
 }
 
-static int parse_level1_block_level2_node_reference_list(
+static int refs_node_parse_level1_block_level2_node_reference_list(
 		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -2607,7 +2632,7 @@ out:
 	return err;
 }
 
-static int parse_level1_block(
+static int refs_node_parse_level1_block(
 		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
@@ -2639,7 +2664,7 @@ static int parse_level1_block(
 	u32 level2_node_reference_offsets_end_offset = 0;
 	refs_node_block_queue_element *level2_node_references = NULL;
 
-	err = parse_block_header(
+	err = refs_node_parse_block_header(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* const char *prefix */
@@ -2700,7 +2725,7 @@ static int parse_level1_block(
 		i += 0x18;
 	}
 
-	err = parse_level1_block_level2_node_reference_list(
+	err = refs_node_parse_level1_block_level2_node_reference_list(
 		/* refs_node_crawl_context *context */
 		context,
 		/* refs_node_walk_visitor *visitor */
@@ -2748,7 +2773,7 @@ static int parse_level1_block(
 	else if(is_v3) {
 		u32 total_size = 0;
 
-		err = parse_node_reference_list_v3(
+		err = refs_node_parse_node_reference_list_v3(
 			/* refs_node_crawl_context *crawl_context */
 			context,
 			/* refs_node_walk_visitor *visitor */
@@ -2783,7 +2808,7 @@ static int parse_level1_block(
 
 		i = self_reference_offset;
 
-		err = parse_node_reference_list_v1(
+		err = refs_node_parse_node_reference_list_v1(
 			/* refs_node_crawl_context *crawl_context */
 			context,
 			/* refs_node_walk_visitor *visitor */
@@ -2839,7 +2864,7 @@ static int parse_level1_block(
 		if(is_v3) {
 			u32 total_size = 0;
 
-			err = parse_node_reference_list_v3(
+			err = refs_node_parse_node_reference_list_v3(
 				/* refs_node_crawl_context *crawl_context */
 				context,
 				/* refs_node_walk_visitor *visitor */
@@ -2874,7 +2899,7 @@ static int parse_level1_block(
 
 			i = self_reference_offset;
 
-			err = parse_node_reference_list_v1(
+			err = refs_node_parse_node_reference_list_v1(
 				/* refs_node_crawl_context *crawl_context */
 				context,
 				/* refs_node_walk_visitor *visitor */
@@ -2923,7 +2948,7 @@ out:
 	return err;
 }
 
-static int parse_block_header_entry(
+static int refs_node_parse_block_header_entry(
 		refs_node_walk_visitor *const visitor,
 		const size_t indent,
 		const u8 *const entry,
@@ -2967,7 +2992,7 @@ static int parse_block_header_entry(
 	return err;
 }
 
-static int parse_block_allocation_entry(
+static int refs_node_parse_block_allocation_entry(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -3114,7 +3139,7 @@ out:
 	return err;
 }
 
-static int parse_level2_block_unknown_table_entry(
+static int refs_node_parse_level2_block_unknown_table_entry(
 		refs_node_walk_visitor *const visitor,
 		const u8 *const entry,
 		const u32 entry_size,
@@ -3142,7 +3167,7 @@ static int parse_level2_block_unknown_table_entry(
 	return err;
 }
 
-static int parse_index_value(
+static int refs_node_parse_index_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -3171,7 +3196,7 @@ static int parse_index_value(
 		 * indicating that a block could in theory be fragmented when 4k
 		 * clusters are used. Right now we ignore this and assume that a
 		 * block is always contiguous on disk. */
-		parse_node_reference(
+		refs_node_parse_node_reference(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -3235,7 +3260,7 @@ out:
 	return err;
 }
 
-static int parse_unknown_key(
+static int refs_node_parse_unknown_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -3266,7 +3291,7 @@ static int parse_unknown_key(
 	return 0;
 }
 
-static int parse_unknown_leaf_value(
+static int refs_node_parse_unknown_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -3313,7 +3338,7 @@ static int parse_unknown_leaf_value(
 	return 0;
 }
 
-static int parse_generic_entry(
+static int refs_node_parse_generic_entry(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -3373,7 +3398,7 @@ static int parse_generic_entry(
 		sys_bool *const out_added_subnode)
 {
 	refs_node_print_visitor *const print_visitor =
-		visitor ? &visitor->print_visitor : NULL;
+		(visitor && visitor->print_visitor.print_message) ? &visitor->print_visitor : NULL;
 
 	int err = 0;
 	u32 i = 0;
@@ -3389,7 +3414,7 @@ static int parse_generic_entry(
 	if(entry_size < 0x10) {
 		sys_log_warning("Unexpected size for node entry: %" PRIu32 " "
 			"Printing raw data...", PRAu32(entry_size));
-		parse_level2_block_unknown_table_entry(
+		refs_node_parse_level2_block_unknown_table_entry(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const u8 *entry */
@@ -3435,7 +3460,7 @@ static int parse_generic_entry(
 
 		key = &entry[i];
 
-		err = (parse_key ? parse_key : parse_unknown_key)(
+		err = (parse_key ? parse_key : refs_node_parse_unknown_key)(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -3493,7 +3518,7 @@ static int parse_generic_entry(
 				context)) ?
 			SYS_TRUE : SYS_FALSE;
 
-		err = parse_index_value(
+		err = refs_node_parse_index_value(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -3517,7 +3542,7 @@ static int parse_generic_entry(
 	}
 	else {
 		err = (parse_leaf_value ? parse_leaf_value :
-			parse_unknown_leaf_value)(
+			refs_node_parse_unknown_leaf_value)(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -3563,7 +3588,7 @@ out:
 	return err;
 }
 
-static int parse_generic_block(
+static int refs_node_parse_generic_block(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const size_t indent,
@@ -3660,7 +3685,7 @@ static int parse_generic_block(
 		goto out;
 	}
 
-	err = parse_block_header(
+	err = refs_node_parse_block_header(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* const char *prefix */
@@ -3697,7 +3722,7 @@ static int parse_generic_block(
 	emit(prefix, indent, "Node header @ %" PRIu32 " / 0x%" PRIX32 ":",
 		PRAu32(i), PRAX32(i));
 
-	err = parse_block_header_entry(
+	err = refs_node_parse_block_header_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* size_t indent */
@@ -3725,7 +3750,7 @@ static int parse_generic_block(
 
 	i += entry_size;
 
-	err = parse_generic_block_body(
+	err = refs_node_parse_generic_block_body(
 		/* refs_node_crawl_context *crawl_context */
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -3828,7 +3853,7 @@ out:
 	return err;
 }
 
-static int parse_generic_block_body(
+static int refs_node_parse_generic_block_body(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const size_t indent,
@@ -3959,7 +3984,7 @@ static int parse_generic_block_body(
 		"0x%" PRIX32 ":",
 		PRAu32(i), PRAX32(i));
 
-	err = parse_block_allocation_entry(
+	err = refs_node_parse_block_allocation_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* const char *prefix */
@@ -4141,7 +4166,7 @@ static int parse_generic_block_body(
 				goto out;
 			}
 
-			err = parse_generic_entry(
+			err = refs_node_parse_generic_entry(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -4364,7 +4389,7 @@ static int parse_generic_block_body(
 			else {
 				entry_size = read_le32(entry);
 
-				err = parse_generic_entry(
+				err = refs_node_parse_generic_entry(
 					/* refs_node_crawl_context
 					 *     *crawl_context */
 					crawl_context,
@@ -4545,9 +4570,9 @@ typedef struct {
 	u64 object_id;
 	refs_node_block_queue *level3_block_queue;
 	refs_node_cache *node_cache;
-} level2_0x2_leaf_parse_context;
+} refs_node_level2_0x2_leaf_parse_context;
 
-static sys_bool parse_level2_0x2_should_add_subnode(
+static sys_bool refs_node_parse_level2_0x2_should_add_subnode(
 		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
@@ -4555,8 +4580,8 @@ static sys_bool parse_level2_0x2_should_add_subnode(
 		const u32 num_entries,
 		void *const _context)
 {
-	level2_0x2_leaf_parse_context *const context =
-		(level2_0x2_leaf_parse_context*) _context;
+	refs_node_level2_0x2_leaf_parse_context *const context =
+		(refs_node_level2_0x2_leaf_parse_context*) _context;
 
 	sys_bool res = SYS_TRUE;
 
@@ -4616,7 +4641,7 @@ out:
 	return res;
 }
 
-static int parse_level2_0x2_key(
+static int refs_node_parse_level2_0x2_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -4643,7 +4668,7 @@ static int parse_level2_0x2_key(
 	return 0;
 }
 
-static int parse_level2_0x2_leaf_value(
+static int refs_node_parse_level2_0x2_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -4664,8 +4689,8 @@ static int parse_level2_0x2_leaf_value(
 
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
-	level2_0x2_leaf_parse_context *const context =
-		(level2_0x2_leaf_parse_context*) _context;
+	refs_node_level2_0x2_leaf_parse_context *const context =
+		(refs_node_level2_0x2_leaf_parse_context*) _context;
 
 	int err = 0;
 	size_t i = 0x0;
@@ -4710,7 +4735,7 @@ static int parse_level2_0x2_leaf_value(
 			checksum = read_le64(&value[i + 2 * sizeof(le64)]);
 		}
 
-		parse_node_reference(
+		refs_node_parse_node_reference(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -4789,7 +4814,7 @@ static int parse_level2_0x2_leaf_value(
 	return err;
 }
 
-static int parse_level2_0x3_key(
+static int refs_node_parse_level2_0x3_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -4818,7 +4843,7 @@ static int parse_level2_0x3_key(
 	return 0;
 }
 
-static int parse_level2_0x4_key(
+static int refs_node_parse_level2_0x4_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -4844,7 +4869,7 @@ static int parse_level2_0x4_key(
 	return 0;
 }
 
-static int parse_level2_0x3_leaf_value(
+static int refs_node_parse_level2_0x3_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -4898,7 +4923,7 @@ static int parse_level2_0x3_leaf_value(
 	return 0;
 }
 
-static int parse_level2_0x4_leaf_value(
+static int refs_node_parse_level2_0x4_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -4946,7 +4971,7 @@ static int parse_level2_0x4_leaf_value(
 		i += print_unknown64(prefix, indent, value, &value[0x18]);
 	}
 	if(value_size >= 0x50) {
-		parse_node_reference_v3(
+		refs_node_parse_node_reference_v3(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -4973,7 +4998,7 @@ static int parse_level2_0x4_leaf_value(
 	return 0;
 }
 
-static int parse_0xB_0xC_key(
+static int refs_node_parse_0xB_0xC_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -5014,7 +5039,7 @@ static int parse_0xB_0xC_key(
 	return 0;
 }
 
-static void parse_level2_block_0xB_0xC_table_leaf_value(
+static void refs_node_parse_level2_block_0xB_0xC_table_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -5097,7 +5122,7 @@ static void parse_level2_block_0xB_0xC_table_leaf_value(
 	}
 }
 
-static int parse_level2_block_0xB_0xC_leaf_value(
+static int refs_node_parse_level2_block_0xB_0xC_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -5117,7 +5142,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 		const u32 num_entries,
 		void *const context)
 {
-	block_range *const range = (block_range*) context;
+	refs_block_range *const range = (refs_block_range*) context;
 
 	int err = 0;
 
@@ -5131,7 +5156,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 	(void) entry_index;
 	(void) num_entries;
 
-	parse_level2_block_0xB_0xC_table_leaf_value(
+	refs_node_parse_level2_block_0xB_0xC_table_leaf_value(
 		/* refs_node_crawl_context *crawl_context */
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -5156,7 +5181,7 @@ static int parse_level2_block_0xB_0xC_leaf_value(
 	return err;
 }
 
-static int parse_level2_0xB_leaf_value_add_mapping(
+static int refs_node_parse_level2_0xB_leaf_value_add_mapping(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -5179,7 +5204,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 	refs_block_map *const mappings = (refs_block_map*) context;
 
 	int err = 0;
-	block_range leaf_range;
+	refs_block_range leaf_range;
 
 	(void) node_number;
 	(void) object_id;
@@ -5193,7 +5218,7 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 
 	memset(&leaf_range, 0, sizeof(leaf_range));
 
-	parse_level2_block_0xB_0xC_table_leaf_value(
+	refs_node_parse_level2_block_0xB_0xC_table_leaf_value(
 		/* refs_node_crawl_context *crawl_context */
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -5216,10 +5241,9 @@ static int parse_level2_0xB_leaf_value_add_mapping(
 		&leaf_range.length);
 
 	{
-		/* If this is a leaf node in the 0xB
-		 * table, then add the leaf entries to
-		 * the mapping table. */
-		block_range *new_mapping_table_entries = NULL;
+		/* If this is a leaf node in the 0xB table, then add the leaf
+		 * entries to the mapping table. */
+		refs_block_range *new_mapping_table_entries = NULL;
 
 		err = sys_realloc(
 			mappings->entries,
@@ -5269,7 +5293,7 @@ static int parse_level2_block_0xD_table_entry(
 	if(entry_size != 200) {
 		sys_log_warning("Unexpected size for 0xD entry: %" PRIu32 " "
 			"Printing raw data...", PRAu32(entry_size));
-		parse_level2_block_unknown_table_entry(
+		refs_node_parse_level2_block_unknown_table_entry(
 			visitor,
 			entry,
 			entry_size,
@@ -5340,7 +5364,7 @@ static int parse_level2_block_0xE_table_entry(
 	if(entry_size != 88) {
 		sys_log_warning("Unexpected size for 0xE entry: %" PRIu32 " "
 			"Printing raw data...", PRAu32(entry_size));
-		parse_level2_block_unknown_table_entry(
+		refs_node_parse_level2_block_unknown_table_entry(
 			visitor,
 			entry,
 			entry_size,
@@ -5382,7 +5406,7 @@ out:
 }
 #endif
 
-static int parse_level2_0x21_leaf_value(
+static int refs_node_parse_level2_0x21_leaf_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -5505,7 +5529,7 @@ static int parse_level2_block_0x22_table_entry(
 	else {
 		sys_log_warning("Unexpected size for 0x22 entry: %" PRIu32 " "
 			"Printing raw data...", PRAu32(entry_size));
-		parse_level2_block_unknown_table_entry(
+		refs_node_parse_level2_block_unknown_table_entry(
 			visitor,
 			indent,
 			entry,
@@ -5519,7 +5543,7 @@ out:
 }
 #endif
 
-static int parse_level2_key(
+static int refs_node_parse_level2_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -5538,7 +5562,7 @@ static int parse_level2_key(
 	(void) crawl_context;
 
 	if(object_id == 0x2) {
-		err = parse_level2_0x2_key(
+		err = refs_node_parse_level2_0x2_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -5553,7 +5577,7 @@ static int parse_level2_key(
 			key_size);
 	}
 	else if(object_id == 0x3) {
-		err = parse_level2_0x3_key(
+		err = refs_node_parse_level2_0x3_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -5568,7 +5592,7 @@ static int parse_level2_key(
 			key_size);
 	}
 	else if(object_id == 0x4) {
-		err = parse_level2_0x4_key(
+		err = refs_node_parse_level2_0x4_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -5583,7 +5607,7 @@ static int parse_level2_key(
 			key_size);
 	}
 	else if(object_id == 0xB) {
-		err = parse_0xB_0xC_key(
+		err = refs_node_parse_0xB_0xC_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -5608,7 +5632,7 @@ static int parse_level2_key(
 			context);
 	}
 	else if(object_id == 0xC) {
-		err = parse_0xB_0xC_key(
+		err = refs_node_parse_0xB_0xC_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -5680,7 +5704,7 @@ static int parse_level2_key(
 	}
 #endif
 	else {
-		err = parse_unknown_key(
+		err = refs_node_parse_unknown_key(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -5710,7 +5734,7 @@ static int parse_level2_key(
 	return err;
 }
 
-static int parse_level2_leaf_value(
+static int refs_node_parse_level2_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -5736,7 +5760,7 @@ static int parse_level2_leaf_value(
 	int err = 0;
 
 	if(object_id == 0x2) {
-		err = parse_level2_0x2_leaf_value(
+		err = refs_node_parse_level2_0x2_leaf_value(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -5763,7 +5787,7 @@ static int parse_level2_leaf_value(
 			context);
 	}
 	else if(object_id == 0x3) {
-		err = parse_level2_0x3_leaf_value(
+		err = refs_node_parse_level2_0x3_leaf_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -5792,7 +5816,7 @@ static int parse_level2_leaf_value(
 			context);
 	}
 	else if(object_id == 0x4) {
-		err = parse_level2_0x4_leaf_value(
+		err = refs_node_parse_level2_0x4_leaf_value(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -5823,7 +5847,7 @@ static int parse_level2_leaf_value(
 			context);
 	}
 	else if(object_id == 0xB) {
-		err = parse_level2_block_0xB_0xC_leaf_value(
+		err = refs_node_parse_level2_block_0xB_0xC_leaf_value(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -5862,7 +5886,7 @@ static int parse_level2_leaf_value(
 			context);
 	}
 	else if(object_id == 0xC) {
-		err = parse_level2_block_0xB_0xC_leaf_value(
+		err = refs_node_parse_level2_block_0xB_0xC_leaf_value(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -5965,7 +5989,7 @@ static int parse_level2_leaf_value(
 	}
 #endif
 	else if(object_id == 0x21) {
-		err = parse_level2_0x21_leaf_value(
+		err = refs_node_parse_level2_0x21_leaf_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -6027,7 +6051,7 @@ static int parse_level2_leaf_value(
 	}
 #endif
 	else {
-		err = parse_unknown_leaf_value(
+		err = refs_node_parse_unknown_leaf_value(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -6069,7 +6093,7 @@ static int parse_level2_leaf_value(
 	return err;
 }
 
-static int parse_level2_block(
+static int refs_node_parse_level2_block(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
@@ -6085,11 +6109,11 @@ static int parse_level2_block(
 	sys_bool is_valid = SYS_FALSE;
 	sys_bool is_v3 = SYS_FALSE;
 	u64 object_id = 0;
-	level2_0x2_leaf_parse_context context;
+	refs_node_level2_0x2_leaf_parse_context context;
 
 	memset(&context, 0, sizeof(context));
 
-	err = parse_block_header(
+	err = refs_node_parse_block_header(
 		/* refs_node_walk_visitor *visitor */
 		NULL,
 		/* const char *prefix */
@@ -6131,7 +6155,7 @@ static int parse_level2_block(
 	context.level3_block_queue = level3_queue;
 	context.node_cache = crawl_context->node_cache;
 
-	err = parse_generic_block(
+	err = refs_node_parse_generic_block(
 		/* refs_node_crawl_context *crawl_context */
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -6169,7 +6193,7 @@ static int parse_level2_block(
 		 *     u16 key_size,
 		 *     u32 entry_size,
 		 *     void *context) */
-		parse_level2_key,
+		refs_node_parse_level2_key,
 		/* sys_bool (*should_add_subnode)(
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
@@ -6177,7 +6201,8 @@ static int parse_level2_block(
 		 *     u32 entry_index,
 		 *     u32 num_entries,
 		 *     void *context) */
-		(object_id == 0x2) ? parse_level2_0x2_should_add_subnode : NULL,
+		(object_id == 0x2) ?
+			refs_node_parse_level2_0x2_should_add_subnode : NULL,
 		/* int (*parse_leaf_value)(
 		 *     refs_node_crawl_context *crawl_context,
 		 *     refs_node_walk_visitor *visitor,
@@ -6197,7 +6222,7 @@ static int parse_level2_block(
 		 *     u32 entry_size,
 		 *     u32 num_entries,
 		 *     void *context) */
-		parse_level2_leaf_value,
+		refs_node_parse_level2_leaf_value,
 		/* int (*leaf_entry_handler)(
 		 *     void *context,
 		 *     const u8 *data,
@@ -6247,7 +6272,7 @@ out:
 	return err;
 }
 
-static int parse_level3_filename_key(
+static int refs_node_parse_level3_filename_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -6270,7 +6295,7 @@ static int parse_level3_filename_key(
 	dirent_type = read_le16(&key[2]);
 	emit(prefix, indent, "Dirent type: 0x%" PRIX64 " (%s)",
 		PRAX64(dirent_type),
-		entry_type_to_string(dirent_type));
+		refs_node_entry_type_to_string(dirent_type));
 
 	err = sys_unistr_decode(
 		/* const refschar *ins */
@@ -6300,7 +6325,7 @@ static int parse_level3_filename_key(
 	return err;
 }
 
-static int parse_level3_object_id_key(
+static int refs_node_parse_level3_object_id_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -6326,7 +6351,7 @@ static int parse_level3_object_id_key(
 	return err;
 }
 
-static int parse_level3_hardlink_key(
+static int refs_node_parse_level3_hardlink_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -6359,7 +6384,7 @@ static int parse_level3_hardlink_key(
 	return err;
 }
 
-static int parse_level3_reparse_point_key(
+static int refs_node_parse_level3_reparse_point_key(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -6388,7 +6413,7 @@ static int parse_level3_reparse_point_key(
 	return err;
 }
 
-static int parse_level3_unknown_key(
+static int refs_node_parse_level3_unknown_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6415,7 +6440,7 @@ static int parse_level3_unknown_key(
 	return err;
 }
 
-static int parse_level3_key(
+static int refs_node_parse_level3_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6437,7 +6462,7 @@ static int parse_level3_key(
 	(void) context;
 
 	if(key_size > 4 && key[0] == 0x30 && key[1] == 0x00) {
-		err = parse_level3_filename_key(
+		err = refs_node_parse_level3_filename_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -6452,7 +6477,7 @@ static int parse_level3_key(
 			key_size);
 	}
 	else if(key_size == 16 && read_le64(&key[0]) == 0x0) {
-		err = parse_level3_object_id_key(
+		err = refs_node_parse_level3_object_id_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -6467,7 +6492,7 @@ static int parse_level3_key(
 			key_size);
 	}
 	else if(key_size >= 24 && read_le16(&key[0]) == 0x40) {
-		err = parse_level3_hardlink_key(
+		err = refs_node_parse_level3_hardlink_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -6482,7 +6507,7 @@ static int parse_level3_key(
 			key_size);
 	}
 	else if(key_size >= 4 && read_le16(&key[0]) == 0x10) {
-		err = parse_level3_reparse_point_key(
+		err = refs_node_parse_level3_reparse_point_key(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -6497,7 +6522,7 @@ static int parse_level3_key(
 			key_size);
 	}
 	else {
-		err = parse_level3_unknown_key(
+		err = refs_node_parse_level3_unknown_key(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -6519,7 +6544,7 @@ static int parse_level3_key(
 	return err;
 }
 
-static int parse_attribute_data_key(
+static int refs_node_parse_attribute_data_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6585,7 +6610,7 @@ static int parse_attribute_data_key(
 	return 0;
 }
 
-static int parse_attribute_ea_key(
+static int refs_node_parse_attribute_ea_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6634,7 +6659,7 @@ static int parse_attribute_ea_key(
 	return 0;
 }
 
-static int parse_attribute_named_stream_key(
+static int refs_node_parse_attribute_named_stream_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6744,7 +6769,7 @@ static int parse_attribute_named_stream_key(
 	return err;
 }
 
-static int parse_attribute_named_stream_extent_key(
+static int refs_node_parse_attribute_named_stream_extent_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6860,7 +6885,7 @@ static int parse_attribute_named_stream_extent_key(
 	return err;
 }
 
-static int parse_attribute_key(
+static int refs_node_parse_attribute_key(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -6899,7 +6924,7 @@ static int parse_attribute_key(
 
 		sys_log_debug("Parsing data stream attribute key.");
 
-		err = parse_attribute_data_key(
+		err = refs_node_parse_attribute_data_key(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -6923,7 +6948,7 @@ static int parse_attribute_key(
 		 * EA stream. Likely same format as the above. */
 		sys_log_debug("Parsing $EA attribute key.");
 
-		err = parse_attribute_ea_key(
+		err = refs_node_parse_attribute_ea_key(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -6948,7 +6973,7 @@ static int parse_attribute_key(
 
 		sys_log_debug("Parsing named stream key.");
 
-		err = parse_attribute_named_stream_key(
+		err = refs_node_parse_attribute_named_stream_key(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -6975,7 +7000,7 @@ static int parse_attribute_key(
 		sys_log_debug("Parsing named stream extent key.");
 
 		if(key_size - j >= 4) {
-			err = parse_attribute_named_stream_extent_key(
+			err = refs_node_parse_attribute_named_stream_extent_key(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -7032,7 +7057,7 @@ out:
 	return err;
 }
 
-static int parse_extent(
+static int refs_node_parse_extent(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -7116,7 +7141,7 @@ static int parse_extent(
 
 	if(cur_extent_end - j >= 8) {
 		first_physical_block =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context
 				 * *crawl_context */
 				crawl_context,
@@ -7234,7 +7259,7 @@ out:
 	return err;
 }
 
-static int parse_extent_leaf_value(
+static int refs_node_parse_extent_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -7275,7 +7300,7 @@ static int parse_extent_leaf_value(
 		"Extent", PRAu32(entry_index + 1), PRAu32(num_entries),
 		PRAuz(entry_offset), PRAXz(entry_offset));
 
-	err = parse_extent(
+	err = refs_node_parse_extent(
 		/* refs_node_crawl_context *crawl_context */
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -7300,7 +7325,7 @@ static int parse_extent_leaf_value(
 	return err;
 }
 
-static int parse_extent_tree(
+static int refs_node_parse_extent_tree(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -7327,7 +7352,7 @@ static int parse_extent_tree(
 
 	memset(&block_queue, 0, sizeof(block_queue));
 
-	err = parse_generic_entry(
+	err = refs_node_parse_generic_entry(
 		/* refs_node_crawl_context *crawl_context */
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -7373,7 +7398,7 @@ static int parse_extent_tree(
 		 *     u16 key_size,
 		 *     u32 entry_size,
 		 *     void *context) */
-		parse_unknown_key,
+		refs_node_parse_unknown_key,
 		/* sys_bool (*should_add_subnode)(
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
@@ -7401,7 +7426,7 @@ static int parse_extent_tree(
 		 *     u32 entry_size,
 		 *     u32 num_entries,
 		 *     void *context) */
-		parse_attribute_leaf_value,
+		refs_node_parse_attribute_leaf_value,
 		/* refs_node_block_queue *block_queue */
 		&block_queue,
 		/* sys_bool *out_added_subnode */
@@ -7428,7 +7453,7 @@ static int parse_extent_tree(
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 
 			physical_block_numbers[0] =
-				logical_to_physical_block_number(
+				refs_node_crawl_context_logical_to_physical_block(
 					/* refs_node_crawl_context
 					 *     *crawl_context */
 					crawl_context,
@@ -7457,7 +7482,7 @@ static int parse_extent_tree(
 				break;
 			}
 
-			err = parse_generic_block(
+			err = refs_node_parse_generic_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -7523,7 +7548,7 @@ static int parse_extent_tree(
 				 *     u32 entry_size,
 				 *     u32 num_entries,
 				 *     void *context) */
-				parse_extent_leaf_value,
+				refs_node_parse_extent_leaf_value,
 				/* int (*leaf_entry_handler)(
 				 *     void *context,
 				 *     const u8 *data,
@@ -7547,7 +7572,7 @@ out:
 	return err;
 }
 
-static int parse_attribute_non_resident_data_value(
+static int refs_node_parse_attribute_non_resident_data_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -7700,7 +7725,7 @@ static int parse_attribute_non_resident_data_value(
 		extent_list_start_offset = j;
 
 		emit(prefix, indent + 1, "Block allocation entry:");
-		err = parse_block_allocation_entry(
+		err = refs_node_parse_block_allocation_entry(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -7857,7 +7882,7 @@ static int parse_attribute_non_resident_data_value(
 			/* Flags indicate an index node. This means that the
 			 * extents are located in a subtree and these entries
 			 * are index entries. */
-			err = parse_extent_tree(
+			err = refs_node_parse_extent_tree(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -7899,7 +7924,7 @@ static int parse_attribute_non_resident_data_value(
 				PRAuz(j - extent_list_start_offset),
 				PRAXz(j - extent_list_start_offset));
 
-			err = parse_extent(
+			err = refs_node_parse_extent(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -7987,7 +8012,7 @@ out:
 	return err;
 }
 
-static int parse_attribute_resident_data_value(
+static int refs_node_parse_attribute_resident_data_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -8099,7 +8124,7 @@ out:
 	return err;
 }
 
-static int parse_attribute_ea_value(
+static int refs_node_parse_attribute_ea_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -8243,7 +8268,7 @@ out:
 	return err;
 }
 
-static int parse_attribute_named_stream_value(
+static int refs_node_parse_attribute_named_stream_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -8431,7 +8456,7 @@ out:
 	return err;
 }
 
-static int parse_attribute_named_stream_extent_value(
+static int refs_node_parse_attribute_named_stream_extent_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -8626,7 +8651,7 @@ static int parse_attribute_named_stream_extent_value(
 	extent_size = v3 ? 24 : 32;
 	for(k = 0; k < num_extents && (value_size - j) >= extent_size; ++k) {
 		const u64 first_physical_block =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -8695,7 +8720,7 @@ out:
 	return err;
 }
 
-static int parse_non_resident_attribute_list_value(
+static int refs_node_parse_non_resident_attribute_list_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -8719,7 +8744,7 @@ static int parse_non_resident_attribute_list_value(
 	u8 *block = NULL;
 
 	if(value_size >= (is_v3 ? 0x30 : 0x18)) {
-		parse_node_reference(
+		refs_node_parse_node_reference(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -8740,7 +8765,7 @@ static int parse_non_resident_attribute_list_value(
 	if(value_end - j >= 8) {
 		logical_blocks[0] = read_le64(&data[j]);
 		physical_blocks[0] =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -8752,7 +8777,7 @@ static int parse_non_resident_attribute_list_value(
 	if(is_v3 && value_end - j >= 8) {
 		logical_blocks[1] = read_le64(&data[j]);
 		physical_blocks[1] =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -8764,7 +8789,7 @@ static int parse_non_resident_attribute_list_value(
 	if(is_v3 && value_end - j >= 8) {
 		logical_blocks[2] = read_le64(&data[j]);
 		physical_blocks[2] =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -8776,7 +8801,7 @@ static int parse_non_resident_attribute_list_value(
 	if(is_v3 && value_end - j >= 8) {
 		logical_blocks[3] = read_le64(&data[j]);
 		physical_blocks[3] =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* u64 logical_block_number */
@@ -8823,7 +8848,7 @@ static int parse_non_resident_attribute_list_value(
 			"0x%" PRIX64 ":",
 			PRAu64(logical_blocks[0]), PRAX64(logical_blocks[0]));
 
-		err = parse_generic_block(
+		err = refs_node_parse_generic_block(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -8861,7 +8886,7 @@ static int parse_non_resident_attribute_list_value(
 			 *     u16 key_size,
 			 *     u32 entry_size,
 			 *     void *context) */
-			parse_attribute_key,
+			refs_node_parse_attribute_key,
 			/* sys_bool (*should_add_subnode)(
 			 *     sys_bool is_v3,
 			 *     const u8 *key,
@@ -8889,7 +8914,7 @@ static int parse_non_resident_attribute_list_value(
 			 *     u32 entry_size,
 			 *     u32 num_entries,
 			 *     void *context) */
-			parse_attribute_leaf_value,
+			refs_node_parse_attribute_leaf_value,
 			/* int (*leaf_entry_handler)(
 			 *     void *context,
 			 *     const u8 *data,
@@ -8915,7 +8940,7 @@ out:
 	return err;
 }
 
-static int parse_attribute_leaf_value(
+static int refs_node_parse_attribute_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -8976,7 +9001,7 @@ static int parse_attribute_leaf_value(
 			PRAX16(data_stream_type));
 
 		if(is_v3 && data_stream_type == 0x1) {
-			err = parse_attribute_resident_data_value(
+			err = refs_node_parse_attribute_resident_data_value(
 				/* refs_node_crawl_context
 				 * *crawl_context */
 				crawl_context,
@@ -8997,7 +9022,7 @@ static int parse_attribute_leaf_value(
 			}
 		}
 		else {
-			err = parse_attribute_non_resident_data_value(
+			err = refs_node_parse_attribute_non_resident_data_value(
 				/* refs_node_crawl_context
 				 * *crawl_context */
 				crawl_context,
@@ -9027,7 +9052,7 @@ static int parse_attribute_leaf_value(
 		 * EA stream. Likely same format as the above. */
 		sys_log_debug("Parsing $EA attribute value.");
 
-		err = parse_attribute_ea_value(
+		err = refs_node_parse_attribute_ea_value(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -9075,7 +9100,7 @@ static int parse_attribute_leaf_value(
 		}
 
 		if(value_size - j >= 4) {
-			err = parse_attribute_named_stream_value(
+			err = refs_node_parse_attribute_named_stream_value(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -9105,7 +9130,7 @@ static int parse_attribute_leaf_value(
 		sys_log_debug("Parsing named stream extent value.");
 
 		if(value_size - j >= 4) {
-			err = parse_attribute_named_stream_extent_value(
+			err = refs_node_parse_attribute_named_stream_extent_value(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -9143,7 +9168,7 @@ out:
 	return err;
 }
 
-static u16 parse_level3_attribute_header(
+static u16 refs_node_parse_level3_attribute_header(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -9206,7 +9231,7 @@ out:
 /**
  * Parse a reparse point attribute in a long entry.
  */
-static int parse_reparse_point_attribute(
+static int refs_node_parse_reparse_point_attribute(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -9474,7 +9499,7 @@ out:
  * Long values (type 1) are in all known instances files or links/reparse
  * points.
  */
-int parse_level3_long_value(
+int refs_node_parse_level3_long_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -9681,7 +9706,7 @@ int parse_level3_long_value(
 	}
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
-		entry_type_to_string(0x1), PRAu16(value_offset),
+		refs_node_entry_type_to_string(0x1), PRAu16(value_offset),
 		PRAX16(value_offset));
 
 	emit(prefix, indent, "Basic information @ 0 / 0x0:");
@@ -9743,7 +9768,7 @@ int parse_level3_long_value(
 		print_filetime(prefix, indent + 1,
 			"Last access time",
 			read_le64(&value[64]));
-		print_file_flags(visitor, prefix, indent + 1, value,
+		refs_node_print_file_flags(visitor, prefix, indent + 1, value,
 			&value[72]);
 		print_unknown32(prefix, indent + 1, value, &value[76]);
 
@@ -9864,7 +9889,7 @@ int parse_level3_long_value(
 		goto out;
 	}
 
-	err = parse_block_allocation_entry(
+	err = refs_node_parse_block_allocation_entry(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* const char *prefix */
@@ -10080,7 +10105,7 @@ int parse_level3_long_value(
 			break;
 		}
 
-		j += parse_level3_attribute_header(
+		j += refs_node_parse_level3_attribute_header(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -10127,7 +10152,7 @@ int parse_level3_long_value(
 				"0x%" PRIXz "):",
 				PRAuz(j), PRAXz(j), PRAuz(attr_key_size),
 				PRAXz(attr_key_size));
-			err = parse_attribute_data_key(
+			err = refs_node_parse_attribute_data_key(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -10169,7 +10194,7 @@ int parse_level3_long_value(
 				PRAX16(data_stream_type));
 
 			if(is_v3 && data_stream_type == 0x1) {
-				err = parse_attribute_resident_data_value(
+				err = refs_node_parse_attribute_resident_data_value(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10191,7 +10216,7 @@ int parse_level3_long_value(
 				}
 			}
 			else {
-				err = parse_attribute_non_resident_data_value(
+				err = refs_node_parse_attribute_non_resident_data_value(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10229,7 +10254,7 @@ int parse_level3_long_value(
 				PRAuz(j), PRAXz(j), PRAuz(attr_key_size),
 				PRAXz(attr_key_size));
 			if(remaining_in_attribute - j >= 4) {
-				err = parse_attribute_ea_key(
+				err = refs_node_parse_attribute_ea_key(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10268,7 +10293,7 @@ int parse_level3_long_value(
 				PRAXz(attr_value_size));
 
 			if(remaining_in_attribute - j >= 4) {
-				err = parse_attribute_ea_value(
+				err = refs_node_parse_attribute_ea_value(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10302,7 +10327,7 @@ int parse_level3_long_value(
 				PRAuz(j), PRAXz(j), PRAuz(attr_key_size),
 				PRAXz(attr_key_size));
 
-			err = parse_attribute_named_stream_key(
+			err = refs_node_parse_attribute_named_stream_key(
 				/* refs_node_crawl_context *crawl_context */
 				crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -10343,7 +10368,7 @@ int parse_level3_long_value(
 				PRAXz(attr_value_size));
 
 			if(remaining_in_attribute > j) {
-				err = parse_attribute_named_stream_value(
+				err = refs_node_parse_attribute_named_stream_value(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10381,7 +10406,7 @@ int parse_level3_long_value(
 				PRAXz(attr_key_size));
 
 			if(remaining_in_attribute - j >= 4) {
-				err = parse_attribute_named_stream_extent_key(
+				err = refs_node_parse_attribute_named_stream_extent_key(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10422,7 +10447,7 @@ int parse_level3_long_value(
 				PRAXz(attr_value_size));
 
 			if(remaining_in_attribute - j >= 4) {
-				err = parse_attribute_named_stream_extent_value(
+				err = refs_node_parse_attribute_named_stream_extent_value(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10447,7 +10472,7 @@ int parse_level3_long_value(
 			}
 		}
 		else if(entry_type == LEVEL3_ENTRY_TYPE_REPARSE_POINT) {
-			err = parse_reparse_point_attribute(
+			err = refs_node_parse_reparse_point_attribute(
 				/* refs_node_walk_visitor *visitor */
 				visitor,
 				/* const char *prefix */
@@ -10480,7 +10505,7 @@ int parse_level3_long_value(
 				PRAXz(attr_value_size));
 
 			if(remaining_in_attribute - j >= 4) {
-				err = parse_non_resident_attribute_list_value(
+				err = refs_node_parse_non_resident_attribute_list_value(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					crawl_context,
@@ -10601,7 +10626,7 @@ out:
  * a directory. If it's not set it's a file and the allocated size/file size
  * fields describe its allocation state.
  */
-int parse_level3_short_value(
+int refs_node_parse_level3_short_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -10713,7 +10738,7 @@ int parse_level3_short_value(
 	}
 
 	emit(prefix, indent - 1, "Value (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
-		entry_type_to_string(0x2), PRAu16(value_offset),
+		refs_node_entry_type_to_string(0x2), PRAu16(value_offset),
 		PRAX16(value_offset));
 
 	/* Note: The object ID of a directory is verified to partially match the
@@ -10747,7 +10772,7 @@ int parse_level3_short_value(
 		last_access_time);
 	print_le64_dechex("Allocated size", prefix, indent, value, &value[48]);
 	print_le64_dechex("File size", prefix, indent, value, &value[56]);
-	print_file_flags(visitor, prefix, indent, value, &value[64]);
+	refs_node_print_file_flags(visitor, prefix, indent, value, &value[64]);
 	print_unknown32(prefix, indent, value, &value[68]);
 	if(value_size > 72) {
 		emit(prefix, indent, "Unknown @ 72:");
@@ -10779,7 +10804,7 @@ out:
 	return err;
 }
 
-static int parse_level3_volume_label_value(
+static int refs_node_parse_level3_volume_label_value(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
@@ -10857,7 +10882,7 @@ out:
 	return err;
 }
 
-static int parse_level3_leaf_value(
+static int refs_node_parse_level3_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -10895,7 +10920,7 @@ static int parse_level3_leaf_value(
 		key_type == 0x0040 || /* Hardlinked file. */
 		(key_type == 0x0010U && dirent_type == 0x0000U)) /* Reparse. */
 	{
-		err = parse_level3_long_value(
+		err = refs_node_parse_level3_long_value(
 			/* refs_node_crawl_context *context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -10928,7 +10953,7 @@ static int parse_level3_leaf_value(
 	}
 	else if(key_type == 0x30 && dirent_type == 0x2) {
 		/* Directory. */
-		err = parse_level3_short_value(
+		err = refs_node_parse_level3_short_value(
 			/* refs_node_crawl_context *context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -10961,7 +10986,7 @@ static int parse_level3_leaf_value(
 	}
 	else if(key_type == 0x510) {
 		/* Volume label */
-		err = parse_level3_volume_label_value(
+		err = refs_node_parse_level3_volume_label_value(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -10988,7 +11013,7 @@ out:
 	return err;
 }
 
-static int parse_level3_block(
+static int refs_node_parse_level3_block(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
@@ -11000,7 +11025,7 @@ static int parse_level3_block(
 {
 	int err = 0;
 
-	err = parse_generic_block(
+	err = refs_node_parse_generic_block(
 		/* refs_node_crawl_context *crawl_context */
 		crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -11038,7 +11063,7 @@ static int parse_level3_block(
 		 *     u16 key_size,
 		 *     u32 entry_size,
 		 *     void *context) */
-		parse_level3_key,
+		refs_node_parse_level3_key,
 		/* sys_bool (*should_add_subnode)(
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
@@ -11066,7 +11091,7 @@ static int parse_level3_block(
 		 *     u32 entry_size,
 		 *     u32 num_entries,
 		 *     void *context) */
-		parse_level3_leaf_value,
+		refs_node_parse_level3_leaf_value,
 		/* int (*leaf_entry_handler)(
 		 *     void *context,
 		 *     const u8 *data,
@@ -11091,7 +11116,7 @@ void refs_block_map_destroy(
 	sys_free(sizeof(**block_map), block_map);
 }
 
-static int crawl_volume_metadata(
+static int refs_node_crawl_volume_metadata(
 		refs_node_walk_visitor *const visitor,
 		sys_device *const dev,
 		const REFS_BOOT_SECTOR *const bs,
@@ -11278,7 +11303,7 @@ static int crawl_volume_metadata(
 		PRAu64(30), PRAX64(30));
 
 	if(!is_v3) {
-		err = parse_superblock_v1(
+		err = refs_node_parse_superblock_v1(
 			/* refs_node_crawl_context *crawl_context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -11293,7 +11318,7 @@ static int crawl_volume_metadata(
 			&secondary_level1_block);
 	}
 	else {
-		err = parse_superblock_v3(
+		err = refs_node_parse_superblock_v3(
 			/* refs_node_crawl_context *crawl_context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -11363,7 +11388,7 @@ static int crawl_volume_metadata(
 			}
 		}
 
-		err = parse_level1_block(
+		err = refs_node_parse_level1_block(
 			/* refs_node_crawl_context *context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -11433,7 +11458,7 @@ static int crawl_volume_metadata(
 			}
 		}
 
-		err = parse_level1_block(
+		err = refs_node_parse_level1_block(
 			/* refs_node_crawl_context *context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -11563,7 +11588,7 @@ static int crawl_volume_metadata(
 			for(j = 0; j < 4; ++j) {
 				physical_block_numbers[j] =
 					(!is_v3 && j) ? 0 :
-					logical_to_physical_block_number(
+					refs_node_crawl_context_logical_to_physical_block(
 						/* refs_node_crawl_context
 						 * *crawl_context */
 						&crawl_context,
@@ -11619,7 +11644,7 @@ static int crawl_volume_metadata(
 			 * is an index node we iterate over the indices in the
 			 * order described by the attribute list. */
 
-			err = parse_generic_block(
+			err = refs_node_parse_generic_block(
 				/* refs_node_crawl_context *crawl_context */
 				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -11685,8 +11710,8 @@ static int crawl_volume_metadata(
 				 *     u32 num_entries,
 				 *     void *context) */
 				(tree_object_id == 0xB) ?
-				parse_level2_0xB_leaf_value_add_mapping :
-				parse_level2_block_0xB_0xC_leaf_value,
+				refs_node_parse_level2_0xB_leaf_value_add_mapping :
+				refs_node_parse_level2_block_0xB_0xC_leaf_value,
 				/* int (*leaf_entry_handler)(
 				 *     void *context,
 				 *     const u8 *data,
@@ -11784,7 +11809,7 @@ static int crawl_volume_metadata(
 		level2_queue.block_queue_length = 0;
 
 		physical_block_numbers[0] =
-			logical_to_physical_block_number(
+			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
 				&crawl_context,
 				/* u64 logical_block_number */
@@ -11812,7 +11837,7 @@ static int crawl_volume_metadata(
 			goto out;
 		}
 
-		err = parse_block_header(
+		err = refs_node_parse_block_header(
 			/* refs_node_walk_visitor *visitor */
 			NULL,
 			/* const char *prefix */
@@ -11876,7 +11901,7 @@ static int crawl_volume_metadata(
 
 			for(j = 0; j < 4; ++j) {
 				physical_block_numbers[j] =
-					logical_to_physical_block_number(
+					refs_node_crawl_context_logical_to_physical_block(
 						/* refs_node_crawl_context
 						 * *crawl_context */
 						&crawl_context,
@@ -11911,7 +11936,7 @@ static int crawl_volume_metadata(
 				object_id_mapping = *object_id;
 			}
 
-			err = parse_level2_block(
+			err = refs_node_parse_level2_block(
 				/* refs_node_crawl_context *context */
 				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -11957,7 +11982,7 @@ static int crawl_volume_metadata(
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 
 			physical_block_numbers[0] =
-				logical_to_physical_block_number(
+				refs_node_crawl_context_logical_to_physical_block(
 					/* refs_node_crawl_context
 					 * *crawl_context */
 					&crawl_context,
@@ -11987,7 +12012,7 @@ static int crawl_volume_metadata(
 				goto out;
 			}
 
-			err = parse_level3_block(
+			err = refs_node_parse_level3_block(
 				/* refs_node_crawl_context *crawl_context */
 				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -12089,8 +12114,10 @@ int refs_node_walk(
 		const u64 *const object_id,
 		refs_node_walk_visitor *const visitor)
 {
+	int err;
+
 	/* Iterate over a node based on its node data. */
-	return crawl_volume_metadata(
+	err = refs_node_crawl_volume_metadata(
 		/* refs_node_walk_visitor *visitor */
 		visitor,
 		/* sys_device *dev */
@@ -12111,6 +12138,8 @@ int refs_node_walk(
 		start_node,
 		/* const u64 *object_id */
 		object_id);
+
+	return err;
 }
 
 int refs_node_scan(

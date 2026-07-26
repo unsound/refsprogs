@@ -2397,7 +2397,7 @@ static int fsapi_node_get_attributes_common(
 		else if(node->is_short_entry) {
 			visitor.node_short_entry =
 				fsapi_node_get_attributes_visit_short_entry;
-			err = parse_level3_short_value(
+			err = refs_node_parse_level3_short_value(
 				/* refs_node_crawl_context *crawl_context */
 				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -2438,7 +2438,7 @@ static int fsapi_node_get_attributes_common(
 			visitor.node_symlink =
 				fsapi_node_get_attributes_visit_symlink;
 
-			err = parse_level3_long_value(
+			err = refs_node_parse_level3_long_value(
 				/* refs_node_crawl_context *crawl_context */
 				&crawl_context,
 				/* refs_node_walk_visitor *visitor */
@@ -4344,7 +4344,7 @@ int fsapi_node_read(
 
 	do {
 		context.bytes_read_in_iteration = 0;
-		err = parse_level3_long_value(
+		err = refs_node_parse_level3_long_value(
 			/* refs_node_crawl_context *crawl_context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -4802,7 +4802,7 @@ int fsapi_node_list_extended_attributes(
 	visitor.node_ea = fsapi_node_list_extended_attributes_visit_ea;
 	visitor.node_stream = fsapi_node_list_extended_attributes_visit_stream;
 
-	err = parse_level3_long_value(
+	err = refs_node_parse_level3_long_value(
 		/* refs_node_crawl_context *crawl_context */
 		&crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -5457,7 +5457,7 @@ int fsapi_node_read_extended_attribute(
 			fsapi_node_read_extended_attribute_visit_stream;
 	}
 
-	err = parse_level3_long_value(
+	err = refs_node_parse_level3_long_value(
 		/* refs_node_crawl_context *crawl_context */
 		&crawl_context,
 		/* refs_node_walk_visitor *visitor */
@@ -5510,7 +5510,7 @@ int fsapi_node_read_extended_attribute(
 		sys_log_debug("Walking the entry a second time to find "
 			"non-resident stream data for id %" PRIX64 "...",
 			PRAX64(context.stream_non_resident_id));
-		err = parse_level3_long_value(
+		err = refs_node_parse_level3_long_value(
 			/* refs_node_crawl_context *crawl_context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
