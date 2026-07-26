@@ -69,6 +69,10 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
+typedef u16 be16;
+typedef u32 be32;
+typedef u64 be64;
+
 typedef u16 le16;
 typedef u32 le32;
 typedef u64 le64;
@@ -82,6 +86,85 @@ typedef HANDLE sys_mutex;
 #elif defined(HAVE_PTHREAD_H)
 typedef pthread_mutex_t sys_mutex;
 #endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
+
+static inline u16 be16_to_cpup(const be16 *const value)
+{
+	return (((u16) ((const u8*) value)[0]) << 8) |
+		((u16) ((const u8*) value)[1]);
+}
+
+static inline u32 be32_to_cpup(const be32 *const value)
+{
+	return (((u32) ((const u8*) value)[0]) << 24) |
+		(((u32) ((const u8*) value)[1]) << 16) |
+		(((u32) ((const u8*) value)[2]) << 8) |
+		((u32) ((const u8*) value)[3]);
+}
+
+static inline u64 be64_to_cpup(const be64 *const value)
+{
+	return (((u64) ((const u8*) value)[0]) << 56) |
+		(((u64) ((const u8*) value)[1]) << 48) |
+		(((u64) ((const u8*) value)[2]) << 40) |
+		(((u64) ((const u8*) value)[3]) << 32) |
+		(((u64) ((const u8*) value)[4]) << 24) |
+		(((u64) ((const u8*) value)[5]) << 16) |
+		(((u64) ((const u8*) value)[6]) << 8) |
+		((u64) ((const u8*) value)[7]);
+}
+
+static inline u16 be16_to_cpu(const be16 value)
+{
+	return be16_to_cpup(&value);
+}
+
+static inline u32 be32_to_cpu(const be32 value)
+{
+	return be32_to_cpup(&value);
+}
+
+static inline u64 be64_to_cpu(const be64 value)
+{
+	return be64_to_cpup(&value);
+}
+
+static inline be16 cpu_to_be16(const u16 value)
+{
+	be16 result = 0;
+
+	((u8*) &result)[1] = value & 0xFF;
+	((u8*) &result)[0] = (value >> 8) & 0xFF;
+
+	return result;
+}
+
+static inline be32 cpu_to_be32(const u32 value)
+{
+	be32 result = 0;
+
+	((u8*) &result)[3] = value & 0xFF;
+	((u8*) &result)[2] = (value >> 8) & 0xFF;
+	((u8*) &result)[1] = (value >> 16) & 0xFF;
+	((u8*) &result)[0] = (value >> 24) & 0xFF;
+
+	return result;
+}
+
+static inline be64 cpu_to_be64(const u64 value)
+{
+	be64 result = 0;
+
+	((u8*) &result)[7] = value & 0xFF;
+	((u8*) &result)[6] = (value >> 8) & 0xFF;
+	((u8*) &result)[5] = (value >> 16) & 0xFF;
+	((u8*) &result)[4] = (value >> 24) & 0xFF;
+	((u8*) &result)[3] = (value >> 32) & 0xFF;
+	((u8*) &result)[2] = (value >> 40) & 0xFF;
+	((u8*) &result)[1] = (value >> 48) & 0xFF;
+	((u8*) &result)[0] = (value >> 56) & 0xFF;
+
+	return result;
+}
 
 static inline u16 le16_to_cpup(const le16 *const value)
 {

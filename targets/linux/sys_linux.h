@@ -38,6 +38,10 @@
 
 #define ENOTSUP ENOTSUPP
 
+typedef __be16 be16;
+typedef __be32 be32;
+typedef __be64 be64;
+
 typedef __le16 le16;
 typedef __le32 le32;
 typedef __le64 le64;

@@ -3488,8 +3488,6 @@ static int fsapi_node_list_visit_short_entry(
 	int err = 0;
 	sys_bool is_hard_link = SYS_FALSE;
 
-	(void) hard_link_id;
-
 	sys_log_debug("Got short entry with file flags 0x%" PRIX32 ", hard "
 		"link ID %" PRIu64 ", object ID %" PRIu64,
 		PRAX32(file_flags), PRAu64(hard_link_id), PRAu64(object_id));
@@ -4845,6 +4843,17 @@ out:
 	return err;
 }
 
+typedef enum {
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_NONE,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ACL,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB_BE,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES_BE,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME_BE,
+} fsapi_node_pseudo_extended_attribute_type;
+
 typedef struct {
 	refs_volume *vol;
 	const char *xattr_name;
@@ -4852,11 +4861,314 @@ typedef struct {
 	u64 offset;
 	size_t size;
 	fsapi_iohandler *iohandler;
+	fsapi_node_pseudo_extended_attribute_type requested_metadata;
 	sys_bool stream_found;
 	u64 stream_non_resident_id;
 	u64 stream_size;
 	u64 remaining_bytes;
 } fsapi_node_read_extended_attribute_context;
+
+static int fsapi_node_read_extended_attribute_visit_entry(
+		fsapi_node_read_extended_attribute_context *const context,
+		const sys_bool is_directory,
+		const u32 file_flags,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time)
+{
+	int err = 0;
+	sys_bool little_endian = SYS_FALSE;
+
+	switch(context->requested_metadata) {
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ACL:
+		err = EIO;
+		goto out;
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB:
+		little_endian = SYS_TRUE;
+		SYS_FALLTHROUGH();
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB_BE: {
+		u32 flags = file_flags;
+
+		context->stream_found = SYS_TRUE;
+		context->stream_size =
+			little_endian ? sizeof(le32) : sizeof(be32);
+
+		if(is_directory) {
+			flags |= REFS_FILE_ATTRIBUTE_DIRECTORY;
+		}
+		else {
+			flags &= ~REFS_FILE_ATTRIBUTE_DIRECTORY;
+		}
+
+		if(!flags) {
+			flags |= REFS_FILE_ATTRIBUTE_NORMAL;
+		}
+
+		if(!context->iohandler) {
+			context->remaining_bytes = context->stream_size;
+		}
+		else if(little_endian) {
+			const le32 flags_le = cpu_to_le32(flags);
+
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				&flags_le,
+				/* size_t size */
+				sizeof(flags_le));
+			if(err) {
+				goto out;
+			}
+
+			context->remaining_bytes = 0;
+		}
+		else {
+			const be32 flags_be = cpu_to_be32(flags);
+
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				&flags_be,
+				/* size_t size */
+				sizeof(flags_be));
+			if(err) {
+				goto out;
+			}
+
+			context->remaining_bytes = 0;
+		}
+
+		break;
+	}
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES: {
+		const le64 times[4] = {
+			cpu_to_le64(create_time),
+			cpu_to_le64(last_access_time),
+			cpu_to_le64(last_write_time),
+			cpu_to_le64(last_mft_change_time)
+		};
+
+		context->stream_found = SYS_TRUE;
+		context->stream_size = sizeof(times);
+
+		if(context->iohandler) {
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				times,
+				/* size_t size */
+				sizeof(times));
+			if(err) {
+				goto out;
+			}
+
+			context->remaining_bytes = 0;
+		}
+		else {
+			context->remaining_bytes = context->stream_size;
+		}
+
+		break;
+	}
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES_BE: {
+		const be64 times[4] = {
+			cpu_to_be64(create_time),
+			cpu_to_be64(last_access_time),
+			cpu_to_be64(last_write_time),
+			cpu_to_be64(last_mft_change_time)
+		};
+
+		context->stream_found = SYS_TRUE;
+		context->stream_size = sizeof(times);
+
+		if(context->iohandler) {
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				times,
+				/* size_t size */
+				sizeof(times));
+			if(err) {
+				goto out;
+			}
+
+			context->remaining_bytes = 0;
+		}
+		else {
+			context->remaining_bytes = context->stream_size;
+		}
+
+		break;
+	}
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME: {
+		const le64 create_time_le = cpu_to_le64(create_time);
+
+		context->stream_found = SYS_TRUE;
+		context->stream_size = sizeof(create_time_le);
+
+		if(context->iohandler) {
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				&create_time_le,
+				/* size_t size */
+				sizeof(create_time_le));
+			if(err) {
+				goto out;
+			}
+		}
+		else {
+			context->remaining_bytes = context->stream_size;
+		}
+
+		break;
+	}
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME_BE: {
+		const be64 create_time_be = cpu_to_be64(create_time);
+
+		context->stream_found = SYS_TRUE;
+		context->stream_size = sizeof(create_time_be);
+
+		if(context->iohandler) {
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				&create_time_be,
+				/* size_t size */
+				sizeof(create_time_be));
+			if(err) {
+				goto out;
+			}
+		}
+		else {
+			context->remaining_bytes = context->stream_size;
+		}
+
+		break;
+	}
+	default:
+		err = EIO;
+		goto out;
+	}
+
+	/* Stop iterating since we found the requested metadata. */
+	err = -1;
+out:
+	return err;
+}
+
+static int fsapi_node_read_extended_attribute_visit_root_entry(
+		void *const _context,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	fsapi_node_read_extended_attribute_context *const context =
+		(fsapi_node_read_extended_attribute_context*) _context;
+
+	int err = 0;
+
+	(void) child_entry_offset;
+	(void) node_number;
+	(void) parent_node_object_id;
+	(void) file_size;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	err = fsapi_node_read_extended_attribute_visit_entry(
+		/* fsapi_node_read_extended_attribute_context *context */
+		context,
+		/* sys_bool is_directory */
+		SYS_TRUE,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 create_time */
+		create_time,
+		/* u64 last_access_time */
+		last_access_time,
+		/* u64 last_write_time */
+		last_write_time,
+		/* u64 last_mft_change_time */
+		last_mft_change_time);
+
+	return err;
+}
+
+static int fsapi_node_read_extended_attribute_visit_long_entry(
+		void *const _context,
+		const le16 *const file_name,
+		const u16 file_name_length,
+		const u16 child_entry_offset,
+		const u32 file_flags,
+		const u64 node_number,
+		const u64 parent_node_object_id,
+		const u64 create_time,
+		const u64 last_access_time,
+		const u64 last_write_time,
+		const u64 last_mft_change_time,
+		const u64 file_size,
+		const u64 allocated_size,
+		const u8 *const key,
+		const size_t key_size,
+		const u8 *const record,
+		const size_t record_size)
+{
+	fsapi_node_read_extended_attribute_context *const context =
+		(fsapi_node_read_extended_attribute_context*) _context;
+
+	int err = 0;
+
+	(void) file_name;
+	(void) file_name_length;
+	(void) child_entry_offset;
+	(void) node_number;
+	(void) parent_node_object_id;
+	(void) file_size;
+	(void) allocated_size;
+	(void) key;
+	(void) key_size;
+	(void) record;
+	(void) record_size;
+
+	err = fsapi_node_read_extended_attribute_visit_entry(
+		/* fsapi_node_read_extended_attribute_context *context */
+		context,
+		/* sys_bool is_directory */
+		SYS_FALSE,
+		/* u32 file_flags */
+		file_flags,
+		/* u64 create_time */
+		create_time,
+		/* u64 last_access_time */
+		last_access_time,
+		/* u64 last_write_time */
+		last_write_time,
+		/* u64 last_mft_change_time */
+		last_mft_change_time);
+
+	return err;
+}
 
 static int fsapi_node_read_extended_attribute_visit_ea(
 		void *const _context,
@@ -5023,6 +5335,7 @@ int fsapi_node_read_extended_attribute(
 	fsapi_node_read_extended_attribute_context context;
 	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
+	size_t prefix_length = 0;
 
 	memset(&context, 0, sizeof(context));
 	memset(&crawl_context, 0, sizeof(crawl_context));
@@ -5053,9 +5366,96 @@ int fsapi_node_read_extended_attribute(
 	context.offset = offset;
 	context.size = size;
 	context.iohandler = iohandler;
+	context.requested_metadata =
+		FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_NONE;
 	visitor.context = &context;
-	visitor.node_ea = fsapi_node_read_extended_attribute_visit_ea;
-	visitor.node_stream = fsapi_node_read_extended_attribute_visit_stream;
+
+	if(xattr_name_length > 12 && !memcmp(xattr_name, "system.", 7)) {
+		if(!memcmp(&xattr_name[7], "refs_", 5)) {
+			prefix_length = 12;
+		}
+		/* Accept the 'ntfs_' prefix for compatibility with ntfs-3g.
+		 * This could be a compile/mount option in the future. */
+		else if(!memcmp(&xattr_name[7], "ntfs_", 5)) {
+			prefix_length = 12;
+		}
+	}
+	else if(xattr_name_length > 5) {
+		if(!memcmp(xattr_name, "refs_", 5)) {
+			prefix_length = 5;
+		}
+		/* Accept the 'ntfs_' prefix for compatibility with ntfs-3g.
+		 * This could be a compile/mount option in the future. */
+		else if(!memcmp(xattr_name, "ntfs_", 5)) {
+			prefix_length = 5;
+		}
+	}
+
+	if(!prefix_length);
+	else if(xattr_name_length == prefix_length + 6 &&
+		!memcmp(&xattr_name[prefix_length], "attrib", 6))
+	{
+		/* Handle pseudo-attribute 'attrib'. This returns the attribute
+		 * flags in raw format as a little-endian 32-bit value. */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB;
+	}
+	else if(xattr_name_length == prefix_length + 9 &&
+		!memcmp(&xattr_name[prefix_length], "attrib_be", 9))
+	{
+		/* Handle pseudo-attribute 'attrib_be'. This returns the
+		 * attribute flags in raw format as a big-endian 32-bit
+		 * value. */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB_BE;
+	}
+	else if(xattr_name_length == prefix_length + 5 &&
+		!memcmp(&xattr_name[prefix_length], "times", 5))
+	{
+		/* Handle pseudo-attribute 'times'. This returns the file times
+		 * in raw format as little-endian 64-bit values. */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES;
+	}
+	else if(xattr_name_length == prefix_length + 8 &&
+		!memcmp(&xattr_name[prefix_length], "times_be", 8))
+	{
+		/* Handle pseudo-attribute 'times_be'. This returns the file
+		 * times in raw format as big-endian 64-bit values. */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES_BE;
+	}
+	else if(xattr_name_length == prefix_length + 6 &&
+		!memcmp(&xattr_name[prefix_length], "crtime", 6))
+	{
+		/* Handle pseudo-attribute 'crtime'. This returns the file
+		 * creation time in raw format as a little-endian 64-bit
+		 * value. */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME;
+	}
+	else if(xattr_name_length == prefix_length + 9 &&
+		!memcmp(&xattr_name[prefix_length], "crtime_be", 9))
+	{
+		/* Handle pseudo-attribute 'crtime_be'. This returns the file
+		 * creation time in raw format as a big-endian 64-bit value. */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME_BE;
+	}
+
+	if(context.requested_metadata !=
+		FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_NONE)
+	{
+		visitor.node_root_entry =
+			fsapi_node_read_extended_attribute_visit_root_entry;
+		visitor.node_long_entry =
+			fsapi_node_read_extended_attribute_visit_long_entry;
+	}
+	else {
+		visitor.node_ea = fsapi_node_read_extended_attribute_visit_ea;
+		visitor.node_stream =
+			fsapi_node_read_extended_attribute_visit_stream;
+	}
 
 	err = parse_level3_long_value(
 		/* refs_node_crawl_context *crawl_context */

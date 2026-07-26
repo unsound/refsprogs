@@ -319,6 +319,16 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #define sys_log_enter(...) sys_log_enter_trace(__VA_ARGS__)
 #define sys_log_leave(...) sys_log_leave_trace(__VA_ARGS__)
 
+#if defined(__GNUC__)
+#if __GNUC__ >= 7
+#define SYS_FALLTHROUGH() __attribute__((__fallthrough__))
+#endif /* __GNUC__ >= 7 ... */
+#endif /* defined(__GNUC__) */
+
+#ifndef SYS_FALLTHROUGH
+#define SYS_FALLTHROUGH() do {} while(0)
+#endif /* !defined(SYS_FALLTHROUGH) */
+
 #if defined(__linux__) && defined(__KERNEL__)
 #include "sys_linux.h"
 #else
