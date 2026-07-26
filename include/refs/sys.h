@@ -341,12 +341,8 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #define SYS_S_IFLNK 0120000
 #endif /* defined(S_IFLNK) ... */
 
+#ifndef PRIb8
 #define PRIb8 "d%d%d%d%d%d%d%d"
-#define PRIb16 "d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
-#define PRIb32 "d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
-#define PRIb64 \
-	"d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d" \
-	"d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
 
 #define PRAb8(arg) \
 	(((uint8_t) (arg)) >> 7) & 0x1, \
@@ -357,6 +353,13 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 	(((uint8_t) (arg)) >> 2) & 0x1, \
 	(((uint8_t) (arg)) >> 1) & 0x1, \
 	((uint8_t) (arg)) & 0x1
+#else
+#define PRAb8(arg) (u8) (arg)
+#endif /* !defined(PRIb8) ... */
+
+#ifndef PRIb16
+#define PRIb16 "d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+
 #define PRAb16(arg) \
 	(((uint16_t) (arg)) >> 15) & 0x1, \
 	(((uint16_t) (arg)) >> 14) & 0x1, \
@@ -374,6 +377,13 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 	(((uint16_t) (arg)) >> 2) & 0x1, \
 	(((uint16_t) (arg)) >> 1) & 0x1, \
 	((uint16_t) (arg)) & 0x1
+#else
+#define PRAb16(arg) (u16) (arg)
+#endif /* !defined(PRIb16) ... */
+
+#ifndef PRIb32
+#define PRIb32 "d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+
 #define PRAb32(arg) \
 	(((uint32_t) (arg)) >> 31) & 0x1, \
 	(((uint32_t) (arg)) >> 30) & 0x1, \
@@ -407,6 +417,15 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 	(((uint32_t) (arg)) >> 2) & 0x1, \
 	(((uint32_t) (arg)) >> 1) & 0x1, \
 	((uint32_t) (arg)) & 0x1
+#else
+#define PRAb32(arg) (u32) (arg)
+#endif /* !defined(PRIb32) ... */
+
+#ifndef PRIb64
+#define PRIb64 \
+	"d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d" \
+	"d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+
 #define PRAb64(arg) \
 	(((uint64_t) (arg)) >> 63) & 0x1, \
 	(((uint64_t) (arg)) >> 62) & 0x1, \
@@ -473,6 +492,9 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 	(((uint64_t) (arg)) >> 2) & 0x1, \
 	(((uint64_t) (arg)) >> 1) & 0x1, \
 	((uint64_t) (arg)) & 0x1
+#else
+#define PRAb64(arg) (u64) (arg)
+#endif /* !defined(PRIb64) ... */
 
 /**
  * The handler of an I/O operation, implementing a method to process it.
