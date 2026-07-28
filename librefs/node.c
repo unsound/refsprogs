@@ -1284,21 +1284,23 @@ static int refs_node_get_node_data(
 		memcpy(data, cached_data, node_size);
 	}
 	else while(bytes_read < node_size) {
+		u8 j;
+		size_t bytes_to_read = bytes_per_read;
+
 		if(!logical_blocks[i]) {
 			/* The next logical block is unknown so far. Check the
 			 * node header. Note that this only happens in v3+
 			 * volumes with a cluster size less than 16k. */
 			const REFS_V3_NODE_HEADER *const header =
 				(const REFS_V3_NODE_HEADER*) data;
-			u8 j;
-
 			for(j = i; j < 4; ++j) {
 				logical_blocks[j] =
 					le64_to_cpu(header->block_numbers[j]);
 			}
 		}
 
-		if(!physical_blocks[i]) {
+		if(physical_blocks[i]);
+		else for(j = i; j < 4; ++j) {
 			physical_blocks[i] =
 			refs_node_crawl_context_logical_to_physical_block(
 				/* refs_node_crawl_context *crawl_context */
@@ -1307,9 +1309,27 @@ static int refs_node_get_node_data(
 				logical_blocks[i]);
 		}
 
-		sys_log_debug("Reading logical block %" PRIu64 " / physical "
-			"block %" PRIu64 " into %" PRIuz "-byte buffer %p at "
-			"buffer offset %" PRIuz,
+		/* Consolidate contiguous block reads. */
+		for(j = i + 1; j < 4; ++j) {
+			if(physical_blocks[j] == physical_blocks[j - 1] + 1) {
+				sys_log_debug("%" PRIuz " -> %" PRIuz ": "
+					"Extending read with contiguous block: "
+					"%" PRIuz " -> %" PRIuz " bytes",
+					PRAuz(physical_blocks[j - 1]),
+					PRAuz(physical_blocks[j]),
+					PRAuz(bytes_to_read),
+					PRAuz(bytes_to_read + bytes_per_read));
+				bytes_to_read += bytes_per_read;
+			}
+			else {
+				break;
+			}
+		}
+
+		sys_log_debug("Reading %" PRIuz " blocks at logical block "
+			"%" PRIu64 " / physical block %" PRIu64 " into "
+			"%" PRIuz "-byte buffer %p at buffer offset %" PRIuz,
+			PRAuz(bytes_to_read / bytes_per_read),
 			PRAu64(logical_blocks[i]),
 			PRAu64(physical_blocks[i]),
 			PRAuz(crawl_context->block_size),
@@ -1322,7 +1342,7 @@ static int refs_node_get_node_data(
 			/* u64 pos */
 			physical_blocks[i] * crawl_context->block_index_unit,
 			/* size_t count */
-			bytes_per_read,
+			bytes_to_read,
 			/* void *b */
 			&data[bytes_read]);
 		if(err) {
@@ -1330,7 +1350,7 @@ static int refs_node_get_node_data(
 				"bytes from metadata logical block %" PRIu64 " "
 				"/ physical block %" PRIu64 " (offset "
 				"%" PRIu64 ")",
-				PRAuz(bytes_per_read),
+				PRAuz(bytes_to_read),
 				PRAu64(logical_blocks[i]),
 				PRAu64(physical_blocks[i]),
 				PRAu64(physical_blocks[i] *
@@ -1338,7 +1358,7 @@ static int refs_node_get_node_data(
 			goto out;
 		}
 
-		bytes_read += bytes_per_read;
+		bytes_read += bytes_to_read;
 		++i;
 	}
 
