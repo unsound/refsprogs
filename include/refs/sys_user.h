@@ -69,22 +69,102 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
+typedef u16 be16;
+typedef u32 be32;
+typedef u64 be64;
+
 typedef u16 le16;
 typedef u32 le32;
 typedef u64 le64;
 
 typedef le16 refschar;
 
-typedef struct {
-	u64 tv_sec;
-	u32 tv_nsec;
-} sys_timespec;
+typedef struct timeval sys_difftime;
 
 #ifdef _WIN32
 typedef HANDLE sys_mutex;
 #elif defined(HAVE_PTHREAD_H)
 typedef pthread_mutex_t sys_mutex;
 #endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
+
+static inline u16 be16_to_cpup(const be16 *const value)
+{
+	return (((u16) ((const u8*) value)[0]) << 8) |
+		((u16) ((const u8*) value)[1]);
+}
+
+static inline u32 be32_to_cpup(const be32 *const value)
+{
+	return (((u32) ((const u8*) value)[0]) << 24) |
+		(((u32) ((const u8*) value)[1]) << 16) |
+		(((u32) ((const u8*) value)[2]) << 8) |
+		((u32) ((const u8*) value)[3]);
+}
+
+static inline u64 be64_to_cpup(const be64 *const value)
+{
+	return (((u64) ((const u8*) value)[0]) << 56) |
+		(((u64) ((const u8*) value)[1]) << 48) |
+		(((u64) ((const u8*) value)[2]) << 40) |
+		(((u64) ((const u8*) value)[3]) << 32) |
+		(((u64) ((const u8*) value)[4]) << 24) |
+		(((u64) ((const u8*) value)[5]) << 16) |
+		(((u64) ((const u8*) value)[6]) << 8) |
+		((u64) ((const u8*) value)[7]);
+}
+
+static inline u16 be16_to_cpu(const be16 value)
+{
+	return be16_to_cpup(&value);
+}
+
+static inline u32 be32_to_cpu(const be32 value)
+{
+	return be32_to_cpup(&value);
+}
+
+static inline u64 be64_to_cpu(const be64 value)
+{
+	return be64_to_cpup(&value);
+}
+
+static inline be16 cpu_to_be16(const u16 value)
+{
+	be16 result = 0;
+
+	((u8*) &result)[1] = value & 0xFF;
+	((u8*) &result)[0] = (value >> 8) & 0xFF;
+
+	return result;
+}
+
+static inline be32 cpu_to_be32(const u32 value)
+{
+	be32 result = 0;
+
+	((u8*) &result)[3] = value & 0xFF;
+	((u8*) &result)[2] = (value >> 8) & 0xFF;
+	((u8*) &result)[1] = (value >> 16) & 0xFF;
+	((u8*) &result)[0] = (value >> 24) & 0xFF;
+
+	return result;
+}
+
+static inline be64 cpu_to_be64(const u64 value)
+{
+	be64 result = 0;
+
+	((u8*) &result)[7] = value & 0xFF;
+	((u8*) &result)[6] = (value >> 8) & 0xFF;
+	((u8*) &result)[5] = (value >> 16) & 0xFF;
+	((u8*) &result)[4] = (value >> 24) & 0xFF;
+	((u8*) &result)[3] = (value >> 32) & 0xFF;
+	((u8*) &result)[2] = (value >> 40) & 0xFF;
+	((u8*) &result)[1] = (value >> 48) & 0xFF;
+	((u8*) &result)[0] = (value >> 56) & 0xFF;
+
+	return result;
+}
 
 static inline u16 le16_to_cpup(const le16 *const value)
 {
@@ -212,152 +292,49 @@ static inline u8 sys_fls64(u64 value)
 #endif /* defined(HAVE_FLSLL) ... */
 }
 
-#ifndef SYS_LOG_CRITICAL_ENABLED
-#define SYS_LOG_CRITICAL_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_ERROR_ENABLED
-#define SYS_LOG_ERROR_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_WARNING_ENABLED
-#define SYS_LOG_WARNING_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_INFO_ENABLED
-#define SYS_LOG_INFO_ENABLED 1
-#endif
-
-#ifndef SYS_LOG_DEBUG_ENABLED
-#define SYS_LOG_DEBUG_ENABLED 0
-#endif
-
-#ifndef SYS_LOG_TRACE_ENABLED
-#define SYS_LOG_TRACE_ENABLED 0
-#endif
-
 static inline const char* sys_strerror(int err)
 {
 	return strerror(err);
 }
 
-/**
- * No-op log handler that only exists to be able to statically check the format
- * string and arguments for errors when logging is turned off.
- *
- * @param[in] fmt
- *      @p printf format string for constructing the log message.
- * @param[in] ...
- *      Arguments to the @p printf format string (if any).
- */
-static inline void sys_log_noop(const char *fmt, ...)
-	__attribute__((format(printf, 1, 2)));
-
-static inline void sys_log_noop(const char *const fmt, ...)
-{
-	(void) fmt;
-}
-
-/**
- * No-op error-suffixed log handler that only exists to be able to statically
- * check the format string and arguments for errors when logging is turned off.
- *
- * @param[in] err
- *      The error thrown by the system.
- * @param[in] fmt
- *      @p printf format string for constructing the log message.
- * @param[in] ...
- *      Arguments to the @p printf format string (if any).
- */
-static inline void sys_log_pnoop(int err, const char *fmt, ...)
-	__attribute__((format(printf, 2, 3)));
-
-static inline void sys_log_pnoop(int err, const char *const fmt, ...)
-{
-	(void) err;
-	(void) fmt;
-}
-
-#if SYS_LOG_CRITICAL_ENABLED
-#define sys_log_critical(fmt, ...) \
-	fprintf(stderr, "[CRITICAL] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_critical sys_log_noop
-#endif
-
-#if SYS_LOG_ERROR_ENABLED
-#define sys_log_error(fmt, ...) \
-	fprintf(stderr, "[ERROR] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_error sys_log_noop
-#endif
-
-#if SYS_LOG_ERROR_ENABLED
-#define sys_log_perror(err, fmt, ...) \
-	fprintf(stderr, "[ERROR] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_perror sys_log_pnoop
-#endif
-
-#if SYS_LOG_WARNING_ENABLED
-#define sys_log_warning(fmt, ...) \
-	fprintf(stderr, "[WARNING] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_warning sys_log_noop
-#endif
-
-#if SYS_LOG_WARNING_ENABLED
-#define sys_log_pwarning(err, fmt, ...) \
-	fprintf(stderr, "[WARNING] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_pwarning sys_log_pnoop
-#endif
-
-#if SYS_LOG_INFO_ENABLED
-#define sys_log_info(fmt, ...) \
+#define __do_sys_log_stderr(fmt, ...) \
 	fprintf(stderr, fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_info sys_log_noop
-#endif
 
-#if SYS_LOG_INFO_ENABLED
-#define sys_log_pinfo(err, fmt, ...) \
+#define __do_sys_log_pstderr(err, fmt, ...) \
 	fprintf(stderr, fmt ": %s (%d)\n", ##__VA_ARGS__, strerror(err), (err))
-#else
-#define sys_log_pinfo sys_log_pnoop
-#endif
 
-#if SYS_LOG_DEBUG_ENABLED
-#define sys_log_debug(fmt, ...) \
-	fprintf(stderr, "[DEBUG] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_debug sys_log_noop
-#endif
+#define __do_sys_log_critical(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
 
-#if SYS_LOG_DEBUG_ENABLED
-#define sys_log_pdebug(err, fmt, ...) \
-	fprintf(stderr, "[DEBUG] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_pdebug sys_log_pnoop
-#endif
+#define __do_sys_log_error(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
 
-#if SYS_LOG_TRACE_ENABLED
-#define sys_log_trace(fmt, ...) \
-	fprintf(stderr, "[TRACE] " fmt "\n", ##__VA_ARGS__)
-#else
-#define sys_log_trace sys_log_noop
-#endif
+#define __do_sys_log_perror(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
 
-#if SYS_LOG_TRACE_ENABLED
-#define sys_log_ptrace(err, fmt, ...) \
-	fprintf(stderr, "[TRACE] " fmt ": %s (%d)\n", ##__VA_ARGS__, \
-		strerror(err), (err))
-#else
-#define sys_log_ptrace sys_log_pnoop
-#endif
+#define __do_sys_log_warning(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_pwarning(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_info(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_pinfo(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_debug(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_pdebug(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_trace(fmt, ...) \
+	__do_sys_log_stderr(fmt, ##__VA_ARGS__)
+
+#define __do_sys_log_ptrace(err, fmt, ...) \
+	__do_sys_log_pstderr(err, fmt, ##__VA_ARGS__)
 
 #define SYS_TRUE 1
 #define SYS_FALSE 0

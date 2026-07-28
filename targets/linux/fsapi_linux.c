@@ -2965,7 +2965,7 @@ static int fsapi_linux_update_time_common(
 	const struct timespec64 cur_time = current_time(inode);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)) */
 
-	const sys_timespec systime = {
+	const fsapi_timespec systime = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0))
 		cur_time.tv_sec,
 		cur_time.tv_nsec

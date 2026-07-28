@@ -302,7 +302,7 @@ static int print_leaf_by_path(
 			PRAX64(directory_object_id));
 	}
 	else if(is_short_entry) {
-		err = parse_level3_short_value(
+		err = refs_node_parse_level3_short_value(
 			/* refs_node_crawl_context *crawl_context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -336,7 +336,7 @@ static int print_leaf_by_path(
 		}
 	}
 	else {
-		err = parse_level3_long_value(
+		err = refs_node_parse_level3_long_value(
 			/* refs_node_crawl_context *crawl_context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */

@@ -257,7 +257,7 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 	return ctx;
 }
 
-int parse_level3_long_value(
+int refs_node_parse_level3_long_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -272,7 +272,7 @@ int parse_level3_long_value(
 		const u16 value_size,
 		void *const context);
 
-int parse_level3_short_value(
+int refs_node_parse_level3_short_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
