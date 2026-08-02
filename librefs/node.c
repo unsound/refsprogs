@@ -2568,7 +2568,7 @@ static int refs_node_parse_level1_block_level2_node_reference_list(
 	u32 offset = node_reference_list_offset;
 	u32 node_reference_list_count;
 	u64 node_reference_list_size = 0;
-	u32 node_reference_list_inset = 0;
+	u32 node_reference_list_start = 0;
 	u32 *node_reference_list = NULL;
 	u32 i;
 
@@ -2595,32 +2595,26 @@ static int refs_node_parse_level1_block_level2_node_reference_list(
 	if(REFS_VERSION_MIN(context->bs->version_major,
 		context->bs->version_minor, 3, 14))
 	{
-		sys_log_debug("Insetting node references list by 5 elements on "
-			"ReFS 3.14 and later.");
-		/* Not sure what these 5 elements are in version 3.14,
-		 * investigating is TODO. */
-		node_reference_list_inset = 5 * sizeof(le32);
-	}
-
-	if(node_reference_list_inset) {
 		/* Note: The offset (from the start of the node) of the level 2
 		 * block list appears to be stored at the first offset in ReFS
 		 * 3.14. Not sure what the other numbers are yet. */
-		const u32 level2_block_list_start = read_le32(&block[offset]);
+		node_reference_list_start = read_le32(&block[offset]);
 
 		emit(prefix, indent, "Level 2 blocks start offset @ "
 			"%" PRIu32 " / 0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
 			PRAu32(offset),
 			PRAX32(offset),
-			PRAu32(level2_block_list_start),
-			PRAX32(level2_block_list_start));
+			PRAu32(node_reference_list_start),
+			PRAX32(node_reference_list_start));
+	}
 
+	if(node_reference_list_start) {
 		print_data_with_base(prefix, indent,
 			node_reference_list_offset + sizeof(le32) * 2,
 			block_size,
 			&block[node_reference_list_offset + sizeof(le32) * 2],
-			node_reference_list_inset - sizeof(le32));
-		offset += node_reference_list_inset;
+			node_reference_list_start - sizeof(le32) * 2);
+		offset = node_reference_list_start;
 	}
 
 	err = sys_malloc((size_t) node_reference_list_size,
