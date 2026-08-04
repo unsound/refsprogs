@@ -2245,6 +2245,9 @@ int main(int argc, char **argv)
 	 * to 'fuse_main'. */
 	argv[1] = argv[2];
 	argv[2] = NULL;
+	if(argc > 3) {
+		memmove(&argv[2], &argv[3], (argc - 3) * sizeof(argv[3]));
+	}
 
 	if(fuse_main(argc - 1, argv, &refs_fuse_operations, vol)) {
 		err = EIO;
