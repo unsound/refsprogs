@@ -2620,7 +2620,13 @@ static int refs_node_parse_level1_block_level2_node_reference_list(
 			block_size,
 			&block[node_reference_list_offset + sizeof(le32) * 2],
 			node_reference_list_inset - sizeof(le32));
-		offset += node_reference_list_inset;
+
+		/* The stored value is the absolute (block-relative) offset
+		 * where the node reference list actually starts; use it
+		 * directly instead of assuming a fixed 5-element inset, which
+		 * is wrong for at least some 3.14 volumes (observed: stored
+		 * start offset was 2 elements past the fixed inset). */
+		offset = level2_block_list_start;
 	}
 
 	err = sys_malloc((size_t) node_reference_list_size,
