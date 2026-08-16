@@ -276,65 +276,41 @@ out:
 	return err;
 }
 
-static int refscat_node_long_entry(
+static int refscat_node_leaf_entry(
 		void *const _context,
-		const refschar *const file_name,
-		const u16 file_name_length,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 parent_node_object_id,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
+		const refs_node_fstree_leaf_data *data)
 {
 	refscat_print_data_ctx *const context =
 		(refscat_print_data_ctx*) _context;
 
 	int err = 0;
 
-	(void) child_entry_offset;
-	(void) file_flags;
-	(void) node_number;
-	(void) parent_node_object_id;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) allocated_size;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
+	if(data->type != REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_REGULAR) {
+		goto out;
+	}
 
 	if(context->name_matches) {
 		/* We have found our match, so break here. */
-		return -1;
+		err = -1;
+		goto out;
 	}
 
-	if(file_name_length == context->name_length &&
-		!memcmp(file_name, context->name,
-		file_name_length * sizeof(refschar)))
+	if(data->type_data.regular.file_name_length == context->name_length &&
+		!memcmp(data->type_data.regular.file_name, context->name,
+		data->type_data.regular.file_name_length * sizeof(refschar)))
 	{
 		context->name_matches = SYS_TRUE;
 		if(!(context->ea_name || context->stream_name)) {
-			context->remaining_bytes = file_size;
+			context->remaining_bytes = data->file_size;
 		}
 
 		if(!context->ea_name && !context->stream_name &&
-			(file_flags & REFS_FILE_ATTRIBUTE_SPARSE_FILE))
+			(data->file_flags & REFS_FILE_ATTRIBUTE_SPARSE_FILE))
 		{
 			context->is_sparse = SYS_TRUE;
 		}
 	}
-
+out:
 	return err;
 }
 
@@ -413,43 +389,18 @@ static int refscat_node_short_entry(
 	return 0;
 }
 
-static int refscat_node_hardlink_entry(
+static int refscat_node_hard_link_leaf_entry(
 		void *const _context,
-		const u64 hard_link_id,
-		const u64 parent_id,
-		const u64 link_count,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
+		const refs_node_fstree_leaf_data *const data)
 {
 	refscat_print_data_ctx *const context =
 		(refscat_print_data_ctx*) _context;
 
 	int err = 0;
 
-	(void) link_count;
-	(void) child_entry_offset;
-	(void) file_flags;
-	(void) node_number;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) allocated_size;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
+	if(data->type != REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_HARD_LINK) {
+		goto out;
+	}
 
 	if(context->hard_link_found) {
 		/* We have found our match, so break here. */
@@ -457,17 +408,20 @@ static int refscat_node_hardlink_entry(
 	}
 
 	sys_log_debug("Got hardlink entry with id: %" PRIu64 " / parent: "
-		"%" PRIu64, PRAu64(hard_link_id), PRAu64(parent_id));
-	if(context->hard_link_id == hard_link_id &&
-		context->hard_link_parent_object_id == parent_id)
+		"%" PRIu64,
+		PRAu64(data->type_data.hard_link.hard_link_id),
+		PRAu64(data->type_data.hard_link.hard_link_parent_node_id));
+	if(context->hard_link_id == data->type_data.hard_link.hard_link_id &&
+		context->hard_link_parent_object_id ==
+		data->type_data.hard_link.hard_link_parent_node_id)
 	{
 		context->hard_link_found = SYS_TRUE;
 
 		if(!(context->ea_name || context->stream_name)) {
-			context->remaining_bytes = file_size;
+			context->remaining_bytes = data->file_size;
 		}
 	}
-
+out:
 	return err;
 }
 
@@ -886,8 +840,8 @@ int main(int argc, char **argv)
 	context.stream_name_length =
 		options.stream_defined ? strlen(options.stream) : 0;
 	visitor.context = &context;
-	visitor.node_long_entry = refscat_node_long_entry;
 	visitor.node_short_entry = refscat_node_short_entry;
+	visitor.node_leaf_entry = refscat_node_leaf_entry;
 	visitor.node_file_data = refscat_node_file_data;
 	visitor.node_file_extent = refscat_node_file_extent;
 	visitor.node_ea = refscat_node_ea;
@@ -935,8 +889,7 @@ int main(int argc, char **argv)
 
 		visitor.context = &context;
 		visitor.node_short_entry = NULL;
-		visitor.node_long_entry = NULL;
-		visitor.node_hardlink_entry = refscat_node_hardlink_entry;
+		visitor.node_leaf_entry = refscat_node_hard_link_leaf_entry;
 
 		sys_log_debug("Walking directory 0x%" PRIX64 " to find hard "
 			"link target for id 0x%" PRIX64 "...",
