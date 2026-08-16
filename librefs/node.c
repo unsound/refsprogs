@@ -7458,12 +7458,11 @@ static int refs_node_parse_extent_tree(
 			goto out;
 		}
 
-		for(i = 0; block_queue.queue; ++i,
-			block_queue.queue = block_queue.queue->next,
-			--block_queue.block_queue_length)
-		{
+		for(i = 0; block_queue.queue; ++i) {
 			u64 *const logical_block_numbers =
 				block_queue.queue->block_numbers;
+			refs_node_block_queue_element *const next_element =
+				block_queue.queue->next;
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 
 			physical_block_numbers[0] =
@@ -7572,6 +7571,11 @@ static int refs_node_parse_extent_tree(
 			if(err) {
 				break;
 			}
+
+			sys_free(sizeof(*block_queue.queue),
+				&block_queue.queue);
+			block_queue.queue = next_element;
+			--block_queue.block_queue_length;
 		}
 
 		sys_free(crawl_context->block_size, &block);
@@ -7583,6 +7587,14 @@ static int refs_node_parse_extent_tree(
 
 	*jp = cur_extent_end;
 out:
+	while(block_queue.queue) {
+		refs_node_block_queue_element *const next_element =
+			block_queue.queue->next;
+		sys_free(sizeof(*block_queue.queue),
+			&block_queue.queue);
+		block_queue.queue = next_element;
+	}
+
 	return err;
 }
 
