@@ -2568,7 +2568,7 @@ static int refs_node_parse_level1_block_level2_node_reference_list(
 	u32 offset = node_reference_list_offset;
 	u32 node_reference_list_count;
 	u64 node_reference_list_size = 0;
-	u32 node_reference_list_inset = 0;
+	u32 node_reference_list_start = 0;
 	u32 *node_reference_list = NULL;
 	u32 i;
 
@@ -2595,32 +2595,26 @@ static int refs_node_parse_level1_block_level2_node_reference_list(
 	if(REFS_VERSION_MIN(context->bs->version_major,
 		context->bs->version_minor, 3, 14))
 	{
-		sys_log_debug("Insetting node references list by 5 elements on "
-			"ReFS 3.14 and later.");
-		/* Not sure what these 5 elements are in version 3.14,
-		 * investigating is TODO. */
-		node_reference_list_inset = 5 * sizeof(le32);
-	}
-
-	if(node_reference_list_inset) {
 		/* Note: The offset (from the start of the node) of the level 2
 		 * block list appears to be stored at the first offset in ReFS
 		 * 3.14. Not sure what the other numbers are yet. */
-		const u32 level2_block_list_start = read_le32(&block[offset]);
+		node_reference_list_start = read_le32(&block[offset]);
 
 		emit(prefix, indent, "Level 2 blocks start offset @ "
 			"%" PRIu32 " / 0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
 			PRAu32(offset),
 			PRAX32(offset),
-			PRAu32(level2_block_list_start),
-			PRAX32(level2_block_list_start));
+			PRAu32(node_reference_list_start),
+			PRAX32(node_reference_list_start));
+	}
 
+	if(node_reference_list_start) {
 		print_data_with_base(prefix, indent,
 			node_reference_list_offset + sizeof(le32) * 2,
 			block_size,
 			&block[node_reference_list_offset + sizeof(le32) * 2],
-			node_reference_list_inset - sizeof(le32));
-		offset += node_reference_list_inset;
+			node_reference_list_start - sizeof(le32) * 2);
+		offset = node_reference_list_start;
 	}
 
 	err = sys_malloc((size_t) node_reference_list_size,
@@ -7464,12 +7458,11 @@ static int refs_node_parse_extent_tree(
 			goto out;
 		}
 
-		for(i = 0; block_queue.queue; ++i,
-			block_queue.queue = block_queue.queue->next,
-			--block_queue.block_queue_length)
-		{
+		for(i = 0; block_queue.queue; ++i) {
 			u64 *const logical_block_numbers =
 				block_queue.queue->block_numbers;
+			refs_node_block_queue_element *const next_element =
+				block_queue.queue->next;
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
 
 			physical_block_numbers[0] =
@@ -7578,6 +7571,11 @@ static int refs_node_parse_extent_tree(
 			if(err) {
 				break;
 			}
+
+			sys_free(sizeof(*block_queue.queue),
+				&block_queue.queue);
+			block_queue.queue = next_element;
+			--block_queue.block_queue_length;
 		}
 
 		sys_free(crawl_context->block_size, &block);
@@ -7589,6 +7587,14 @@ static int refs_node_parse_extent_tree(
 
 	*jp = cur_extent_end;
 out:
+	while(block_queue.queue) {
+		refs_node_block_queue_element *const next_element =
+			block_queue.queue->next;
+		sys_free(sizeof(*block_queue.queue),
+			&block_queue.queue);
+		block_queue.queue = next_element;
+	}
+
 	return err;
 }
 
@@ -7599,7 +7605,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 		const size_t indent,
 		const u64 node_number,
 		const u64 object_id,
-		const u8 *const value,
+		const u8 *const buf,
 		const u16 value_size,
 		u16 *const jp)
 {
@@ -7611,10 +7617,12 @@ static int refs_node_parse_attribute_non_resident_data_value(
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
 	const u16 j_start = *jp;
+	const u8 *const value = &buf[j_start];
 	const u16 value_end = j_start + value_size;
+	const size_t static_size = is_v35plus ? 0x84 : 0x88;
 
 	int err = 0;
-	u16 j = *jp;
+	u16 j = j_start;
 	u32 payload_offset = 0;
 	size_t extent_list_start_offset = 0;
 	u32 block_allocation_entry_size = 0;
@@ -7625,123 +7633,111 @@ static int refs_node_parse_attribute_non_resident_data_value(
 	u32 extent_list_size = 0;
 	u32 k;
 
-	/* 0x00 */
-	if(value_end - j >= 4) {
-		payload_offset = read_le32(&value[j]);
-		j += print_le32_dechex("Payload offset", prefix, indent, value,
-			&value[j]);
+	if(!print_visitor && !(visitor && visitor->node_file_extent)) {
+		/* Skip processing extents when the caller isn't interested. */
+		j = value_end;
+		goto out;
 	}
-	/* 0x04 */
-	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
+
+	if(value_size >= 4) {
+		payload_offset = read_le32(&value[0]);
 	}
-	/* 0x08 */
-	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
+
+	if(print_visitor) {
+		size_t inset = 0;
+
+		/* 0x00 */
+		print_le32_dechex_safe("Payload offset", prefix, indent, value,
+			0x00, value_size);
+		/* 0x04 */
+		print_unknown32_safe(prefix, indent, value, 0x04, value_size);
+		/* 0x08 */
+		print_unknown32_safe(prefix, indent, value, 0x08, value_size);
+		/* 0x0C */
+		print_unknown32_safe(prefix, indent, value, 0x0C, value_size);
+		/* 0x10 */
+		print_unknown32_safe(prefix, indent, value, 0x10, value_size);
+		/* 0x14 */
+		print_unknown16_safe(prefix, indent, value, 0x14, value_size);
+		/* 0x16 */
+		print_unknown16_safe(prefix, indent, value, 0x16, value_size);
+		/* 0x18 */
+		print_unknown64_safe(prefix, indent, value, 0x18, value_size);
+		/* v1.0-3.4: 0x20 */
+		if(!is_v35plus) {
+			print_unknown64_safe(prefix, indent, value, 0x20,
+				value_size);
+			inset += 8;
+		}
+		/* v1.0-3.4: 0x28  v3.5+: 0x20 */
+		print_le64_dechex_safe("Number of clusters", prefix, indent,
+			value, inset + 0x20, value_size);
+		/* v1.0-3.4: 0x30 v3.5+: 0x28 */
+		print_unknown32_safe(prefix, indent, value, inset + 0x28,
+			value_size);
+		/* v3.5: 0x2C */
+		if(is_v35plus) {
+			print_unknown32_safe(prefix, indent, value,
+				inset + 0x2C, value_size);
+		}
+		else {
+			inset -= 4;
+		}
+		/* v1.0-3.4: 0x34 v3.5+: 0x30 */
+		print_le64_dechex_safe("Allocated size (1)", prefix, indent,
+			value, inset + 0x30, value_size);
+		/* v1.0-3.4: 0x3C v3.5+: 0x38 */
+		print_le64_dechex_safe("Logical size (1)", prefix, indent,
+			value, inset + 0x38, value_size);
+		/* v1.0-3.4: 0x44 v3.5+: 0x40 */
+		print_le64_dechex_safe("Logical size (2)", prefix, indent,
+			value, inset + 0x40, value_size);
+		/* v1.0-3.4: 0x4C v3.5+: 0x48 */
+		print_le64_dechex_safe("Allocated size? (2)", prefix, indent,
+			value, inset + 0x48, value_size);
+		/* v1.0-3.4: 0x54 v3.5+: 0x50 */
+		print_unknown64_safe(prefix, indent, value, inset + 0x50,
+			value_size);
+		/* v1.0-3.4: 0x5C v3: 0x58 */
+		print_unknown64_safe(prefix, indent, value, inset + 0x58,
+			value_size);
+		/* v1.0-3.4: 0x64 v3: 0x60 */
+		print_unknown64_safe(prefix, indent, value, inset + 0x60,
+			value_size);
+		/* v1.0-3.4: 0x6C v3: 0x68 */
+		print_unknown64_safe(prefix, indent, value, inset + 0x68,
+			value_size);
+		/* v1.0-3.4: 0x74 v3: 0x70 */
+		print_unknown64_safe(prefix, indent, value, inset + 0x70,
+			value_size);
+		/* v1.0-3.4: 0x7C v3: 0x78 */
+		print_unknown64_safe(prefix, indent, value, inset + 0x78,
+			value_size);
+		/* v1.0-3.4: 0x84 v3: 0x80 */
+		print_unknown32_safe(prefix, indent, value, inset + 0x80,
+			value_size);
 	}
-	/* 0x0C */
-	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
-	}
-	/* 0x10 */
-	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
-	}
-	/* 0x14 */
-	if(value_end - j >= 2) {
-		j += print_unknown16(prefix, indent, value, &value[j]);
-	}
-	/* 0x16 */
-	if(value_end - j >= 2) {
-		j += print_unknown16(prefix, indent, value, &value[j]);
-	}
-	/* 0x18 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* v1: 0x20 */
-	if(!is_v35plus && value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* v1: 0x28 v3: 0x20 */
-	if(value_end - j >= 8) {
-		j += print_le64_dechex("Number of clusters", prefix, indent,
-			value, &value[j]);
-	}
-	/* v1: 0x30 v3: 0x28 */
-	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
-	}
-	/* v3: 0x2C */
-	if(is_v35plus && value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
-	}
-	/* v1: 0x34 v3: 0x30 */
-	if(value_end - j >= 8) {
-		j += print_le64_dechex("Allocated size (1)", prefix, indent,
-			value, &value[j]);
-	}
-	/* v1: 0x3C v3: 0x38 */
-	if(value_end - j >= 8) {
-		j += print_le64_dechex("Logical size (1)", prefix, indent,
-			value, &value[j]);
-	}
-	/* v1: 0x44 v3: 0x40 */
-	if(value_end - j >= 8) {
-		j += print_le64_dechex("Logical size (2)", prefix, indent,
-			value, &value[j]);
-	}
-	/* v1: 0x4C v3: 0x48 */
-	if(value_end - j >= 8) {
-		j += print_le64_dechex("Allocated size? (2)", prefix, indent,
-			value, &value[j]);
-	}
-	/* v1: 0x54 v3: 0x50 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* v1: 0x5C v3: 0x58 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* v1: 0x64 v3: 0x60 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* v1: 0x64 v3: 0x60 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* 0xA8 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* 0xB0 */
-	if(value_end - j >= 8) {
-		j += print_unknown64(prefix, indent, value, &value[j]);
-	}
-	/* 0xB8 */
-	if(value_end - j >= 4) {
-		j += print_unknown32(prefix, indent, value, &value[j]);
-	}
-	if(j_start + payload_offset < value_end) {
+
+	j += (value_size >= static_size) ? static_size : value_size;
+
+	if((payload_offset ? j_start + payload_offset : j) < value_end) {
 		if(!payload_offset) {
 			/* 0xC0 */
 			if(is_v35plus && value_end - j >= 4) {
-				j += print_unknown32(prefix, indent, value,
-					&value[j]);
+				j += print_unknown32(prefix, indent, buf,
+					&buf[j]);
 			}
 		}
 		else if((j - j_start) < payload_offset) {
 			print_data_with_base(prefix, indent, j, value_size,
-				&value[j], payload_offset - (j - j_start));
+				&buf[j], payload_offset - (j - j_start));
 			j = j_start + payload_offset;
 		}
 
 		emit(prefix, indent, "%s @ %" PRIuz " / 0x%" PRIXz ":",
 			"Extent list",
-			PRAuz((uintptr_t) &value[j] - (uintptr_t) value),
-			PRAXz((uintptr_t) &value[j] - (uintptr_t) value));
+			PRAuz((uintptr_t) &buf[j] - (uintptr_t) value),
+			PRAXz((uintptr_t) &buf[j] - (uintptr_t) value));
 		extent_list_start_offset = j;
 
 		emit(prefix, indent + 1, "Block allocation entry:");
@@ -7755,7 +7751,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 			/* sys_bool is_v3 */
 			is_v3,
 			/* const u8 *entry */
-			&value[j],
+			&buf[j],
 			/* u32 buffer_size */
 			value_size - (value_end - j),
 			/* u32 entry_offset */
@@ -7801,7 +7797,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 
 			for(l = 0; l < number_of_extents; ++l) {
 				const u8 *const index_entry =
-					&value[extent_list_start_offset +
+					&buf[extent_list_start_offset +
 					extent_index_offset + l * 4];
 
 				const u16 extent_offset =
@@ -7861,7 +7857,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 				print_data_with_base(prefix, indent + 1,
 					cur_offset,
 					extent_list_size,
-					&value[j],
+					&buf[j],
 					cur_extent_offset - cur_offset);
 				j = extent_list_start_offset +
 					cur_extent_offset;
@@ -7896,7 +7892,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 		sys_log_debug("Size of extent: %" PRIuz,
 			PRAuz(cur_extent_end - j));
 
-		cur_extent = &value[j];
+		cur_extent = &buf[j];
 
 		if(extent_list_flags & 0x1) {
 			/* Flags indicate an index node. This means that the
@@ -7958,7 +7954,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 				/* sys_bool is_v3 */
 				is_v3,
 				/* const u8 *value */
-				value,
+				buf,
 				/* const u8 *cur_extent */
 				cur_extent,
 				/* size_t cur_extent_end */
@@ -7978,7 +7974,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 			print_data_with_base(prefix, indent + 1,
 				j - extent_list_start_offset,
 				extent_list_start_offset + extent_index_offset,
-				&value[j],
+				&buf[j],
 				extent_index_offset -
 				(j - extent_list_start_offset));
 			j = extent_list_start_offset + extent_index_offset;
@@ -7988,7 +7984,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 			PRAuz(j - extent_list_start_offset),
 			PRAXz(j - extent_list_start_offset));
 		for(k = 0; k < number_of_extents; ++k) {
-			const u8 *const index_entry = &value[j];
+			const u8 *const index_entry = &buf[j];
 
 			emit(prefix, indent + 2, "Entry %" PRIuz "/%" PRIuz " "
 				"@ %" PRIuz " / 0x%" PRIXz ":",
@@ -8004,7 +8000,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 			}
 
 			j += print_le16_dechex("Extent offset", prefix,
-				indent + 3, index_entry, &value[j]);
+				indent + 3, index_entry, &buf[j]);
 
 			if(value_end - j < 2) {
 				break;
@@ -8012,7 +8008,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 
 			j += print_le16_dechex("Extent first logical "
 				"cluster", prefix, indent + 3,
-				index_entry, &value[j]);
+				index_entry, &buf[j]);
 		}
 	}
 
@@ -8022,7 +8018,7 @@ static int refs_node_parse_attribute_non_resident_data_value(
 		print_data_with_base(prefix, indent + 1,
 			j - extent_list_start_offset,
 			extent_list_start_offset + extent_list_size,
-			&value[j],
+			&buf[j],
 			extent_list_size - (j - extent_list_start_offset));
 		j = extent_list_start_offset + extent_list_size;
 	}

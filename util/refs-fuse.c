@@ -793,6 +793,21 @@ out:
 	return -err;
 }
 
+static void* refs_fuse_op_init(struct fuse_conn_info *const conn)
+{
+	void *ret;
+
+	sys_log_debug("%s(conn=%p)",
+		__FUNCTION__, conn);
+
+	ret = fuse_get_context()->private_data;
+
+	sys_log_debug("%s(conn=%p): %p",
+		__FUNCTION__, conn, ret);
+
+	return ret;
+}
+
 #ifdef __APPLE__
 static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		size_t size, uint32_t position)
@@ -1086,6 +1101,8 @@ static struct fuse_operations refs_fuse_operations = {
 	/* int (*readdir) (const char *, void *, fuse_fill_dir_t, off_t,
 	 *         struct fuse_file_info *) */
 	.readdir = refs_fuse_op_readdir,
+	/* void *(*init) (struct fuse_conn_info *conn); */
+	.init = refs_fuse_op_init,
 #ifdef __APPLE__
 	/* int (*getxattr) (const char *, const char *, char *, size_t,
 	 *     uint32_t); */
@@ -2228,6 +2245,9 @@ int main(int argc, char **argv)
 	 * to 'fuse_main'. */
 	argv[1] = argv[2];
 	argv[2] = NULL;
+	if(argc > 3) {
+		memmove(&argv[2], &argv[3], (argc - 3) * sizeof(argv[3]));
+	}
 
 	if(fuse_main(argc - 1, argv, &refs_fuse_operations, vol)) {
 		err = EIO;
