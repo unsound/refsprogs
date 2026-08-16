@@ -7633,6 +7633,12 @@ static int refs_node_parse_attribute_non_resident_data_value(
 	u32 extent_list_size = 0;
 	u32 k;
 
+	if(!print_visitor && !(visitor && visitor->node_file_extent)) {
+		/* Skip processing extents when the caller isn't interested. */
+		j = value_end;
+		goto out;
+	}
+
 	if(value_size >= 4) {
 		payload_offset = read_le32(&value[0]);
 	}
