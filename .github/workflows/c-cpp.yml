@@ -243,3 +243,23 @@ jobs:
           make
           make check
           make distcheck
+
+  build-hurd:
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in GNU/Hurd
+      id: build
+      uses: vmactions/hurd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          sudo apt update
+          sudo apt install -y autoconf automake make libtool gcc pkg-config libfuse-hurd-dev
+        run: |
+          ./autogen.sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
