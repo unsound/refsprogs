@@ -2995,7 +2995,10 @@ int fsapi_volume_unmount(
 		/* sys_mutex *mutex */
 		&(*vol)->cache_lock);
 
-	sys_free(sizeof(*(*vol)->root_node), &(*vol)->root_node);
+	fsapi_node_destroy(
+		/* fsapi_node **node */
+		&(*vol)->root_node);
+
 	sys_free(sizeof(**vol), vol);
 
 	fsapi_log_leave(0, "vol=%p (->%p)", vol, vol ? *vol : NULL);
