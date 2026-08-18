@@ -7461,9 +7461,8 @@ static int refs_node_parse_extent_tree(
 		for(i = 0; block_queue.queue; ++i) {
 			u64 *const logical_block_numbers =
 				block_queue.queue->block_numbers;
-			refs_node_block_queue_element *const next_element =
-				block_queue.queue->next;
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
+			refs_node_block_queue_element *next_element;
 
 			physical_block_numbers[0] =
 				refs_node_crawl_context_logical_to_physical_block(
@@ -7572,6 +7571,7 @@ static int refs_node_parse_extent_tree(
 				break;
 			}
 
+			next_element = block_queue.queue->next;
 			sys_free(sizeof(*block_queue.queue),
 				&block_queue.queue);
 			block_queue.queue = next_element;
