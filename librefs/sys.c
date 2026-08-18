@@ -36,6 +36,10 @@ static iconv_t iconv_encode_handle = (iconv_t) -1;
 #endif
 #endif /* defined(_WIN32) ... */
 
+#if SYS_LOG_INDENT
+__thread int __sys_log_indent = 0;
+#endif /* SYS_LOG_INDENT */
+
 #ifndef HAVE_STRNDUP
 int sys_strndup(const char *str, size_t len, char **dupstr)
 {

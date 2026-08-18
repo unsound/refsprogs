@@ -793,6 +793,21 @@ out:
 	return -err;
 }
 
+static void* refs_fuse_op_init(struct fuse_conn_info *const conn)
+{
+	void *ret;
+
+	sys_log_debug("%s(conn=%p)",
+		__FUNCTION__, conn);
+
+	ret = fuse_get_context()->private_data;
+
+	sys_log_debug("%s(conn=%p): %p",
+		__FUNCTION__, conn, ret);
+
+	return ret;
+}
+
 #ifdef __APPLE__
 static int refs_fuse_op_getxattr(const char *path, const char *name, char *buf,
 		size_t size, uint32_t position)
@@ -1086,6 +1101,8 @@ static struct fuse_operations refs_fuse_operations = {
 	/* int (*readdir) (const char *, void *, fuse_fill_dir_t, off_t,
 	 *         struct fuse_file_info *) */
 	.readdir = refs_fuse_op_readdir,
+	/* void *(*init) (struct fuse_conn_info *conn); */
+	.init = refs_fuse_op_init,
 #ifdef __APPLE__
 	/* int (*getxattr) (const char *, const char *, char *, size_t,
 	 *     uint32_t); */
@@ -1983,6 +2000,49 @@ out:
 }
 #endif /* defined(HAVE_STRUCT_FUSE_LOWLEVEL_OPS_GETXATTR) */
 
+#if FUSE_VERSION >= 29
+static void refs_fuse_ll_op_forget_multi(
+		fuse_req_t req,
+		size_t count,
+		struct fuse_forget_data *forgets)
+{
+	fsapi_volume *const vol =
+		(fsapi_volume*) fuse_req_userdata(req);
+
+	int err = 0;
+	size_t i;
+
+	sys_log_debug("%s(req=%p, count=%" PRIuz ", forgets=%p)",
+		__FUNCTION__, req, PRAuz(count), forgets);
+
+	for(i = 0; i < count; ++i) {
+		fsapi_node *node =
+			refs_fuse_ll_fuse_ino_to_node(
+				/* fuse_ino_t ino */
+				forgets[i].ino,
+				/* fsapi_volume *vol */
+				vol);
+
+		err = fsapi_node_release(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node **node */
+			&node,
+			/* size_t release_count */
+			forgets[i].nlookup);
+		if(err) {
+			sys_log_perror(err, "Error while releasing node %p "
+				"(ignored)", node);
+		}
+	}
+
+	sys_log_debug("%s(req=%p, count=%" PRIuz ", forgets=%p): %d (%s)",
+		__FUNCTION__, req, PRAuz(count), forgets, 0, strerror(0));
+
+	fuse_reply_none(req);
+}
+#endif /* FUSE_VERSION >= 29 */
+
 static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	/* void (*lookup) (fuse_req_t req, fuse_ino_t parent,
 	 *         const char *name); */
@@ -2021,6 +2081,11 @@ static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	/* void (*listxattr) (fuse_req_t req, fuse_ino_t ino, size_t size); */
 	.listxattr = refs_fuse_ll_op_listxattr,
 #endif /* defined(HAVE_STRUCT_FUSE_LOWLEVEL_OPS_GETXATTR) */
+#if FUSE_VERSION >= 29
+	/* void (*forget_multi)(fuse_req_t req, size_t count,
+	 *         struct fuse_forget_data *forgets) */
+	.forget_multi = refs_fuse_ll_op_forget_multi,
+#endif /* FUSE_VERSION >= 29 */
 };
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API ... */
 
@@ -2228,6 +2293,9 @@ int main(int argc, char **argv)
 	 * to 'fuse_main'. */
 	argv[1] = argv[2];
 	argv[2] = NULL;
+	if(argc > 3) {
+		memmove(&argv[2], &argv[3], (argc - 3) * sizeof(argv[3]));
+	}
 
 	if(fuse_main(argc - 1, argv, &refs_fuse_operations, vol)) {
 		err = EIO;

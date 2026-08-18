@@ -44,6 +44,48 @@ struct refs_node_print_visitor {
 		__attribute__((format(printf, 2, 3)));
 };
 
+typedef enum {
+	REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_TREE_ROOT = 1,
+	REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_REGULAR = 2,
+	REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_HARD_LINK = 3
+} refs_node_fstree_leaf_entry_type;
+
+typedef struct {
+	refs_node_fstree_leaf_entry_type type;
+	union {
+		/* The tree root currently has no extra data. */
+		/*
+		struct {
+		} tree_root;
+		*/
+		struct {
+			u64 hard_link_id;
+			u64 hard_link_parent_node_id;
+			u64 link_count;
+		} hard_link;
+		struct {
+			const le16 *file_name;
+			u16 file_name_length;
+		} regular;
+	} type_data;
+
+	u16 child_entry_offset;
+	u32 file_flags;
+	u64 node_number;
+	u64 parent_node_object_id;
+	u64 create_time;
+	u64 last_access_time;
+	u64 last_write_time;
+	u64 last_mft_change_time;
+	u64 file_size;
+	u64 allocated_size;
+
+	const u8 *key;
+	size_t key_size;
+	const u8 *record;
+	size_t record_size;
+} refs_node_fstree_leaf_data;
+
 struct refs_node_stream_data {
 	sys_bool resident;
 	union {
@@ -91,40 +133,6 @@ struct refs_node_walk_visitor {
 		void *context,
 		const le16 *volume_label,
 		u16 volume_label_length);
-	int (*node_root_entry)(
-		void *context,
-		u16 child_entry_offset,
-		u32 file_flags,
-		u64 node_number,
-		u64 parent_node_object_id,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size);
-	int (*node_long_entry)(
-		void *context,
-		const le16 *file_name,
-		u16 file_name_length,
-		u16 child_entry_offset,
-		u32 file_flags,
-		u64 node_number,
-		u64 parent_node_object_id,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size);
 	int (*node_short_entry)(
 		void *context,
 		const le16 *file_name,
@@ -145,24 +153,9 @@ struct refs_node_walk_visitor {
 		size_t key_size,
 		const u8 *record,
 		size_t record_size);
-	int (*node_hardlink_entry)(
+	int (*node_leaf_entry)(
 		void *context,
-		u64 hard_link_id,
-		u64 parent_id,
-		u64 link_count,
-		u16 child_entry_offset,
-		u32 file_flags,
-		u64 node_number,
-		u64 create_time,
-		u64 last_access_time,
-		u64 last_write_time,
-		u64 last_mft_change_time,
-		u64 file_size,
-		u64 allocated_size,
-		const u8 *key,
-		size_t key_size,
-		const u8 *record,
-		size_t record_size);
+		const refs_node_fstree_leaf_data *data);
 	int (*node_file_extent)(
 		void *context,
 		u64 first_logical_block,
@@ -257,7 +250,7 @@ static inline refs_node_crawl_context refs_node_crawl_context_init(
 	return ctx;
 }
 
-int parse_level3_long_value(
+int refs_node_parse_level3_long_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -272,7 +265,7 @@ int parse_level3_long_value(
 		const u16 value_size,
 		void *const context);
 
-int parse_level3_short_value(
+int refs_node_parse_level3_short_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,

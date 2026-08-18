@@ -286,42 +286,22 @@ typedef struct {
 	size_t *record_size;
 } refs_volume_lookup_context;
 
-static int refs_volume_lookup_node_long_entry(
+static int refs_volume_lookup_node_leaf_entry(
 		void *const _context,
-		const refschar *const file_name,
-		const u16 file_name_length,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 parent_node_object_id,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
+		const refs_node_fstree_leaf_data *const data)
 {
 	refs_volume_lookup_context *const context =
 		(refs_volume_lookup_context*) _context;
 
 	int err = 0;
 
-	(void) file_flags;
-	(void) parent_node_object_id;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) file_size;
-	(void) allocated_size;
+	if(data->type != REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_REGULAR) {
+		goto out;
+	}
 
-	if(file_name_length != context->name_length ||
-		memcmp(file_name, context->name,
-		file_name_length * sizeof(refschar)))
+	if(data->type_data.regular.file_name_length != context->name_length ||
+		memcmp(data->type_data.regular.file_name, context->name,
+		data->type_data.regular.file_name_length * sizeof(refschar)))
 	{
 		goto out;
 	}
@@ -330,35 +310,35 @@ static int refs_volume_lookup_node_long_entry(
 	context->is_short_entry = SYS_FALSE;
 	context->is_directory = SYS_FALSE;
 
-	context->node_number = node_number;
+	context->node_number = data->node_number;
 	if(context->entry_offset) {
-		*context->entry_offset = child_entry_offset;
+		*context->entry_offset = data->child_entry_offset;
 	}
 
 	if(context->key) {
-		err = sys_malloc(key_size, context->key);
+		err = sys_malloc(data->key_size, context->key);
 		if(err) {
 			goto out;
 		}
 
-		memcpy(*context->key, key, key_size);
+		memcpy(*context->key, data->key, data->key_size);
 	}
 
 	if(context->key_size) {
-		*context->key_size = key_size;
+		*context->key_size = data->key_size;
 	}
 
 	if(context->record) {
-		err = sys_malloc(record_size, context->record);
+		err = sys_malloc(data->record_size, context->record);
 		if(err) {
 			goto out;
 		}
 
-		memcpy(*context->record, record, record_size);
+		memcpy(*context->record, data->record, data->record_size);
 	}
 
 	if(context->record_size) {
-		*context->record_size = record_size;
+		*context->record_size = data->record_size;
 	}
 
 	err = -1;
@@ -458,85 +438,69 @@ out:
 	return err;
 }
 
-static int refs_volume_lookup_node_hardlink_entry(
+static int refs_volume_resolve_hard_link_node_leaf_entry(
 		void *const _context,
-		const u64 hard_link_id,
-		const u64 parent_id,
-		const u64 link_count,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
+		const refs_node_fstree_leaf_data *const data)
 {
 	refs_volume_lookup_context *const context =
 		(refs_volume_lookup_context*) _context;
 
 	int err = 0;
 
-	(void) link_count;
-	(void) file_flags;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) file_size;
-	(void) allocated_size;
+	if(data->type != REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_HARD_LINK) {
+		goto out;
+	}
 
 	sys_log_debug("Got hardlink entry with id: 0x%" PRIX64 " / parent: "
-		"0x%" PRIX64, PRAX64(hard_link_id), PRAX64(parent_id));
+		"0x%" PRIX64,
+		PRAX64(data->type_data.hard_link.hard_link_id),
+		PRAX64(data->type_data.hard_link.hard_link_parent_node_id));
 
-	if(context->hard_link_id != hard_link_id ||
-		context->hard_link_parent_object_id != parent_id)
+	if(context->hard_link_id != data->type_data.hard_link.hard_link_id ||
+		context->hard_link_parent_object_id !=
+		data->type_data.hard_link.hard_link_parent_node_id)
 	{
 		goto out;
 	}
 
 	sys_log_debug("Match found! key=%p, key_size=%" PRIuz ", record=%p, "
 		"record_size=%" PRIuz,
-		key, PRAuz(key_size), record, PRAuz(record_size));
+		data->key, PRAuz(data->key_size),
+		data->record, PRAuz(data->record_size));
 	context->hard_link_found = SYS_TRUE;
 	context->is_short_entry = SYS_FALSE;
 	context->is_directory = SYS_FALSE;
 	context->directory_object_id = 0;
 
-	context->node_number = node_number;
+	context->node_number = data->node_number;
 	if(context->entry_offset) {
-		*context->entry_offset = child_entry_offset;
+		*context->entry_offset = data->child_entry_offset;
 	}
 
 	if(context->key) {
-		err = sys_malloc(key_size, context->key);
+		err = sys_malloc(data->key_size, context->key);
 		if(err) {
 			goto out;
 		}
 
-		memcpy(*context->key, key, key_size);
+		memcpy(*context->key, data->key, data->key_size);
 	}
 
 	if(context->key_size) {
-		*context->key_size = key_size;
+		*context->key_size = data->key_size;
 	}
 
 	if(context->record) {
-		err = sys_malloc(record_size, context->record);
+		err = sys_malloc(data->record_size, context->record);
 		if(err) {
 			goto out;
 		}
 
-		memcpy(*context->record, record, record_size);
+		memcpy(*context->record, data->record, data->record_size);
 	}
 
 	if(context->record_size) {
-		*context->record_size = record_size;
+		*context->record_size = data->record_size;
 	}
 
 	err = -1;
@@ -554,7 +518,7 @@ static int refs_volume_resolve_hard_link_target_internal(
 	memset(&visitor, 0, sizeof(visitor));
 
 	visitor.context = context;
-	visitor.node_hardlink_entry = refs_volume_lookup_node_hardlink_entry;
+	visitor.node_leaf_entry = refs_volume_resolve_hard_link_node_leaf_entry;
 
 	sys_log_debug("Resolving hard link entry to parent 0x%" PRIX64 " / id "
 		"%" PRIX64 " in leaf.",
@@ -824,8 +788,8 @@ static int refs_volume_lookup(
 		goto out;
 	}
 
-	visitor.node_long_entry = refs_volume_lookup_node_long_entry;
 	visitor.node_short_entry = refs_volume_lookup_node_short_entry;
+	visitor.node_leaf_entry = refs_volume_lookup_node_leaf_entry;
 	visitor.context = &context;
 
 	while(1) {
@@ -975,74 +939,57 @@ out:
 	return err;
 }
 
-static int refs_volume_lookup_root_node_visit_root_entry(
+static int refs_volume_lookup_root_node_visit_leaf_entry(
 		void *const _context,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 parent_node_object_id,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
+		const refs_node_fstree_leaf_data *const data)
 {
 	refs_volume_lookup_context *const context =
 		(refs_volume_lookup_context*) _context;
 
 	int err = 0;
 
+	if(data->type != REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_TREE_ROOT) {
+		goto out;
+	}
+
 	sys_log_debug("Visiting root entry with offset %" PRIu16 " in node "
 		"0x%" PRIX64 "...",
-		PRAu16(child_entry_offset), PRAX64(parent_node_object_id));
-
-	(void) file_flags;
-	(void) parent_node_object_id;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) file_size;
-	(void) allocated_size;
+		PRAu16(data->child_entry_offset),
+		PRAX64(data->parent_node_object_id));
 
 	context->found = SYS_TRUE;
 	context->is_short_entry = SYS_FALSE;
 	context->is_directory = SYS_TRUE;
 
-	context->node_number = node_number;
+	context->node_number = data->node_number;
 	if(context->entry_offset) {
-		*context->entry_offset = child_entry_offset;
+		*context->entry_offset = data->child_entry_offset;
 	}
 
 	if(context->key) {
-		err = sys_malloc(key_size, context->key);
+		err = sys_malloc(data->key_size, context->key);
 		if(err) {
 			goto out;
 		}
 
-		memcpy(*context->key, key, key_size);
+		memcpy(*context->key, data->key, data->key_size);
 	}
 
 	if(context->key_size) {
-		*context->key_size = key_size;
+		*context->key_size = data->key_size;
 	}
 
 	if(context->record) {
-		err = sys_malloc(record_size, context->record);
+		err = sys_malloc(data->record_size, context->record);
 		if(err) {
 			goto out;
 		}
 
-		memcpy(*context->record, record, record_size);
+		memcpy(*context->record, data->record, data->record_size);
 	}
 
 	if(context->record_size) {
-		*context->record_size = record_size;
+		*context->record_size = data->record_size;
 	}
 
 	err = -1;
@@ -1091,8 +1038,8 @@ int refs_volume_lookup_by_posix_path(
 		context.record_size = out_record_size;
 
 		visitor.context = &context;
-		visitor.node_root_entry =
-			refs_volume_lookup_root_node_visit_root_entry;
+		visitor.node_leaf_entry =
+			refs_volume_lookup_root_node_visit_leaf_entry;
 
 		sys_log_debug("Searching for node number of 0x600 root....");
 

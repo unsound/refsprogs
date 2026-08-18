@@ -1,6 +1,6 @@
 AC_PREREQ(2.59)
-AC_INIT([refsprogs],[2026.6.27],[catacombae@gmail.com])
-LIBREFS_VERSION="15"
+AC_INIT([refsprogs],[2026.8.18],[catacombae@gmail.com])
+LIBREFS_VERSION="16"
 AC_CONFIG_SRCDIR([util/refsls.c])
 
 # Environment
@@ -238,9 +238,9 @@ if test "x$enable_refs_fuse" = "xyes"; then
 		if test "x$enable_fuse_lowlevel" = "xyes"; then
 			__SAVED_CPPFLAGS="$CPPFLAGS"
 			if test "x$use_fuse3" != "xyes"; then
-				CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
+				CPPFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26 -D_FILE_OFFSET_BITS=64"
 			else
-				CPPFLAGS="$CPPFLAGS $FUSE3_MODULE_CFLAGS -DFUSE_USE_VERSION=32"
+				CPPFLAGS="$CPPFLAGS $FUSE3_MODULE_CFLAGS -DFUSE_USE_VERSION=32 -D_FILE_OFFSET_BITS=64"
 			fi
 			AC_CHECK_HEADERS([fuse_lowlevel.h])
 			CPPFLAGS="$__SAVED_CPPFLAGS"
@@ -248,11 +248,17 @@ if test "x$enable_refs_fuse" = "xyes"; then
 		;;
 	esac
 
-	SAVED_CFLAGS="$CFLAGS"
-	SAVED_LIBS="$LIBS"
+	__SAVED_CFLAGS="$CFLAGS"
+	__SAVED_LIBS="$LIBS"
 
-	CFLAGS="$FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26"
-	LIBS="$FUSE_MODULE_LIBS"
+	if test "x$use_fuse3" != "xyes"; then
+		CFLAGS="$CPPFLAGS $FUSE_MODULE_CFLAGS -DFUSE_USE_VERSION=26 -D_FILE_OFFSET_BITS=64"
+		LIBS="$FUSE_MODULE_LIBS"
+	else
+		CFLAGS="$CPPFLAGS $FUSE3_MODULE_CFLAGS -DFUSE_USE_VERSION=32 -D_FILE_OFFSET_BITS=64"
+		LIBS="$FUSE3_MODULE_LIBS"
+	fi
+
 	AC_CHECK_FUNCS([ \
 		fuse_session_loop_mt \
 	])
@@ -263,8 +269,9 @@ if test "x$enable_refs_fuse" = "xyes"; then
 		[],
 		[[#include <fuse_lowlevel.h>]]
 	)
-	CFLAGS="$SAVED_CFLAGS"
-	LIBS="$SAVED_LIBS"
+
+	CFLAGS="$__SAVED_CFLAGS"
+	LIBS="$__SAVED_LIBS"
 fi
 
 AC_SYS_LARGEFILE

@@ -2965,7 +2965,7 @@ static int fsapi_linux_update_time_common(
 	const struct timespec64 cur_time = current_time(inode);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)) */
 
-	const sys_timespec systime = {
+	const fsapi_timespec systime = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0))
 		cur_time.tv_sec,
 		cur_time.tv_nsec
@@ -7400,6 +7400,27 @@ static void fsapi_linux_address_space_read_end_io(
 	}
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0))
+static void fsapi_linux_address_space_read_end_bio(
+		struct bio *const bio)
+{
+	struct buffer_head *bh = NULL;
+	bool uptodate;
+
+	uptodate = bio_endio_bh(
+		/* struct bio *bio */
+		bio,
+		/* struct buffer_head **bhp */
+		&bh);
+
+	fsapi_linux_address_space_read_end_io(
+		/* struct buffer_head *bh */
+		bh,
+		/* int uptodate */
+		uptodate);
+}
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0)) */
+
 static void fsapi_linux_address_space_read_submit_io(
 		fsapi_linux_address_space_read_context *const context)
 {
@@ -7416,8 +7437,10 @@ static void fsapi_linux_address_space_read_submit_io(
 			/* struct buffer_head *bh */
 			cur_buffer);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7,2,0))
 		cur_buffer->b_end_io =
 			fsapi_linux_address_space_read_end_io;
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,2,0)) */
 
 		set_buffer_async_read(
 			/* struct buffer_head *bh */
@@ -7434,6 +7457,15 @@ static void fsapi_linux_address_space_read_submit_io(
 		{
 			sys_log_debug("      Submitting buffer %p...",
 				cur_buffer);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0))
+			bh_submit(
+				/* struct buffer_head *bh */
+				cur_buffer,
+                                /* blk_opf_t opf */
+                                REQ_OP_READ | 0,
+				/* bio_end_io_t end_io */
+				fsapi_linux_address_space_read_end_bio);
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,2,0)) */
 			submit_bh(
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0))
 				/* blk_opf_t opf */
@@ -7446,6 +7478,7 @@ static void fsapi_linux_address_space_read_submit_io(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0)) ... */
 				/* struct buffer_head *bh */
 				cur_buffer);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0)) ... */
 		}
 		else {
 			fsapi_linux_address_space_read_end_io(

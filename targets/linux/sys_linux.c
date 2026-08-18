@@ -310,6 +310,15 @@ static int sys_device_pread_common(sys_device *const dev, const u64 offset,
 					/* struct buffer_head *bh */
 					bh);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0))
+				bh_submit(
+					/* struct buffer_head *bh */
+					bh,
+					/* blk_opf_t opf */
+					REQ_OP_READ | bh_flags,
+					/* bio_end_io_t end_io */
+					bh_end_read);
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,2,0)) */
 				bh->b_end_io = end_buffer_read_sync;
 
 				submit_bh(
@@ -327,6 +336,7 @@ static int sys_device_pread_common(sys_device *const dev, const u64 offset,
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0)) ... */
 					/* struct buffer_head *bh */
 					bh);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0)) ... */
 
 				wait_on_buffer(
 					/* struct buffer_head *bh */
