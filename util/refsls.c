@@ -54,24 +54,9 @@ static struct refsls_options {
 	sys_bool help;
 } options;
 
-static int refsls_node_long_entry(
+static int refsls_node_leaf_entry(
 		void *const context,
-		const refschar *const file_name,
-		const u16 file_name_length,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 parent_node_object_id,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size);
+		const refs_node_fstree_leaf_data *const data);
 
 static int refsls_node_short_entry(
 		void *const context,
@@ -95,18 +80,18 @@ static int refsls_node_short_entry(
 		const size_t record_size);
 
 static int refsls_node_ea(
-		void *context,
-		const char *name,
-		size_t name_length,
-		const void *data,
-		size_t data_size);
+		void *const context,
+		const char *const name,
+		const size_t name_length,
+		const void *const data,
+		const size_t data_size);
 
 static int refsls_node_stream(
-		void *context,
-		const char *name,
-		size_t name_length,
-		u64 data_size,
-		const refs_node_stream_data *data_reference);
+		void *const context,
+		const char *const name,
+		const size_t name_length,
+		const u64 data_size,
+		const refs_node_stream_data *const data_reference);
 
 static int refsls_node_symlink(
 		void *const context,
@@ -311,8 +296,8 @@ static int refsls_print_dirent(
 		subdir_ctx.prefix[prev_prefix_length + cstr_len] = '\0';
 
 		subdir_visitor.context = &subdir_ctx;
-		subdir_visitor.node_long_entry = refsls_node_long_entry;
 		subdir_visitor.node_short_entry = refsls_node_short_entry;
+		subdir_visitor.node_leaf_entry = refsls_node_leaf_entry;
 		subdir_visitor.node_ea = refsls_node_ea;
 		subdir_visitor.node_stream = refsls_node_stream;
 		subdir_visitor.node_symlink = refsls_node_symlink;
@@ -350,62 +335,6 @@ static int refsls_print_dirent(
 		}
 	}
 out:
-	return err;
-}
-
-static int refsls_node_long_entry(
-		void *const context,
-		const refschar *const file_name,
-		const u16 file_name_length,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 parent_node_object_id,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
-{
-	int err = 0;
-
-	(void) child_entry_offset;
-	(void) node_number;
-	(void) parent_node_object_id;
-	(void) create_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) allocated_size;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
-
-	err = refsls_print_dirent(
-		/* void *context */
-		context,
-		/* sys_bool is_directory */
-		SYS_FALSE,
-		/* const refschar *name */
-		file_name,
-		/* size_t name_len */
-		file_name_length,
-		/* u32 file_flags */
-		file_flags,
-		/* u64 last_access_time */
-		last_access_time,
-		/* u64 file_size */
-		file_size,
-		/* u64 directory_object_id */
-		0,
-		/* u64 hard_link_target_id */
-		0);
-
 	return err;
 }
 
@@ -467,59 +396,44 @@ static int refsls_node_short_entry(
 	return err;
 }
 
-static int refsls_node_hardlink_entry(
+static int refsls_node_leaf_entry(
 		void *const context,
-		const u64 hard_link_id,
-		const u64 parent_id,
-		const u64 link_count,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
+		const refs_node_fstree_leaf_data *const data)
 {
 	int err = 0;
 
-	(void) link_count;
-	(void) child_entry_offset;
-	(void) node_number;
-	(void) create_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) allocated_size;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
+	if(data->type == REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_TREE_ROOT) {
+		/* Ignore tree root. This is a shallow listing that trusts the
+		 * attributes in the reference instead of querying the tree root
+		 * of the directory being referenced. */
+		goto out;
+	}
 
 	err = refsls_print_dirent(
 		/* void *const context */
 		context,
 		/* sys_bool is_directory */
-		(file_flags & 0x10000000) ? SYS_TRUE : SYS_FALSE,
+		(data->type == REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_TREE_ROOT) ?
+			SYS_TRUE : SYS_FALSE,
 		/* const refschar *name */
-		NULL,
+		(data->type == REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_REGULAR) ?
+			data->type_data.regular.file_name : NULL,
 		/* size_t name_len */
-		0,
+		(data->type == REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_REGULAR) ?
+			data->type_data.regular.file_name_length : 0,
 		/* u32 file_flags */
-		file_flags,
+		data->file_flags,
 		/* u64 last_access_time */
-		last_access_time,
+		data->last_access_time,
 		/* u64 file_size */
-		file_size,
+		data->file_size,
 		/* u64 directory_object_id */
-		parent_id,
+		(data->type == REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_HARD_LINK) ?
+			data->type_data.hard_link.hard_link_parent_node_id : 0,
 		/* u64 hard_link_target_id */
-		hard_link_id);
-
+		(data->type == REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_HARD_LINK) ?
+			data->type_data.hard_link.hard_link_id : 0);
+out:
 	return err;
 }
 
@@ -790,9 +704,8 @@ int main(int argc, char **argv)
 	context.show_eas = options.show_eas;
 	context.show_streams = options.show_streams;
 	visitor.context = &context;
-	visitor.node_long_entry = refsls_node_long_entry;
 	visitor.node_short_entry = refsls_node_short_entry;
-	visitor.node_hardlink_entry = refsls_node_hardlink_entry;
+	visitor.node_leaf_entry = refsls_node_leaf_entry;
 	visitor.node_ea = refsls_node_ea;
 	visitor.node_stream = refsls_node_stream;
 	visitor.node_symlink = refsls_node_symlink;

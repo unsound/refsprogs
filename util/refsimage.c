@@ -224,106 +224,6 @@ static int refsimage_node_volume_label_entry(
 	return 0;
 }
 
-static int refsimage_node_root_entry(
-		void *const context,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 parent_node_object_id,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
-{
-	(void) context;
-	(void) child_entry_offset;
-	(void) file_flags;
-	(void) node_number;
-	(void) parent_node_object_id;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) file_size;
-	(void) allocated_size;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
-
-	sys_log_debug("%s entry with child entry offset %" PRIu16 ", file "
-		"flags 0x%" PRIX32 ", node number %" PRIu64 ", parent node "
-		"object ID %" PRIu64 ", create time %" PRIu64 ", last access "
-		"time %" PRIu64 ", last write time %" PRIu64 ", last MFT "
-		"change time %" PRIu64 ", file size %" PRIu64 ", allocated "
-		"size %" PRIu64 "...",
-		"Root", PRAu16(child_entry_offset), PRAX32(file_flags),
-		PRAu64(node_number), PRAu64(parent_node_object_id),
-		PRAu64(create_time), PRAu64(last_access_time),
-		PRAu64(last_write_time), PRAu64(last_mft_change_time),
-		PRAu64(file_size), PRAu64(allocated_size));
-
-	return 0;
-}
-
-static int refsimage_node_long_entry(
-		void *const context,
-		const le16 *const file_name,
-		const u16 file_name_length,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 parent_node_object_id,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
-{
-	(void) context;
-	(void) file_name;
-	(void) file_name_length;
-	(void) child_entry_offset;
-	(void) file_flags;
-	(void) node_number;
-	(void) parent_node_object_id;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) file_size;
-	(void) allocated_size;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
-
-	sys_log_debug("%s entry with child entry offset %" PRIu16 ", file "
-		"flags 0x%" PRIX32 ", node number %" PRIu64 ", parent node "
-		"object ID %" PRIu64 ", create time %" PRIu64 ", last access "
-		"time %" PRIu64 ", last write time %" PRIu64 ", last MFT "
-		"change time %" PRIu64 ", file size %" PRIu64 ", allocated "
-		"size %" PRIu64 "...",
-		"Long", PRAu16(child_entry_offset), PRAX32(file_flags),
-		PRAu64(node_number), PRAu64(parent_node_object_id),
-		PRAu64(create_time), PRAu64(last_access_time),
-		PRAu64(last_write_time), PRAu64(last_mft_change_time),
-		PRAu64(file_size), PRAu64(allocated_size));
-
-	return 0;
-}
-
 static int refsimage_node_short_entry(
 		void *const context,
 		const le16 *const file_name,
@@ -380,42 +280,31 @@ static int refsimage_node_short_entry(
 	return 0;
 }
 
-static int refsimage_node_hardlink_entry(
+static int refsimage_node_leaf_entry(
 		void *const context,
-		const u64 hard_link_id,
-		const u64 parent_id,
-		const u64 link_count,
-		const u16 child_entry_offset,
-		const u32 file_flags,
-		const u64 node_number,
-		const u64 create_time,
-		const u64 last_access_time,
-		const u64 last_write_time,
-		const u64 last_mft_change_time,
-		const u64 file_size,
-		const u64 allocated_size,
-		const u8 *const key,
-		const size_t key_size,
-		const u8 *const record,
-		const size_t record_size)
+		const refs_node_fstree_leaf_data *const data)
 {
+	int err = 0;
+	const char *type_name;
+
 	(void) context;
-	(void) hard_link_id;
-	(void) parent_id;
-	(void) link_count;
-	(void) child_entry_offset;
-	(void) file_flags;
-	(void) node_number;
-	(void) create_time;
-	(void) last_access_time;
-	(void) last_write_time;
-	(void) last_mft_change_time;
-	(void) file_size;
-	(void) allocated_size;
-	(void) key;
-	(void) key_size;
-	(void) record;
-	(void) record_size;
+
+	switch(data->type) {
+	case REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_TREE_ROOT:
+		type_name = "Root";
+		break;
+	case REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_REGULAR:
+		type_name = "Regular";
+		break;
+	case REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_HARD_LINK:
+		type_name = "Hard link";
+		break;
+	default:
+		sys_log_critical("Unknown fstree leaf entry type: 0x%X",
+			data->type);
+		err = EIO;
+		goto out;
+	}
 
 	sys_log_debug("%s entry with child entry offset %" PRIu16 ", file "
 		"flags 0x%" PRIX32 ", node number %" PRIu64 ", parent node "
@@ -423,13 +312,19 @@ static int refsimage_node_hardlink_entry(
 		"time %" PRIu64 ", last write time %" PRIu64 ", last MFT "
 		"change time %" PRIu64 ", file size %" PRIu64 ", allocated "
 		"size %" PRIu64 "...",
-		"Hard link", PRAu16(child_entry_offset), PRAX32(file_flags),
-		PRAu64(node_number), PRAu64(parent_id),
-		PRAu64(create_time), PRAu64(last_access_time),
-		PRAu64(last_write_time), PRAu64(last_mft_change_time),
-		PRAu64(file_size), PRAu64(allocated_size));
-
-	return 0;
+		type_name,
+		PRAu16(data->child_entry_offset),
+		PRAX32(data->file_flags),
+		PRAu64(data->node_number),
+		PRAu64(data->parent_node_object_id),
+		PRAu64(data->create_time),
+		PRAu64(data->last_access_time),
+		PRAu64(data->last_write_time),
+		PRAu64(data->last_mft_change_time),
+		PRAu64(data->file_size),
+		PRAu64(data->allocated_size));
+out:
+	return err;
 }
 
 static int refsimage_node_file_extent(
@@ -1424,10 +1319,8 @@ int main(int argc, char **argv)
 	visitor.node_allocation_entry = refsimage_node_allocation_entry;
 	visitor.node_regular_entry = refsimage_node_regular_entry;
 	visitor.node_volume_label_entry = refsimage_node_volume_label_entry;
-	visitor.node_root_entry = refsimage_node_root_entry;
-	visitor.node_long_entry = refsimage_node_long_entry;
 	visitor.node_short_entry = refsimage_node_short_entry;
-	visitor.node_hardlink_entry = refsimage_node_hardlink_entry;
+	visitor.node_leaf_entry = refsimage_node_leaf_entry;
 	visitor.node_file_extent = refsimage_node_file_extent;
 	visitor.node_file_data = refsimage_node_file_data;
 	visitor.node_ea = refsimage_node_ea;

@@ -7461,9 +7461,8 @@ static int refs_node_parse_extent_tree(
 		for(i = 0; block_queue.queue; ++i) {
 			u64 *const logical_block_numbers =
 				block_queue.queue->block_numbers;
-			refs_node_block_queue_element *const next_element =
-				block_queue.queue->next;
 			u64 physical_block_numbers[4] = { 0, 0, 0, 0 };
+			refs_node_block_queue_element *next_element;
 
 			physical_block_numbers[0] =
 				refs_node_crawl_context_logical_to_physical_block(
@@ -7572,6 +7571,7 @@ static int refs_node_parse_extent_tree(
 				break;
 			}
 
+			next_element = block_queue.queue->next;
 			sys_free(sizeof(*block_queue.queue),
 				&block_queue.queue);
 			block_queue.queue = next_element;
@@ -9598,126 +9598,55 @@ int refs_node_parse_level3_long_value(
 	sys_log_debug("Long value for key type 0x%" PRIX16 ".",
 		PRAX16(key_type));
 
-	if(!visitor);
-	else if(key_type == 0x0010U && visitor->node_root_entry) {
-		err = visitor->node_root_entry(
-			/* void *context */
-			visitor->context,
-			/* u16 child_entry_offset */
-			entry_offset,
-			/* u32 file_flags */
-			file_flags,
-			/* u64 node_number */
-			node_number,
-			/* u64 parent_node_object_id */
-			parent_node_object_id,
-			/* u64 create_time */
-			creation_time,
-			/* u64 last_access_time */
-			last_access_time,
-			/* u64 last_write_time */
-			last_data_modification_time,
-			/* u64 last_mft_change_time */
-			last_mft_modification_time,
-			/* u64 file_size */
-			file_size,
-			/* u64 allocated_size */
-			allocated_size,
-			/* const u8 *key */
-			key,
-			/* size_t key_size */
-			key_size,
-			/* const u8 *record */
-			value,
-			/* size_t record_size */
-			value_size);
-		if(err) {
-			goto out;
-		}
-	}
-	else if(key_type == 0x0030U && visitor->node_long_entry) {
-		err = visitor->node_long_entry(
-			/* void *context */
-			visitor->context,
-			/* const refschar *file_name */
-			(const refschar*) &key[4],
-			/* u16 file_name_length */
-			(key_size - 4) / sizeof(refschar),
-			/* u16 child_entry_offset */
-			entry_offset,
-			/* u32 file_flags */
-			file_flags,
-			/* u64 node_number */
-			node_number,
-			/* u64 parent_node_object_id */
-			parent_node_object_id,
-			/* u64 create_time */
-			creation_time,
-			/* u64 last_access_time */
-			last_access_time,
-			/* u64 last_write_time */
-			last_data_modification_time,
-			/* u64 last_mft_change_time */
-			last_mft_modification_time,
-			/* u64 file_size */
-			file_size,
-			/* u64 allocated_size */
-			allocated_size,
-			/* const u8 *key */
-			key,
-			/* size_t key_size */
-			key_size,
-			/* const u8 *record */
-			value,
-			/* size_t record_size */
-			value_size);
-		if(err) {
-			goto out;
-		}
-	}
-	else if(key_type == 0x0040U && key_size >= 24 &&
-		visitor->node_hardlink_entry)
-	{
-		const u64 hard_link_id = read_le64(&key[8]);
-		const u64 parent_id = read_le64(&key[16]);
+	if(visitor && visitor->node_leaf_entry) {
+		refs_node_fstree_leaf_data data;
 
-		err = visitor->node_hardlink_entry(
-			/* void *context */
-			visitor->context,
-			/* u64 hard_link_id */
-			hard_link_id,
-			/* u64 parent_id */
-			parent_id,
-			/* u64 link_count */
-			link_count,
-			/* u16 child_entry_offset */
-			entry_offset,
-			/* u32 file_flags */
-			file_flags,
-			/* u64 node_number */
-			node_number,
-			/* u64 create_time */
-			creation_time,
-			/* u64 last_access_time */
-			last_access_time,
-			/* u64 last_write_time */
-			last_data_modification_time,
-			/* u64 last_mft_change_time */
-			last_mft_modification_time,
-			/* u64 file_size */
-			file_size,
-			/* u64 allocated_size */
-			allocated_size,
-			/* const u8 *key */
-			key,
-			/* size_t key_size */
-			key_size,
-			/* const u8 *record */
-			value,
-			/* size_t record_size */
-			value_size);
-		if(err) {
-			goto out;
+		memset(&data, 0, sizeof(data));
+
+		if(key_type == 0x0010U) {
+			data.type = REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_TREE_ROOT;
+		}
+		else if(key_type == 0x0030U) {
+			data.type = REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_REGULAR;
+			data.type_data.regular.file_name =
+				(const refschar*) &key[4];
+			data.type_data.regular.file_name_length =
+				(key_size - 4) / sizeof(refschar);
+
+		}
+		else if(key_type == 0x0040U && key_size >= 24) {
+			data.type = REFS_NODE_FSTREE_LEAF_ENTRY_TYPE_HARD_LINK;
+			data.type_data.hard_link.hard_link_id =
+				read_le64(&key[8]);
+			data.type_data.hard_link.hard_link_parent_node_id =
+				read_le64(&key[16]);
+			data.type_data.hard_link.link_count = link_count;
+		}
+
+		if(data.type) {
+			data.child_entry_offset = entry_offset;
+			data.file_flags = file_flags;
+			data.node_number = node_number;
+			data.parent_node_object_id = parent_node_object_id;
+			data.create_time = creation_time;
+			data.last_access_time = last_access_time;
+			data.last_write_time = last_data_modification_time;
+			data.last_mft_change_time = last_mft_modification_time;
+			data.file_size = file_size;
+			data.allocated_size = allocated_size;
+			data.key = key;
+			data.key_size = key_size;
+			data.record = value;
+			data.record_size = value_size;
+
+			err = visitor->node_leaf_entry(
+				/* void *context */
+				visitor->context,
+				/* refs_node_fstree_leaf_data *data */
+				&data);
+			if(err) {
+				goto out;
+			}
 		}
 	}
 
