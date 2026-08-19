@@ -151,6 +151,8 @@ static int refs_node_parse_generic_block_body(
 			u32 entry_size,
 			void *context),
 		sys_bool (*const should_add_subnode)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
@@ -3382,6 +3384,8 @@ static int refs_node_parse_generic_entry(
 			u32 entry_size,
 			void *context),
 		sys_bool (*const should_add_subnode)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
@@ -3517,6 +3521,10 @@ static int refs_node_parse_generic_entry(
 		add_subnode =
 			(!should_add_subnode ||
 			should_add_subnode(
+				/* refs_node_crawl_context *crawl_context */
+				crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
 				/* sys_bool is_v3 */
 				is_v3,
 				/* const u8 *key */
@@ -3628,6 +3636,8 @@ static int refs_node_parse_generic_block(
 			u32 entry_size,
 			void *context),
 		sys_bool (*const should_add_subnode)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
@@ -3807,6 +3817,8 @@ static int refs_node_parse_generic_block(
 		 *     void *context) */
 		parse_key,
 		/* sys_bool (*should_add_subnode)(
+		 *     refs_node_crawl_context *crawl_context,
+		 *     refs_node_walk_visitor *visitor,
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
@@ -3895,6 +3907,8 @@ static int refs_node_parse_generic_block_body(
 			u32 entry_size,
 			void *context),
 		sys_bool (*const should_add_subnode)(
+			refs_node_crawl_context *crawl_context,
+			refs_node_walk_visitor *visitor,
 			sys_bool is_v3,
 			const u8 *key,
 			u16 key_size,
@@ -4226,6 +4240,8 @@ static int refs_node_parse_generic_block_body(
 				 *      void *context) */
 				parse_key,
 				/* sys_bool (*should_add_subnode)(
+				 *     refs_node_crawl_context *crawl_context,
+				 *     refs_node_walk_visitor *visitor,
 				 *     sys_bool is_v3,
 				 *     const u8 *key,
 				 *     u16 key_size,
@@ -4451,6 +4467,9 @@ static int refs_node_parse_generic_block_body(
 					 *     void *context) */
 					parse_key,
 					/* sys_bool (*should_add_subnode)(
+					 *     refs_node_crawl_context
+					 *         *crawl_context,
+					 *     refs_node_walk_visitor *visitor,
 					 *     sys_bool is_v3,
 					 *     const u8 *key,
 					 *     u16 key_size,
@@ -4586,6 +4605,8 @@ typedef struct {
 } refs_node_level2_0x2_leaf_parse_context;
 
 static sys_bool refs_node_parse_level2_0x2_should_add_subnode(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
 		const sys_bool is_v3,
 		const u8 *const key,
 		const u16 key_size,
@@ -4598,6 +4619,8 @@ static sys_bool refs_node_parse_level2_0x2_should_add_subnode(
 
 	sys_bool res = SYS_TRUE;
 
+	(void) crawl_context;
+	(void) visitor;
 	(void) is_v3;
 
 	if(!context || !context->is_mapping) {
@@ -6208,6 +6231,8 @@ static int refs_node_parse_level2_block(
 		 *     void *context) */
 		refs_node_parse_level2_key,
 		/* sys_bool (*should_add_subnode)(
+		 *     refs_node_crawl_context *crawl_context,
+		 *     refs_node_walk_visitor *visitor,
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
@@ -7463,6 +7488,8 @@ static int refs_node_parse_extent_tree(
 		 *     void *context) */
 		refs_node_parse_unknown_key,
 		/* sys_bool (*should_add_subnode)(
+		 *     refs_node_crawl_context *crawl_context,
+		 *     refs_node_walk_visitor *visitor,
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
@@ -7583,13 +7610,18 @@ static int refs_node_parse_extent_tree(
 				 *     void *context) */
 				refs_node_parse_extent_key,
 				/* sys_bool (*should_add_subnode)(
+				 *     refs_node_crawl_context *crawl_context,
+				 *     refs_node_walk_visitor *visitor,
 				 *     sys_bool is_v3,
 				 *     const u8 *key,
 				 *     u16 key_size,
 				 *     u32 entry_index,
 				 *     u32 num_entries,
 				 *     void *context) */
-				NULL,
+				(visitor &&
+					visitor->should_add_extent_subnode) ?
+					visitor->should_add_extent_subnode :
+					NULL,
 				/* int (*parse_leaf_value)(
 				 *     refs_node_crawl_context *crawl_context,
 				 *     refs_node_walk_visitor *visitor,
@@ -8953,6 +8985,8 @@ static int refs_node_parse_non_resident_attribute_list_value(
 			 *     void *context) */
 			refs_node_parse_attribute_key,
 			/* sys_bool (*should_add_subnode)(
+			 *     refs_node_crawl_context *crawl_context,
+			 *     refs_node_walk_visitor *visitor,
 			 *     sys_bool is_v3,
 			 *     const u8 *key,
 			 *     u16 key_size,
@@ -11059,6 +11093,8 @@ static int refs_node_parse_level3_block(
 		 *     void *context) */
 		refs_node_parse_level3_key,
 		/* sys_bool (*should_add_subnode)(
+		 *     refs_node_crawl_context *crawl_context,
+		 *     refs_node_walk_visitor *visitor,
 		 *     sys_bool is_v3,
 		 *     const u8 *key,
 		 *     u16 key_size,
@@ -11684,6 +11720,8 @@ static int refs_node_crawl_volume_metadata(
 				 *     void *context) */
 				NULL,
 				/* sys_bool (*should_add_subnode)(
+				 *     refs_node_crawl_context *crawl_context,
+				 *     refs_node_walk_visitor *visitor,
 				 *     sys_bool is_v3,
 				 *     const u8 *key,
 				 *     u16 key_size,

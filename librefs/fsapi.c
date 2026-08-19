@@ -3950,9 +3950,9 @@ static int fsapi_node_read_visit_file_extent(
 	else if(extent_logical_start + extent_size <= context->start_offset) {
 		sys_log_debug("Skipping extent that precedes the start offset "
 			"of the read: %" PRIu64 " <= %" PRIu64,
-			PRAu64(context->cur_offset + extent_size),
+			PRAu64(extent_logical_start + extent_size),
 			PRAu64(context->start_offset));
-		context->cur_offset += extent_size;
+		context->cur_offset = extent_logical_start + extent_size;
 		goto out;
 	}
 	else if(extent_logical_start > context->cur_offset) {
@@ -4069,6 +4069,46 @@ out:
 	return err;
 }
 
+static sys_bool fsapi_node_read_should_add_extent_subnode(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u32 entry_index,
+		const u32 num_entries,
+		void *const _context)
+{
+	fsapi_node_read_context *const context =
+		(fsapi_node_read_context*) visitor->context;
+
+	sys_bool should_add_subnode = SYS_TRUE;
+
+	(void) is_v3;
+	(void) _context;
+
+	if(key_size >= 8) {
+		const u64 last_cluster_in_subnode = read_le64(&key[0]);
+
+		if(context->start_offset / crawl_context->block_index_unit >
+			last_cluster_in_subnode &&
+			/* Always add the last node as its last block may be
+			 * lazily updated. */
+			entry_index != num_entries - 1)
+		{
+			sys_log_debug("Skipping descent into extent subnode "
+				"preceding requested offset. Start cluster: "
+				"%" PRIu64 " Last cluster in subnode: %" PRIu64,
+				PRAu64(context->start_offset /
+				crawl_context->block_index_unit),
+				PRAu64(last_cluster_in_subnode));
+			should_add_subnode = SYS_FALSE;
+		}
+	}
+
+	return should_add_subnode;
+}
+
 int fsapi_node_read(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -4107,6 +4147,8 @@ int fsapi_node_read(
 	visitor.node_leaf_entry = fsapi_node_read_visit_leaf_entry;
 	visitor.node_file_extent = fsapi_node_read_visit_file_extent;
 	visitor.node_file_data = fsapi_node_read_visit_file_data;
+	visitor.should_add_extent_subnode =
+		fsapi_node_read_should_add_extent_subnode;
 
 	do {
 		context.bytes_read_in_iteration = 0;
