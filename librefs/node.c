@@ -7272,6 +7272,56 @@ out:
 	return err;
 }
 
+static int refs_node_parse_extent_key(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const char *const prefix,
+		const size_t indent,
+		const u64 object_id,
+		const sys_bool is_v3,
+		const sys_bool is_index,
+		const u8 *const key,
+		const u16 key_offset,
+		const u16 key_size,
+		const u32 entry_size,
+		void *const context)
+{
+	refs_node_print_visitor *const print_visitor =
+		visitor ? &visitor->print_visitor : NULL;
+
+	int err = 0;
+	u16 i = 0;
+
+	(void) crawl_context;
+	(void) object_id;
+	(void) is_v3;
+	(void) is_index;
+	(void) entry_size;
+	(void) context;
+
+	emit(prefix, indent - 1, "Key (%s) @ %" PRIu16 " / 0x%" PRIX16 ":",
+		"extent", PRAu16(key_offset), PRAX16(key_offset));
+
+	if(key_size < 8) {
+		goto out;
+	}
+
+	i += print_le64_dechex("Last logical block in node", prefix, indent,
+		key, &key[0]);
+
+	if(key_size < 16) {
+		goto out;
+	}
+
+	i += print_unknown64(prefix, indent, key, &key[8]);
+out:
+	if(i < key_size) {
+		print_data(prefix, indent, &key[i], key_size - i);
+	}
+
+	return err;
+}
+
 static int refs_node_parse_extent_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -7531,7 +7581,7 @@ static int refs_node_parse_extent_tree(
 				 *     u16 key_size,
 				 *     u32 entry_size,
 				 *     void *context) */
-				NULL,
+				refs_node_parse_extent_key,
 				/* sys_bool (*should_add_subnode)(
 				 *     sys_bool is_v3,
 				 *     const u8 *key,
