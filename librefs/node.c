@@ -1501,15 +1501,15 @@ static void refs_node_print_file_flags(
 	}
 }
 
-static u32 refs_node_parse_superblock_level1_block_list(
+static u32 refs_node_parse_superblock_checkpoint_block_list(
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u8 *const block,
-		u32 level_1_blocks_offset,
-		u32 level_1_blocks_count,
-		u64 *out_primary_level1_block,
-		u64 *out_secondary_level1_block)
+		const u32 checkpoint_block_list_offset,
+		const u32 checkpoint_blocks_count,
+		u64 *const out_primary_checkpoint_block_number,
+		u64 *const out_secondary_checkpoint_block_number)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
@@ -1517,22 +1517,22 @@ static u32 refs_node_parse_superblock_level1_block_list(
 	u32 i;
 	u32 ret;
 
-	emit(prefix, indent, "Level 1 blocks (%" PRIu32 " bytes @ %" PRIu32 " "
-		"/ 0x%" PRIX32 "):",
-		PRAu32(level_1_blocks_count * 8),
-		PRAu32(level_1_blocks_offset),
-		PRAX32(level_1_blocks_offset));
-	for(i = 0; i < level_1_blocks_count; ++i) {
+	emit(prefix, indent, "Checkpoint blocks (%" PRIu32 " bytes @ "
+		"%" PRIu32 " / 0x%" PRIX32 "):",
+		PRAu32(checkpoint_blocks_count * 8),
+		PRAu32(checkpoint_block_list_offset),
+		PRAX32(checkpoint_block_list_offset));
+	for(i = 0; i < checkpoint_blocks_count; ++i) {
 		const u64 block_number =
-			read_le64(&block[level_1_blocks_offset + i * 8]);
+			read_le64(&block[checkpoint_block_list_offset + i * 8]);
 		emit(prefix, indent + 1, "[%" PRIu32 "] %" PRIu64,
 			PRAu32(i),
 			PRAu64(block_number));
 		if(i == 0) {
-			*out_primary_level1_block = block_number;
+			*out_primary_checkpoint_block_number = block_number;
 		}
 		else if(i == 1) {
-			*out_secondary_level1_block = block_number;
+			*out_secondary_checkpoint_block_number = block_number;
 		}
 	}
 
@@ -2034,7 +2034,7 @@ static int refs_node_parse_block_header(
 	}
 
 	if(level == 1) {
-		emit(prefix, indent, "%s level 1 block (physical block "
+		emit(prefix, indent, "%s checkpoint block (physical block "
 			"%" PRIu64 " / 0x%" PRIX64 "):",
 			(block_queue_index == 0) ? "Primary" : "Secondary",
 			PRAu64(block_number), PRAX64(block_number));
@@ -2155,9 +2155,9 @@ static int refs_node_parse_superblock_v1(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const u8 *const block,
-		size_t block_size,
-		u64 *out_primary_level1_block,
-		u64 *out_secondary_level1_block)
+		const size_t block_size,
+		u64 *const out_primary_checkpoint_block_number,
+		u64 *const out_secondary_checkpoint_block_number)
 {
 	static const char *const prefix = "\t";
 	static const size_t indent = 0;
@@ -2168,8 +2168,8 @@ static int refs_node_parse_superblock_v1(
 		(const REFS_V1_SUPERBLOCK_HEADER*) block;
 
 	int err = 0;
-	u32 level_1_block_list_offset = 0;
-	u32 level_1_block_list_count = 0;
+	u32 checkpoint_block_list_offset = 0;
+	u32 checkpoint_blocks_count = 0;
 	u32 self_reference_offset = 0;
 	u32 self_reference_size = 0;
 	size_t i = 0;
@@ -2187,12 +2187,13 @@ static int refs_node_parse_superblock_v1(
 		PRAGUID(header->block_guid));
 	print_unknown64(prefix, indent, block, &header->reserved64);
 	print_unknown64(prefix, indent, block, &header->reserved72);
-	level_1_block_list_offset = le32_to_cpu(header->level1_blocks_offset);
-	print_le32_dec("Offset of level 1 block list", prefix, indent,
-		header, &header->level1_blocks_offset);
-	level_1_block_list_count = le32_to_cpu(header->level1_blocks_count);
-	print_le32_dec("Number of level 1 block list", prefix, indent,
-		header, &header->level1_blocks_count);
+	checkpoint_block_list_offset =
+		le32_to_cpu(header->checkpoint_block_list_offset);
+	print_le32_dec("Offset of checkpoint block list", prefix, indent,
+		header, &header->checkpoint_block_list_offset);
+	checkpoint_blocks_count = le32_to_cpu(header->checkpoint_blocks_count);
+	print_le32_dec("Number of checkpoint blocks", prefix, indent,
+		header, &header->checkpoint_blocks_count);
 	self_reference_offset = le32_to_cpu(header->self_extents_offset);
 	print_le32_dec("Offset of self reference", prefix, indent, header,
 		&header->self_extents_offset);
@@ -2200,10 +2201,9 @@ static int refs_node_parse_superblock_v1(
 	print_le32_dec("Size of self reference", prefix, indent, header,
 		&header->self_extents_size);
 
-	if(sys_min(level_1_block_list_offset, self_reference_offset) > 96)
-	{
+	if(sys_min(checkpoint_block_list_offset, self_reference_offset) > 96) {
 		print_data_with_base(prefix, indent, 96, block_size, &block[96],
-			sys_min(level_1_block_list_offset,
+			sys_min(checkpoint_block_list_offset,
 			self_reference_offset) - 96);
 	}
 
@@ -2212,9 +2212,9 @@ static int refs_node_parse_superblock_v1(
 	 * of a fragmented superblock, but we have not seen those yet so we
 	 * don't quite know what to expect. */
 
-	if(level_1_block_list_offset < self_reference_offset) {
-		i = level_1_block_list_offset;
-		i += refs_node_parse_superblock_level1_block_list(
+	if(checkpoint_block_list_offset < self_reference_offset) {
+		i = checkpoint_block_list_offset;
+		i += refs_node_parse_superblock_checkpoint_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2223,14 +2223,14 @@ static int refs_node_parse_superblock_v1(
 			indent,
 			/* const u8 *const block */
 			block,
-			/* u32 level_1_blocks_offset */
-			level_1_block_list_offset,
-			/* u32 level_1_blocks_count */
-			level_1_block_list_count,
-			/* u64 *out_primary_level1_block */
-			out_primary_level1_block,
-			/* u64 *out_secondary_level1_block */
-			out_secondary_level1_block);
+			/* u32 checkpoint_block_list_offset */
+			checkpoint_block_list_offset,
+			/* u32 checkpoint_blocks_count */
+			checkpoint_blocks_count,
+			/* u64 *out_primary_checkpoint_block_number */
+			out_primary_checkpoint_block_number,
+			/* u64 *out_secondary_checkpoint_block_number */
+			out_secondary_checkpoint_block_number);
 	}
 	else {
 		u32 total_size = 0;
@@ -2268,14 +2268,13 @@ static int refs_node_parse_superblock_v1(
 		i += total_size;
 	}
 
-	if(sys_max(level_1_block_list_offset, self_reference_offset) > i)
-	{
+	if(sys_max(checkpoint_block_list_offset, self_reference_offset) > i) {
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
-			sys_min(level_1_block_list_offset,
+			sys_min(checkpoint_block_list_offset,
 			self_reference_offset) - i);
 	}
 
-	if(level_1_block_list_offset < self_reference_offset) {
+	if(checkpoint_block_list_offset < self_reference_offset) {
 		u32 total_size = 0;
 
 		i = self_reference_offset;
@@ -2311,8 +2310,8 @@ static int refs_node_parse_superblock_v1(
 		i += total_size;
 	}
 	else {
-		i = level_1_block_list_offset;
-		i += refs_node_parse_superblock_level1_block_list(
+		i = checkpoint_block_list_offset;
+		i += refs_node_parse_superblock_checkpoint_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2321,14 +2320,14 @@ static int refs_node_parse_superblock_v1(
 			indent,
 			/* const u8 *const block */
 			block,
-			/* u32 level_1_blocks_offset */
-			level_1_block_list_offset,
-			/* u32 level_1_blocks_count */
-			level_1_block_list_count,
-			/* u64 *out_primary_level1_block */
-			out_primary_level1_block,
-			/* u64 *out_secondary_level1_block */
-			out_secondary_level1_block);
+			/* u32 checkpoint_block_list_offset */
+			checkpoint_block_list_offset,
+			/* u32 checkpoint_blocks_count */
+			checkpoint_blocks_count,
+			/* u64 *out_primary_checkpoint_block_number */
+			out_primary_checkpoint_block_number,
+			/* u64 *out_secondary_checkpoint_block_number */
+			out_secondary_checkpoint_block_number);
 	}
 
 	if(i < block_size) {
@@ -2344,8 +2343,8 @@ static int refs_node_parse_superblock_v3(
 		refs_node_walk_visitor *const visitor,
 		const u8 *const block,
 		const size_t block_size,
-		u64 *const out_primary_level1_block,
-		u64 *const out_secondary_level1_block)
+		u64 *const out_primary_checkpoint_block_number,
+		u64 *const out_secondary_checkpoint_block_number)
 {
 	static const char *const prefix = "\t";
 	static size_t indent = 0;
@@ -2354,8 +2353,8 @@ static int refs_node_parse_superblock_v3(
 		visitor ? &visitor->print_visitor : NULL;
 
 	int err = 0;
-	u32 level_1_block_list_offset = 0;
-	u32 level_1_block_list_count = 0;
+	u32 checkpoint_block_list_offset = 0;
+	u32 checkpoint_block_list_count = 0;
 	u32 self_reference_offset = 0;
 	u32 self_reference_size = 0;
 	u32 i = 0;
@@ -2395,12 +2394,12 @@ static int refs_node_parse_superblock_v3(
 	i += print_unknown64(prefix, indent, sb, &sb->reserved96);
 	i += print_unknown64(prefix, indent, sb, &sb->reserved104);
 
-	level_1_block_list_offset = le32_to_cpu(sb->reserved112);
-	i += print_le32_dec("Offset of level 1 block list", prefix, indent, sb,
-		&sb->reserved112);
+	checkpoint_block_list_offset = le32_to_cpu(sb->reserved112);
+	i += print_le32_dec("Offset of checkpoint block list", prefix, indent,
+		sb, &sb->reserved112);
 
-	level_1_block_list_count = le32_to_cpu(sb->reserved116);
-	i += print_le32_dec("Number of level 1 blocks", prefix, indent, sb,
+	checkpoint_block_list_count = le32_to_cpu(sb->reserved116);
+	i += print_le32_dec("Number of checkpoint blocks", prefix, indent, sb,
 		&sb->reserved116);
 
 	self_reference_offset = le32_to_cpu(sb->reserved120);
@@ -2411,11 +2410,11 @@ static int refs_node_parse_superblock_v3(
 	i += print_le32_dec("Size of self reference", prefix, indent, sb,
 		&sb->reserved124);
 
-	if(sys_min(level_1_block_list_offset, self_reference_offset) > i) {
+	if(sys_min(checkpoint_block_list_offset, self_reference_offset) > i) {
 		print_data_with_base(prefix, indent, i, block_size,
 			&block[i],
-			sys_min(level_1_block_list_offset, self_reference_offset) -
-			i);
+			sys_min(checkpoint_block_list_offset,
+			self_reference_offset) - i);
 	}
 
 	/* TODO: Validate contents past first self reference element based on
@@ -2423,9 +2422,9 @@ static int refs_node_parse_superblock_v3(
 	 * of a fragmented superblock, but we have not seen those yet so we
 	 * don't quite know what to expect. */
 
-	if(level_1_block_list_offset < self_reference_offset) {
-		i = level_1_block_list_offset;
-		i += refs_node_parse_superblock_level1_block_list(
+	if(checkpoint_block_list_offset < self_reference_offset) {
+		i = checkpoint_block_list_offset;
+		i += refs_node_parse_superblock_checkpoint_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2434,14 +2433,14 @@ static int refs_node_parse_superblock_v3(
 			indent,
 			/* const u8 *block */
 			block,
-			/* u32 level_1_blocks_offset */
-			level_1_block_list_offset,
-			/* u32 level_1_blocks_count */
-			level_1_block_list_count,
-			/* u64 *out_primary_level1_block */
-			out_primary_level1_block,
-			/* u64 *out_secondary_level1_block */
-			out_secondary_level1_block);
+			/* u32 checkpoint_block_list_offset */
+			checkpoint_block_list_offset,
+			/* u32 checkpoint_blocks_count */
+			checkpoint_block_list_count,
+			/* u64 *out_primary_checkpoint_block_number */
+			out_primary_checkpoint_block_number,
+			/* u64 *out_secondary_checkpoint_block_number */
+			out_secondary_checkpoint_block_number);
 	}
 	else {
 		u32 total_size = 0;
@@ -2479,13 +2478,13 @@ static int refs_node_parse_superblock_v3(
 		i += total_size;
 	}
 
-	if(sys_max(level_1_block_list_offset, self_reference_offset) > i) {
+	if(sys_max(checkpoint_block_list_offset, self_reference_offset) > i) {
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
-			sys_min(level_1_block_list_offset, self_reference_offset) -
-			i);
+			sys_min(checkpoint_block_list_offset,
+			self_reference_offset) - i);
 	}
 
-	if(level_1_block_list_offset < self_reference_offset) {
+	if(checkpoint_block_list_offset < self_reference_offset) {
 		u32 total_size = 0;
 
 		i = self_reference_offset;
@@ -2521,8 +2520,8 @@ static int refs_node_parse_superblock_v3(
 		i += total_size;
 	}
 	else {
-		i = level_1_block_list_offset;
-		i += refs_node_parse_superblock_level1_block_list(
+		i = checkpoint_block_list_offset;
+		i += refs_node_parse_superblock_checkpoint_block_list(
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* const char *prefix */
@@ -2531,14 +2530,14 @@ static int refs_node_parse_superblock_v3(
 			indent,
 			/* const u8 *const block */
 			block,
-			/* u32 level_1_blocks_offset */
-			level_1_block_list_offset,
-			/* u32 level_1_blocks_count */
-			level_1_block_list_count,
-			/* u64 *out_primary_level1_block */
-			out_primary_level1_block,
-			/* u64 *out_secondary_level1_block */
-			out_secondary_level1_block);
+			/* u32 checkpoint_block_list_offset */
+			checkpoint_block_list_offset,
+			/* u32 checkpoint_blocks_count */
+			checkpoint_block_list_count,
+			/* u64 *out_primary_checkpoint_block_number */
+			out_primary_checkpoint_block_number,
+			/* u64 *out_secondary_checkpoint_block_number */
+			out_secondary_checkpoint_block_number);
 	}
 
 	if(i < block_size) {
@@ -2549,7 +2548,7 @@ out:
 	return err;
 }
 
-static int refs_node_parse_level1_block_level2_node_reference_list(
+static int refs_node_parse_checkpoint_block_level2_node_reference_list(
 		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
@@ -2646,7 +2645,7 @@ out:
 	return err;
 }
 
-static int refs_node_parse_level1_block(
+static int refs_node_parse_checkpoint_block(
 		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
 		const u64 cluster_number,
@@ -2739,7 +2738,7 @@ static int refs_node_parse_level1_block(
 		i += 0x18;
 	}
 
-	err = refs_node_parse_level1_block_level2_node_reference_list(
+	err = refs_node_parse_checkpoint_block_level2_node_reference_list(
 		/* refs_node_crawl_context *context */
 		context,
 		/* refs_node_walk_visitor *visitor */
@@ -2777,7 +2776,7 @@ static int refs_node_parse_level1_block(
 
 	/* TODO: Validate contents past first self reference element based on
 	 * prior observations and fail if it deviates. This may be a description
-	 * of a fragmented level 1 node, but we have not seen those yet so we
+	 * of a fragmented checkpoint node, but we have not seen those yet so we
 	 * don't quite know what to expect. */
 	if(self_reference_offset >= block_size) {
 		sys_log_warning("Self reference offset exceeds block size: "
@@ -11066,8 +11065,8 @@ static int refs_node_crawl_volume_metadata(
 		sys_device *const dev,
 		const REFS_BOOT_SECTOR *const bs,
 		REFS_SUPERBLOCK_HEADER **const sb,
-		REFS_LEVEL1_NODE **const primary_level1_node,
-		REFS_LEVEL1_NODE **const secondary_level1_node,
+		REFS_CHECKPOINT_BLOCK **const primary_checkpoint_block,
+		REFS_CHECKPOINT_BLOCK **const secondary_checkpoint_block,
 		refs_block_map **const block_map,
 		refs_node_cache **const node_cachep,
 		const u64 *const start_node,
@@ -11091,8 +11090,8 @@ static int refs_node_crawl_volume_metadata(
 	size_t block_allocated_size = 0;
 	u8 *block = NULL;
 	refs_block_map *mappings = NULL;
-	u64 primary_level1_block = 0;
-	u64 secondary_level1_block = 0;
+	u64 primary_checkpoint_block_number = 0;
+	u64 secondary_checkpoint_block_number = 0;
 	u64 real_start_node = start_node ? *start_node : 0;
 	refs_node_block_queue_element *primary_level2_blocks = NULL;
 	size_t primary_level2_blocks_count = 0;
@@ -11257,10 +11256,10 @@ static int refs_node_crawl_volume_metadata(
 			(sb && *sb) ? (const u8*) *sb : block,
 			/* size_t block_size */
 			block_index_unit,
-			/* u64 *out_primary_level1_block */
-			&primary_level1_block,
-			/* u64 *out_secondary_level1_block */
-			&secondary_level1_block);
+			/* u64 *out_primary_checkpoint_block_number */
+			&primary_checkpoint_block_number,
+			/* u64 *out_secondary_checkpoint_block_number */
+			&secondary_checkpoint_block_number);
 	}
 	else {
 		err = refs_node_parse_superblock_v3(
@@ -11272,29 +11271,31 @@ static int refs_node_crawl_volume_metadata(
 			(sb && *sb) ? (const u8*) *sb : block,
 			/* size_t block_size */
 			block_index_unit,
-			/* u64 *out_primary_level1_block */
-			&primary_level1_block,
-			/* u64 *out_secondary_level1_block */
-			&secondary_level1_block);
+			/* u64 *out_primary_checkpoint_block_number */
+			&primary_checkpoint_block_number,
+			/* u64 *out_secondary_checkpoint_block_number */
+			&secondary_checkpoint_block_number);
 	}
 	if(err) {
 		sys_log_perror(err, "Error while parsing superblock");
 		goto out;
 	}
 
-	if(!primary_level1_block || !secondary_level1_block) {
-		sys_log_error("Level 1 block references are invalid.");
+	if(!primary_checkpoint_block_number ||
+		!secondary_checkpoint_block_number)
+	{
+		sys_log_error("Checkpoint block references are invalid.");
 		err = EIO;
 		goto out;
 	}
 
-	if(primary_level1_block) {
-		if(!(primary_level1_node && *primary_level1_node)) {
+	if(primary_checkpoint_block_number) {
+		if(!(primary_checkpoint_block && *primary_checkpoint_block)) {
 			u64 logical_block_numbers[4] = {
-				primary_level1_block,
-				primary_level1_block + 1,
-				primary_level1_block + 2,
-				primary_level1_block + 3
+				primary_checkpoint_block_number,
+				primary_checkpoint_block_number + 1,
+				primary_checkpoint_block_number + 2,
+				primary_checkpoint_block_number + 3
 			};
 			u64 physical_block_numbers[4] = {
 				logical_block_numbers[0], 
@@ -11318,7 +11319,7 @@ static int refs_node_crawl_volume_metadata(
 				goto out;
 			}
 
-			if(primary_level1_node) {
+			if(primary_checkpoint_block) {
 				u8 *new_block = NULL;
 
 				err = sys_malloc(block_allocated_size,
@@ -11327,26 +11328,27 @@ static int refs_node_crawl_volume_metadata(
 					goto out;
 				}
 
-				*primary_level1_node =
-					(REFS_LEVEL1_NODE*) block;
+				*primary_checkpoint_block =
+					(REFS_CHECKPOINT_BLOCK*) block;
 				block = new_block;
 			}
 		}
 
-		err = refs_node_parse_level1_block(
+		err = refs_node_parse_checkpoint_block(
 			/* refs_node_crawl_context *context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* u64 block_number */
-			primary_level1_block,
+			primary_checkpoint_block_number,
 			/* u64 cluster_number */
-			primary_level1_block,
+			primary_checkpoint_block_number,
 			/* u64 block_queue_index */
 			0,
 			/* const u8 *block */
-			(primary_level1_node && *primary_level1_node) ?
-			(const u8*) *primary_level1_node : block,
+			(primary_checkpoint_block &&
+			*primary_checkpoint_block) ?
+			(const u8*) *primary_checkpoint_block : block,
 			/* u32 block_size */
 			block_size,
 			/* refs_node_block_queue_element **out_level2_extents */
@@ -11358,13 +11360,14 @@ static int refs_node_crawl_volume_metadata(
 		}
 	}
 
-	if(secondary_level1_block) {
-		if(!(secondary_level1_node && *secondary_level1_node)) {
+	if(secondary_checkpoint_block_number) {
+		if(!(secondary_checkpoint_block && *secondary_checkpoint_block))
+		{
 			u64 logical_block_numbers[4] = {
-				secondary_level1_block,
-				secondary_level1_block + 1,
-				secondary_level1_block + 2,
-				secondary_level1_block + 3
+				secondary_checkpoint_block_number,
+				secondary_checkpoint_block_number + 1,
+				secondary_checkpoint_block_number + 2,
+				secondary_checkpoint_block_number + 3
 			};
 			u64 physical_block_numbers[4] = {
 				logical_block_numbers[0], 
@@ -11388,7 +11391,7 @@ static int refs_node_crawl_volume_metadata(
 				goto out;
 			}
 
-			if(secondary_level1_node) {
+			if(secondary_checkpoint_block) {
 				u8 *new_block = NULL;
 
 				err = sys_malloc(block_allocated_size,
@@ -11397,26 +11400,27 @@ static int refs_node_crawl_volume_metadata(
 					goto out;
 				}
 
-				*secondary_level1_node =
-					(REFS_LEVEL1_NODE*) block;
+				*secondary_checkpoint_block =
+					(REFS_CHECKPOINT_BLOCK*) block;
 				block = new_block;
 			}
 		}
 
-		err = refs_node_parse_level1_block(
+		err = refs_node_parse_checkpoint_block(
 			/* refs_node_crawl_context *context */
 			&crawl_context,
 			/* refs_node_walk_visitor *visitor */
 			visitor,
 			/* u64 cluster_number */
-			primary_level1_block,
+			primary_checkpoint_block_number,
 			/* u64 block_number */
-			secondary_level1_block,
+			secondary_checkpoint_block_number,
 			/* u64 block_queue_index */
 			1,
 			/* const u8 *block */
-			(secondary_level1_node && *secondary_level1_node) ?
-			(const u8*) *secondary_level1_node : block,
+			(secondary_checkpoint_block &&
+			*secondary_checkpoint_block) ?
+			(const u8*) *secondary_checkpoint_block : block,
 			/* u32 block_size */
 			block_size,
 			/* refs_node_block_queue_element **out_level2_extents */
@@ -11439,9 +11443,9 @@ static int refs_node_crawl_volume_metadata(
 	}
 
 	if(primary_level2_blocks_count != secondary_level2_blocks_count) {
-		sys_log_warning("Mismatching level 2 block count in "
-			"level 1 blocks: %" PRIu32 " != %" PRIu32 " "
-			"Proceeding with primary...",
+		sys_log_warning("Mismatching level 2 block count in checkpoint "
+			"blocks: %" PRIu32 " != %" PRIu32 " Proceeding with "
+			"primary...",
 			PRAu32(primary_level2_blocks_count),
 			PRAu32(secondary_level2_blocks_count));
 	}
@@ -11475,11 +11479,13 @@ static int refs_node_crawl_volume_metadata(
 		else if(!mismatch);
 		else if(block_map && *block_map) {
 			sys_log_debug("Mismatching level 2 block data in "
-				"level 1 blocks. Proceeding with primary...");
+				"checkpoint blocks. Proceeding with "
+				"primary...");
 		}
 		else {
 			sys_log_warning("Mismatching level 2 block data in "
-				"level 1 blocks. Proceeding with primary...");
+				"checkpoint blocks. Proceeding with "
+				"primary...");
 		}
 	}
 
@@ -12051,8 +12057,8 @@ int refs_node_walk(
 		sys_device *const dev,
 		const REFS_BOOT_SECTOR *const bs,
 		REFS_SUPERBLOCK_HEADER **const sb,
-		REFS_LEVEL1_NODE **const primary_level1_node,
-		REFS_LEVEL1_NODE **const secondary_level1_node,
+		REFS_CHECKPOINT_BLOCK **const primary_checkpoint_block,
+		REFS_CHECKPOINT_BLOCK **const secondary_checkpoint_block,
 		refs_block_map **const block_map,
 		refs_node_cache **const node_cache,
 		const u64 *const start_node,
@@ -12071,10 +12077,10 @@ int refs_node_walk(
 		bs,
 		/* REFS_SUPERBLOCK_HEADER **sb */
 		sb,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
-		primary_level1_node,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
-		secondary_level1_node,
+		/* REFS_CHECKPOINT_BLOCK **primary_checkpoint_block */
+		primary_checkpoint_block,
+		/* REFS_CHECKPOINT_BLOCK **secondary_checkpoint_block */
+		secondary_checkpoint_block,
 		/* refs_block_map **block_map */
 		block_map,
 		/* refs_node_cache **node_cache */

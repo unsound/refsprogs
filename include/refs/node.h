@@ -302,22 +302,22 @@ u64 refs_node_logical_to_physical_block_number(
  *      the caller is responsible for freeing it.
  *      If there is no target pointer, and the caller is not interested in
  *      caching the superblock then this parameter should be set to @p NULL.
- * @param primary_level1_node
+ * @param primary_checkpoint_block
  *      (in/out) (optional) Pointer to a pointer that if non-@p NULL will be
- *      used as a cached copy of the primary Level 1 node. If the target pointer
- *      is @p NULL, then the primary level 1 node will be read and stored in
- *      this pointer and the caller is responsible for freeing it.
- *      If there is no target pointer, and the caller is not interested in
- *      caching the primary level 1 node then this parameter should be set to
- *      @p NULL.
- * @param secondary_level1_node
- *      (in/out) (optional) Pointer to a pointer that if non-@p NULL will be
- *      used as a cached copy of the secondary Level 1 node. If the target
- *      pointer is @p NULL, then the secondary level 1 node will be read and
+ *      used as a cached copy of the primary checkpoint block. If the target
+ *      pointer is @p NULL, then the primary checkpoint block will be read and
  *      stored in this pointer and the caller is responsible for freeing it.
  *      If there is no target pointer, and the caller is not interested in
- *      caching the secondary level 1 node then this parameter should be set to
- *      @p NULL.
+ *      caching the primary checkpoint block then this parameter should be set
+ *      to @p NULL.
+ * @param secondary_checkpoint_block
+ *      (in/out) (optional) Pointer to a pointer that if non-@p NULL will be
+ *      used as a cached copy of the secondary checkpoint block. If the target
+ *      pointer is @p NULL, then the secondary checkpoint block will be read and
+ *      stored in this pointer and the caller is responsible for freeing it.
+ *      If there is no target pointer, and the caller is not interested in
+ *      caching the secondary checkpoint block then this parameter should be set
+ *      to @p NULL.
  * @param start_node
  *      (in) (optional) A pointer to the start node of the walk. This should be
  *      set to @p NULL if a start node is not specified (the walk will start
@@ -351,8 +351,8 @@ int refs_node_walk(
 		sys_device *dev,
 		const REFS_BOOT_SECTOR *bs,
 		REFS_SUPERBLOCK_HEADER **sb,
-		REFS_LEVEL1_NODE **primary_level1_node,
-		REFS_LEVEL1_NODE **secondary_level1_node,
+		REFS_CHECKPOINT_BLOCK **primary_checkpoint_block,
+		REFS_CHECKPOINT_BLOCK **secondary_checkpoint_block,
 		refs_block_map **block_map,
 		refs_node_cache **node_cache,
 		const u64 *start_node,

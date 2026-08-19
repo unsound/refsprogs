@@ -479,9 +479,9 @@ static int print_node_number_info(
 		vol->bs,
 		/* REFS_SUPERBLOCK **bs */
 		NULL,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
+		/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
 		NULL,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
+		/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
 		NULL,
 		/* refs_block_map **block_map */
 		NULL,
@@ -592,9 +592,9 @@ static int print_object_id_info(
 		vol->bs,
 		/* REFS_SUPERBLOCK **bs */
 		NULL,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
+		/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
 		NULL,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
+		/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
 		NULL,
 		/* refs_block_map **block_map */
 		NULL,

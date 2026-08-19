@@ -638,9 +638,11 @@ static int fsapi_volume_get_attributes_common(
 				vol->vol->bs,
 				/* REFS_SUPERBLOCK_HEADER **sb */
 				NULL,
-				/* REFS_LEVEL1_NODE **primary_level1_node */
+				/* REFS_CHECKSUM_BLOCK
+				 *     **primary_checksum_block */
 				NULL,
-				/* REFS_LEVEL1_NODE **secondary_level1_node */
+				/* REFS_CHECKSUM_BLOCK
+				 *     **secondary_checksum_block */
 				NULL,
 				/* refs_block_map **block_map */
 				&vol->vol->block_map,
@@ -1718,10 +1720,10 @@ static int fsapi_lookup_by_posix_path(
 			vol->vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
 			&vol->vol->sb,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&vol->vol->primary_level1_node,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&vol->vol->secondary_level1_node,
+			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+			&vol->vol->primary_checksum_block,
+			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+			&vol->vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
 			&vol->vol->block_map,
 			/* refs_node_cache **node_cache */
@@ -2077,10 +2079,10 @@ static int fsapi_node_get_attributes_visit_short_entry(
 			context->vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
 			&context->vol->sb,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&context->vol->primary_level1_node,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&context->vol->secondary_level1_node,
+			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+			&context->vol->primary_checksum_block,
+			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+			&context->vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
 			&context->vol->block_map,
 			/* refs_node_cache **node_cache */
@@ -3395,10 +3397,10 @@ static int fsapi_node_list_visit_short_entry(
 			context->vol->vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
 			&context->vol->vol->sb,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&context->vol->vol->primary_level1_node,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&context->vol->vol->secondary_level1_node,
+			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+			&context->vol->vol->primary_checksum_block,
+			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+			&context->vol->vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
 			&context->vol->vol->block_map,
 			/* refs_node_cache **node_cache */
@@ -3654,10 +3656,10 @@ int fsapi_node_list(
 		vol->vol->bs,
 		/* REFS_SUPERBLOCK_HEADER **sb */
 		&vol->vol->sb,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
-		&vol->vol->primary_level1_node,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
-		&vol->vol->secondary_level1_node,
+		/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+		&vol->vol->primary_checksum_block,
+		/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+		&vol->vol->secondary_checksum_block,
 		/* refs_block_map **block_map */
 		&vol->vol->block_map,
 		/* refs_node_cache **node_cache */
