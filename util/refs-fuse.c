@@ -1208,6 +1208,26 @@ static void refs_fuse_ll_op_lookup(
 		/* const fsapi_node_attributes *attributes */
 		&attributes);
 out:
+	if(err && node) {
+		/* An error after the node has been looked up means that we need
+		 * to release the looked up node since we have no intention of
+		 * returning it. */
+		int release_err;
+
+		release_err = fsapi_node_release(
+			/* fsapi_volume *vol */
+			vol,
+			/* fsapi_node **node */
+			&node,
+			/* size_t release_count */
+			1);
+		if(release_err) {
+			sys_log_perror(release_err, "Error while releasing "
+				"node %p during cleanup (ignored)",
+				node);
+		}
+	}
+
 	sys_log_debug("%s(req=%p, parent=0x%" PRIX64 ", name=\"%s\"): %d (%s)",
 		__FUNCTION__, req, PRAX64(parent), name, err, strerror(err));
 
