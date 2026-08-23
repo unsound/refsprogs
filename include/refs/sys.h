@@ -260,6 +260,8 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #endif
 
 #if SYS_LOG_PROFILING
+#include <sys/time.h>
+
 #define __sys_log_enter_time_declarations \
 	sys_difftime __sys_log_enter_start_ts; \
 	sys_difftime __sys_log_enter_end_ts
