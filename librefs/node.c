@@ -1252,7 +1252,8 @@ static int refs_node_block_queue_add(
 
 	sys_log_debug("Block queue before expansion (%" PRIuz " elements):",
 		PRAuz(block_queue->block_queue_length));
-#if 1 || SYS_LOG_DEBUG_ENABLED
+
+#if SYS_LOG_DEBUG_ENABLED
 	{
 		refs_node_block_queue_element *cur_element = block_queue->queue;
 		size_t i = 0;
@@ -1293,7 +1294,7 @@ static int refs_node_block_queue_add(
 
 	sys_log_debug("Block queue after expansion (%" PRIuz " elements):",
 		PRAuz(block_queue->block_queue_length));
-#if 1 || SYS_LOG_DEBUG_ENABLED
+#if SYS_LOG_DEBUG_ENABLED
 	{
 		refs_node_block_queue_element *cur_element = block_queue->queue;
 		size_t i = 0;
