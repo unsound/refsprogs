@@ -3377,7 +3377,9 @@ static int refs_node_parse_checkpoint_block_level2_node_reference_list(
 		goto out;
 	}
 
-	emit(prefix, indent, "Level 2 node reference list offsets:");
+	emit(prefix, indent, "Level 2 node reference list offsets @ "
+		"%" PRIu32 " / 0x%" PRIX32 ":",
+		PRAu32(offset), PRAu32(offset));
 	for(i = 0; i < node_reference_list_count; ++i) {
 		node_reference_list[i] = read_le32(&block[offset]);
 		emit(prefix, indent + 1, "[%" PRIu32 "] @ %" PRIu32 " / "
@@ -3515,11 +3517,11 @@ static int refs_node_parse_checkpoint_block(
 	print_unknown16(prefix, indent, block, &header[0x34]);
 	print_unknown16(prefix, indent, block, &header[0x36]);
 	self_reference_offset = read_le32(&header[0x38]);
-	emit(prefix, indent, "Offset of self reference: %" PRIu64,
-		PRAu64(self_reference_offset));
+	print_le64_dec("Offset of self reference", prefix, indent, block,
+		&header[0x38]);
 	self_reference_size = read_le32(&header[0x3C]);
-	emit(prefix, indent, "Size of self reference: %" PRIu64,
-		PRAu64(self_reference_size));
+	print_le64_dec("Size of self reference", prefix, indent, block,
+		&header[0x3C]);
 	print_le64_dechex("Checkpoint number", prefix, indent, block,
 		&header[0x40]);
 	print_le64_dechex("First checkpoint number (?)", prefix, indent, block,
