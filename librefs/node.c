@@ -184,6 +184,16 @@ static int refs_node_parse_generic_block_body(
 			u32 data_size,
 			u8 flags));
 
+static sys_bool refs_node_never_should_add_subnode(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u32 entry_index,
+		const u32 num_entries,
+		void *const context);
+
 static int refs_node_parse_extent_leaf_value(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
@@ -4529,7 +4539,8 @@ static int refs_node_parse_generic_entry(
 		sys_bool *const out_added_subnode)
 {
 	refs_node_print_visitor *const print_visitor =
-		(visitor && visitor->print_visitor.print_message) ? &visitor->print_visitor : NULL;
+		(visitor && visitor->print_visitor.print_message) ?
+		&visitor->print_visitor : NULL;
 
 	int err = 0;
 	u32 i = 0;
@@ -4556,6 +4567,7 @@ static int refs_node_parse_generic_entry(
 		"entry_key=%" PRIu16 ", "
 		"entry_index=%" PRIu32 ", "
 		"num_entries=%" PRIu32 ", "
+		"context=%p, "
 		"parse_key=%p, "
 		"should_add_subnode=%p, "
 		"parse_leaf_value=%p, "
@@ -4576,6 +4588,7 @@ static int refs_node_parse_generic_entry(
 		PRAu16(entry_key),
 		PRAu32(entry_index),
 		PRAu32(num_entries),
+		context,
 		parse_key,
 		should_add_subnode,
 		parse_leaf_value,
@@ -4778,6 +4791,7 @@ out:
 		"entry_key=%" PRIu16 ", "
 		"entry_index=%" PRIu32 ", "
 		"num_entries=%" PRIu32 ", "
+		"context=%p, "
 		"parse_key=%p, "
 		"should_add_subnode=%p, "
 		"parse_leaf_value=%p, "
@@ -4798,6 +4812,7 @@ out:
 		PRAu16(entry_key),
 		PRAu32(entry_index),
 		PRAu32(num_entries),
+		context,
 		parse_key,
 		should_add_subnode,
 		parse_leaf_value,
@@ -4955,6 +4970,10 @@ static int refs_node_parse_generic_block(
 	if(err || !is_valid) {
 		goto out;
 	}
+
+	sys_log_debug("Parsing level %" PRIu8 " node %" PRIu64 " with object "
+		"ID 0x%" PRIX64 "...",
+		PRAu8(level), PRAu64(block_number), PRAX64(object_id));
 
 	entry = &block[i];
 	entry_size = read_le32(entry);
@@ -5410,6 +5429,8 @@ static int refs_node_parse_generic_block_body(
 			}
 		}
 		else {
+			sys_bool cur_added_subnode = SYS_FALSE;
+
 			entry_size = read_le32(&entry[0]);
 			if(cur_offset + entry_size > value_offsets_start_real) {
 				sys_log_warning("Invalid size for value at "
@@ -5460,7 +5481,8 @@ static int refs_node_parse_generic_block_body(
 				/* u32 num_entries */
 				values_count,
 				/* void *context */
-				!print_visitor ? context : NULL,
+				(!print_visitor || (should_add_subnode &&
+					!added_subnode)) ? context : NULL,
 				/* int (*parse_key)(
 				 *      refs_node_crawl_context *crawl_context,
 				 *      refs_node_walk_visitor *visitor,
@@ -5483,8 +5505,9 @@ static int refs_node_parse_generic_block_body(
 				 *     u32 entry_index,
 				 *     u32 num_entries,
 				 *     void *context) */
-				(should_add_subnode && !added_subnode) ?
-					should_add_subnode : NULL,
+				(!should_add_subnode || !added_subnode) ?
+					should_add_subnode :
+					refs_node_never_should_add_subnode,
 				/* int (*parse_leaf_value)(
 				 *     refs_node_crawl_context *crawl_context,
 				 *     refs_node_walk_visitor *visitor,
@@ -5508,9 +5531,13 @@ static int refs_node_parse_generic_block_body(
 				/* refs_node_block_queue *block_queue */
 				!is_index_node ? NULL : block_queue,
 				/* sys_bool *out_added_subnode */
-				&added_subnode);
+				&cur_added_subnode);
 			if(err) {
 				goto out;
+			}
+
+			if(!added_subnode && cur_added_subnode) {
+				added_subnode = SYS_TRUE;
 			}
 		}
 
@@ -5645,7 +5672,7 @@ static int refs_node_parse_generic_block_body(
 					/* u32 num_entries */
 					values_count,
 					/* void *context */
-					context);
+					NULL);
 				if(err) {
 					goto out;
 				}
@@ -5686,7 +5713,7 @@ static int refs_node_parse_generic_block_body(
 					/* u32 num_entries */
 					values_count,
 					/* void *context */
-					context,
+					NULL,
 					/* int (*parse_key)(
 					 *     refs_node_crawl_context
 					 *         *crawl_context,
@@ -5829,6 +5856,66 @@ out:
 		leaf_entry_handler);
 
 	return err;
+}
+
+static sys_bool refs_node_never_should_add_subnode(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u32 entry_index,
+		const u32 num_entries,
+		void *const context)
+{
+	sys_bool res = SYS_FALSE;
+
+	sys_log_enter(
+		"crawl_context=%p, "
+		"visitor=%p, "
+		"is_v3=%d, "
+		"key=%p, "
+		"key_size=%" PRIu16 ", "
+		"entry_index=%" PRIu32 ", "
+		"num_entries=%" PRIu32 ", "
+		"context=%p",
+		crawl_context,
+		visitor,
+		is_v3,
+		key,
+		PRAu16(key_size),
+		PRAu32(entry_index),
+		PRAu32(num_entries),
+		context);
+
+	(void) crawl_context;
+	(void) visitor;
+	(void) is_v3;
+	(void) key;
+	(void) key_size;
+	(void) entry_index;
+	(void) num_entries;
+	(void) context;
+
+	sys_log_leave(
+		"crawl_context=%p, "
+		"visitor=%p, "
+		"is_v3=%d, "
+		"key=%p, "
+		"key_size=%" PRIu16 ", "
+		"entry_index=%" PRIu32 ", "
+		"num_entries=%" PRIu32 ", "
+		"context=%p",
+		crawl_context,
+		visitor,
+		is_v3,
+		key,
+		PRAu16(key_size),
+		PRAu32(entry_index),
+		PRAu32(num_entries),
+		context);
+
+	return res;
 }
 
 typedef struct {
@@ -8341,11 +8428,13 @@ static int refs_node_parse_level2_block(
 		/* u32 block_size */
 		block_size,
 		/* refs_node_block_queue *block_queue */
-		(!object_id_mapping || object_id == 0x2) ? level2_queue : NULL,
+		(!object_id_mapping || (object_id == 0x2 &&
+			*object_id_mapping != 0x2)) ? level2_queue : NULL,
 		/* u16 fixed_no_kv_entry_size */
 		0,
 		/* void *context */
-		(object_id == 0x2) ? &context : NULL,
+		(object_id == 0x2 && object_id_mapping &&
+			*object_id_mapping != 0x2) ? &context : NULL,
 		/* int (*parse_key)(
 		 *     refs_node_crawl_context *crawl_context,
 		 *     refs_node_walk_visitor *visitor,
@@ -8369,7 +8458,8 @@ static int refs_node_parse_level2_block(
 		 *     u32 entry_index,
 		 *     u32 num_entries,
 		 *     void *context) */
-		(object_id == 0x2) ?
+		(object_id == 0x2 && object_id_mapping &&
+			*object_id_mapping != 0x2) ?
 			refs_node_parse_level2_0x2_should_add_subnode : NULL,
 		/* int (*parse_leaf_value)(
 		 *     refs_node_crawl_context *crawl_context,
