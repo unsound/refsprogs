@@ -8397,6 +8397,13 @@ static int refs_node_parse_level2_block(
 		goto out;
 	}
 
+	if(object_id_mapping && object_id != 0x2) {
+		sys_log_debug("Skipping level 2 tree with object id "
+			"0x%" PRIX64 " when mapping object ID...",
+			PRAX64(object_id));
+		goto out;
+	}
+
 	if(object_id_mapping) {
 		context.is_mapping = SYS_TRUE;
 		context.object_id = *object_id_mapping;
