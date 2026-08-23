@@ -3357,14 +3357,22 @@ static int refs_node_parse_checkpoint_block_level2_node_reference_list(
 			PRAX32(offset),
 			PRAu32(node_reference_list_start),
 			PRAX32(node_reference_list_start));
+
+		offset += sizeof(le32);
 	}
 
 	if(node_reference_list_start) {
-		print_data_with_base(prefix, indent,
-			node_reference_list_offset + sizeof(le32) * 2,
-			block_size,
-			&block[node_reference_list_offset + sizeof(le32) * 2],
-			node_reference_list_start - sizeof(le32) * 2);
+		if(offset + sizeof(le64) <= node_reference_list_start) {
+			offset += print_unknown64(prefix, indent, block,
+				&block[offset]);
+		}
+
+		if(offset < node_reference_list_start) {
+			print_data_with_base(prefix, indent, offset, block_size,
+				&block[offset],
+				node_reference_list_start - offset);
+		}
+
 		offset = node_reference_list_start;
 	}
 
