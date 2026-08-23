@@ -4652,13 +4652,15 @@ out:
 
 typedef enum {
 	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_NONE,
-	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ACL,
 	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB,
 	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB_BE,
 	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES,
 	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES_BE,
 	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME,
 	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME_BE,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ACL,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_EA,
+	FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_REPARSE_DATA
 } fsapi_node_pseudo_extended_attribute_type;
 
 typedef struct {
@@ -4688,9 +4690,6 @@ static int fsapi_node_read_extended_attribute_visit_entry(
 	sys_bool little_endian = SYS_FALSE;
 
 	switch(context->requested_metadata) {
-	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ACL:
-		err = EIO;
-		goto out;
 	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB:
 		little_endian = SYS_TRUE;
 		SYS_FALLTHROUGH();
@@ -4900,6 +4899,51 @@ static int fsapi_node_read_extended_attribute_visit_leaf_entry(
 	return err;
 }
 
+static int fsapi_node_read_extended_attribute_visit_ea_full(
+		void *const _context,
+		const void *const data,
+		const size_t data_size)
+{
+	fsapi_node_read_extended_attribute_context *const context =
+		(fsapi_node_read_extended_attribute_context*) _context;
+
+	int err = 0;
+
+	switch(context->requested_metadata) {
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_EA:
+		context->stream_found = SYS_TRUE;
+		context->stream_size = data_size;
+
+		if(context->iohandler) {
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				data,
+				/* size_t size */
+				data_size);
+			if(err) {
+				goto out;
+			}
+
+			context->remaining_bytes = 0;
+		}
+		else {
+			context->remaining_bytes = data_size;
+		}
+
+		break;
+	default:
+		err = EIO;
+		goto out;
+	}
+
+	/* Stop iterating since we found the requested metadata. */
+	err = -1;
+out:
+	return err;
+}
+
 static int fsapi_node_read_extended_attribute_visit_ea(
 		void *const _context,
 		const char *const name,
@@ -5050,6 +5094,51 @@ out:
 	return err;
 }
 
+static int fsapi_node_read_extended_attribute_visit_reparse_data(
+		void *const _context,
+		const void *const data,
+		const size_t data_size)
+{
+	fsapi_node_read_extended_attribute_context *const context =
+		(fsapi_node_read_extended_attribute_context*) _context;
+
+	int err = 0;
+
+	switch(context->requested_metadata) {
+	case FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_REPARSE_DATA:
+		context->stream_found = SYS_TRUE;
+		context->stream_size = data_size;
+
+		if(context->iohandler) {
+			err = context->iohandler->copy_data(
+				/* void *context */
+				context->iohandler->context,
+				/* const void *data */
+				data,
+				/* size_t size */
+				data_size);
+			if(err) {
+				goto out;
+			}
+
+			context->remaining_bytes = 0;
+		}
+		else {
+			context->remaining_bytes = data_size;
+		}
+
+		break;
+	default:
+		err = EIO;
+		goto out;
+	}
+
+	/* Stop iterating since we found the requested metadata. */
+	err = -1;
+out:
+	return err;
+}
+
 int fsapi_node_read_extended_attribute(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -5066,6 +5155,8 @@ int fsapi_node_read_extended_attribute(
 	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
 	size_t prefix_length = 0;
+	const char *suffix = NULL;
+	size_t suffix_length = 0;
 
 	memset(&context, 0, sizeof(context));
 	memset(&crawl_context, 0, sizeof(crawl_context));
@@ -5121,63 +5212,77 @@ int fsapi_node_read_extended_attribute(
 		}
 	}
 
+	if(prefix_length) {
+		suffix = &xattr_name[prefix_length];
+		suffix_length = xattr_name_length - prefix_length;
+	}
+
 	if(!prefix_length);
-	else if(xattr_name_length == prefix_length + 6 &&
-		!memcmp(&xattr_name[prefix_length], "attrib", 6))
-	{
+	else if(suffix_length == 6 && !memcmp(suffix, "attrib", 6)) {
 		/* Handle pseudo-attribute 'attrib'. This returns the attribute
 		 * flags in raw format as a little-endian 32-bit value. */
 		context.requested_metadata =
 			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB;
+		visitor.node_leaf_entry =
+			fsapi_node_read_extended_attribute_visit_leaf_entry;
 	}
-	else if(xattr_name_length == prefix_length + 9 &&
-		!memcmp(&xattr_name[prefix_length], "attrib_be", 9))
-	{
+	else if(suffix_length == 9 && !memcmp(suffix, "attrib_be", 9)) {
 		/* Handle pseudo-attribute 'attrib_be'. This returns the
 		 * attribute flags in raw format as a big-endian 32-bit
 		 * value. */
 		context.requested_metadata =
 			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_ATTRIB_BE;
+		visitor.node_leaf_entry =
+			fsapi_node_read_extended_attribute_visit_leaf_entry;
 	}
-	else if(xattr_name_length == prefix_length + 5 &&
-		!memcmp(&xattr_name[prefix_length], "times", 5))
-	{
+	else if(suffix_length == 5 && !memcmp(suffix, "times", 5)) {
 		/* Handle pseudo-attribute 'times'. This returns the file times
 		 * in raw format as little-endian 64-bit values. */
 		context.requested_metadata =
 			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES;
+		visitor.node_leaf_entry =
+			fsapi_node_read_extended_attribute_visit_leaf_entry;
 	}
-	else if(xattr_name_length == prefix_length + 8 &&
-		!memcmp(&xattr_name[prefix_length], "times_be", 8))
-	{
+	else if(suffix_length == 8 && !memcmp(suffix, "times_be", 8)) {
 		/* Handle pseudo-attribute 'times_be'. This returns the file
 		 * times in raw format as big-endian 64-bit values. */
 		context.requested_metadata =
 			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_TIMES_BE;
+		visitor.node_leaf_entry =
+			fsapi_node_read_extended_attribute_visit_leaf_entry;
 	}
-	else if(xattr_name_length == prefix_length + 6 &&
-		!memcmp(&xattr_name[prefix_length], "crtime", 6))
-	{
+	else if(suffix_length == 6 && !memcmp(suffix, "crtime", 6)) {
 		/* Handle pseudo-attribute 'crtime'. This returns the file
 		 * creation time in raw format as a little-endian 64-bit
 		 * value. */
 		context.requested_metadata =
 			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME;
+		visitor.node_leaf_entry =
+			fsapi_node_read_extended_attribute_visit_leaf_entry;
 	}
-	else if(xattr_name_length == prefix_length + 9 &&
-		!memcmp(&xattr_name[prefix_length], "crtime_be", 9))
-	{
+	else if(suffix_length == 9 && !memcmp(suffix, "crtime_be", 9)) {
 		/* Handle pseudo-attribute 'crtime_be'. This returns the file
 		 * creation time in raw format as a big-endian 64-bit value. */
 		context.requested_metadata =
 			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_CRTIME_BE;
-	}
-
-	if(context.requested_metadata !=
-		FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_NONE)
-	{
 		visitor.node_leaf_entry =
 			fsapi_node_read_extended_attribute_visit_leaf_entry;
+	}
+	else if(suffix_length == 2 && !memcmp(suffix, "ea", 2)) {
+		/* Handle pseudo-attribute 'ea'. This returns the raw EA record
+		 * for a node (if there is one). */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_EA;
+		visitor.node_ea_full =
+			fsapi_node_read_extended_attribute_visit_ea_full;
+	}
+	else if(suffix_length == 12 && !memcmp(suffix, "reparse_data", 12)) {
+		/* Handle pseudo-attribute 'ea'. This returns the raw reparse
+		 * data for a node (if it exists). */
+		context.requested_metadata =
+			FSAPI_NODE_PSEUDO_EXTENDED_ATTRIBUTE_TYPE_REPARSE_DATA;
+		visitor.node_reparse_data =
+			fsapi_node_read_extended_attribute_visit_reparse_data;
 	}
 	else {
 		visitor.node_ea = fsapi_node_read_extended_attribute_visit_ea;
@@ -5222,7 +5327,7 @@ int fsapi_node_read_extended_attribute(
 		goto out;
 	}
 	else {
-		/* If there's no break code we should return ENOENT. */
+		/* If there's no break code then we should return ENOENT. */
 		err = ENOENT;
 		goto out;
 	}

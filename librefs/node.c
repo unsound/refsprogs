@@ -8255,6 +8255,20 @@ static int refs_node_parse_attribute_ea_value(
 
 	/* After this, the EA list starts. */
 	/* 0x2C */
+
+	if(visitor && visitor->node_ea_full) {
+		err = visitor->node_ea_full(
+			/* void *context */
+			visitor->context,
+			/* const void *data */
+			&data[j],
+			/* size_t data_size */
+			value_end - j);
+		if(err) {
+			goto out;
+		}
+	}
+
 	while(value_end - j >= 8) {
 		u32 offset_to_next_ea = 0;
 		u32 ea_end_offset = 0;
@@ -9342,6 +9356,7 @@ static int refs_node_parse_reparse_point_attribute(
 		visitor ? &visitor->print_visitor : NULL;
 
 	int err = 0;
+	const u8 *reparse_start = NULL;
 	u32 reparse_tag = 0;
 	u16 reparse_data_size = 0;
 	u16 j = *jp;
@@ -9382,6 +9397,7 @@ static int refs_node_parse_reparse_point_attribute(
 	if(remaining_in_attribute - j >= 4) {
 		const char *reparse_tag_string = NULL;
 
+		reparse_start = &attribute[j];
 		reparse_tag = read_le32(&attribute[j]);
 
 		j += print_le32_hex("Reparse tag", prefix, indent + 1,
@@ -9432,6 +9448,20 @@ static int refs_node_parse_reparse_point_attribute(
 			PRAu16(reparse_data_size),
 			PRAu16(remaining_in_attribute - j));
 	}
+
+	if(visitor && visitor->node_reparse_data) {
+		err = visitor->node_reparse_data(
+			/* void *context */
+			visitor->context,
+			/* const void *data */
+			reparse_start,
+			/* size_t data_size */
+			sizeof(le32) + sizeof(le16) * 2 + reparse_data_size);
+		if(err) {
+			goto out;
+		}
+	}
+
 	else if((reparse_tag == 0xA0000003UL || reparse_tag == 0xA000000CUL) &&
 		(remaining_in_attribute - j) >=
 		((reparse_tag == 0xA0000003UL) ? 8 : 12))

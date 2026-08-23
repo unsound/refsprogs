@@ -166,6 +166,10 @@ struct refs_node_walk_visitor {
 		void *context,
 		const void *data,
 		size_t size);
+	int (*node_ea_full)(
+		void *context,
+		const void *data,
+		size_t data_size);
 	int (*node_ea)(
 		void *context,
 		const char *name,
@@ -185,6 +189,10 @@ struct refs_node_walk_visitor {
 		u64 first_physical_block,
 		u32 block_index_unit,
 		u32 cluster_count);
+	int (*node_reparse_data)(
+		void *context,
+		const void *data,
+		size_t data_size);
 	int (*node_symlink)(
 		void *context,
 		refs_symlink_type type,
