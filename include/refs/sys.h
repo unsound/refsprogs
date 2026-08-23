@@ -74,6 +74,10 @@ typedef struct sys_iohandler sys_iohandler;
 #define SYS_LOG_INDENT_MAX 32
 #endif /* !defined(SYS_LOG_INDENT_MAX) */
 
+#ifndef SYS_LOG_INDENT_CAP
+#define SYS_LOG_INDENT_CAP 0
+#endif /* !defined(SYS_LOG_INDENT_CAP) */
+
 extern __thread int __sys_log_indent;
 
 #define __sys_log_indent_declarations \
@@ -95,6 +99,8 @@ extern __thread int __sys_log_indent;
 #define __sys_log_indent_arg __sys_log_indent_buffer
 #define __sys_log_indent_increment ++__sys_log_indent
 #define __sys_log_indent_decrement --__sys_log_indent
+#define __sys_log_indent_if_below_cap \
+	if(!SYS_LOG_INDENT_CAP || __sys_log_indent < SYS_LOG_INDENT_CAP)
 #else
 #define __sys_log_indent_declarations \
 	do {} while(0)
@@ -277,8 +283,10 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #define __sys_log_do_enter(level, fmt, ...) \
 	__sys_log_enter_time_declarations; \
 	do { \
-		sys_log_##level("Entering %s(" fmt ")...", \
-			__FUNCTION__, ##__VA_ARGS__); \
+		__sys_log_indent_if_below_cap { \
+			sys_log_##level("Entering %s(" fmt ")...", \
+				__FUNCTION__, ##__VA_ARGS__); \
+		} \
 		__sys_log_indent_increment; \
 		__sys_log_get_difftime(&__sys_log_enter_start_ts); \
 	} while(0)
@@ -287,9 +295,12 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 	do { \
 		__sys_log_get_difftime(&__sys_log_enter_end_ts); \
 		__sys_log_indent_decrement; \
-		sys_log_##level("Leaving %s(" fmt ")." \
-			__sys_log_profiling_fmt, \
-			__FUNCTION__, ##__VA_ARGS__ __sys_log_profiling_arg); \
+		__sys_log_indent_if_below_cap { \
+			sys_log_##level("Leaving %s(" fmt ")." \
+				__sys_log_profiling_fmt, \
+				__FUNCTION__, ##__VA_ARGS__ \
+				__sys_log_profiling_arg); \
+		} \
 	} while(0)
 
 #if SYS_LOG_INFO_ENABLED
