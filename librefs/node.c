@@ -2314,7 +2314,7 @@ static int refs_node_parse_node_reference_list_v1(
 
 		emit(prefix, indent, "[%" PRIu32 "] @ %" PRIu32 " / "
 			"0x%" PRIX32 ":",
-			PRAu32(reference_index),
+			PRAu32(reference_index + 1),
 			PRAu32(reference_offset),
 			PRAX32(reference_offset));
 		refs_node_parse_node_reference_v1(
@@ -2473,7 +2473,7 @@ static int refs_node_parse_node_reference_list_v3(
 
 		emit(prefix, indent, "[%" PRIu32 "] @ %" PRIu32 " / "
 			"0x%" PRIX32 ":",
-			PRAu32(reference_index),
+			PRAu32(reference_index + 1),
 			PRAu32(reference_offset),
 			PRAX32(reference_offset));
 		refs_node_parse_node_reference_v3(
@@ -3382,7 +3382,7 @@ static int refs_node_parse_checkpoint_block_level2_node_reference_list(
 		node_reference_list[i] = read_le32(&block[offset]);
 		emit(prefix, indent + 1, "[%" PRIu32 "] @ %" PRIu32 " / "
 			"0x%" PRIX32 ": %" PRIu32 " / 0x%" PRIX32,
-			PRAu32(i),
+			PRAu32(i + 1),
 			PRAu32(offset),
 			PRAX32(offset),
 			PRAu32(node_reference_list[i]),
