@@ -332,6 +332,14 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #define sys_log_enter(...) sys_log_enter_trace(__VA_ARGS__)
 #define sys_log_leave(...) sys_log_leave_trace(__VA_ARGS__)
 
+/**
+ * Define SYS_FALLTHROUGH as a redirect for the toolchain's preferred way to
+ * indicate a deliberate fallthrough in a switch statement.
+ *
+ * This was first introduced in gcc 7 as '__attribute__((__fallthrough__))' to
+ * counter the effects of the newly introduced '-Wimplicit-fallthrough' warning.
+ */
+
 #if defined(__GNUC__)
 #if __GNUC__ >= 7
 #define SYS_FALLTHROUGH() __attribute__((__fallthrough__))
@@ -341,6 +349,13 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #ifndef SYS_FALLTHROUGH
 #define SYS_FALLTHROUGH() do {} while(0)
 #endif /* !defined(SYS_FALLTHROUGH) */
+
+/*
+ * Include platform-specific system macros. These will differ depending on the
+ * platform we are building for, through all userspace platforms using a regular
+ * libc are currently considered to be one platform with various special cases
+ * in 'sys_user.h' to cater for platform diferences.
+ */
 
 #if defined(__linux__) && defined(__KERNEL__)
 #include "sys_linux.h"
