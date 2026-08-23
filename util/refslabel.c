@@ -25,6 +25,7 @@
 
 /* Headers - librefs. */
 #include "layout.h"
+#include "util.h"
 #include "volume.h"
 #include "node.h"
 
@@ -51,7 +52,7 @@ static void print_help(FILE *out)
 static void print_about(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
-	fprintf(out, "Copyright (c) 2022-2025 Erik Larsson\n");
+	fprintf(out, REFS_PROJECT_COPYRIGHT_MESSAGE "\n");
 }
 
 static int refslabel_node_volume_label_entry(

@@ -22,11 +22,17 @@
 #ifndef _REFS_UTIL_H
 #define _REFS_UTIL_H
 
+/* Headers - librefs. */
+#include "node.h"
 #include "sys.h"
 
+/* Headers - ANSI C standard libraries. */
 #if !(defined(__linux__) && defined(__KERNEL__))
 #include <time.h>
 #endif /* !(defined(__linux__) && defined(__KERNEL__)) */
+
+#define REFS_PROJECT_COPYRIGHT_MESSAGE \
+	"Copyright (c) 2022-2026 Erik Larsson"
 
 #define emit(prefix, indent, format, ...) \
 	do { \

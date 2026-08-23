@@ -31,6 +31,7 @@
 #endif
 
 /* Headers - librefs. */
+#include "util.h"
 #include "volume.h"
 
 /* Headers - ANSI C standard libraries. */
@@ -110,7 +111,7 @@ static void print_help(FILE *out)
 static void print_about(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
-	fprintf(out, "Copyright (c) 2022-2025 Erik Larsson\n");
+	fprintf(out, REFS_PROJECT_COPYRIGHT_MESSAGE "\n");
 }
 
 typedef struct {
