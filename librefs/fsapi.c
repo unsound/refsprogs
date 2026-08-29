@@ -4618,7 +4618,12 @@ int fsapi_node_list(
 		/* refs_node_cache **node_cache */
 		&vol->vol->node_cache,
 		/* const u64 *start_node */
-		NULL,
+		/* A resolved directory node points directly at the level 3 node
+		 * containing its tree root. Starting there avoids a cold lookup in
+		 * the volume-wide object ID mapping tree. Unresolved short entries
+		 * do not have that property and must use the object ID below. */
+		(!directory_node->is_short_entry && directory_node->node_number) ?
+			&directory_node->node_number : NULL,
 		/* const u64 *object_id */
 		&directory_node->directory_object_id,
 		/* refs_node_walk_visitor *visitor */
