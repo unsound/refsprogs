@@ -5019,7 +5019,7 @@ static int refs_node_parse_level2_0x4_leaf_value(
 			/* const u8 *base */
 			value,
 			/* const u8 *data */
-			&value[20]);
+			&value[0x20]);
 		i += 0x30;
 	}
 	if(value_size >= 0x58) {
