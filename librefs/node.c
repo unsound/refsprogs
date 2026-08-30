@@ -12882,11 +12882,11 @@ int refs_node_parse_level3_long_value(
 	const u16 key_type = (key_size < 2) ? 0 : read_le16(&key[0]);
 	const u64 creation_time =
 		(value_size < 40 + 8) ? 0 : read_le64(&value[40]);
-	const u64 last_access_time =
-		(value_size < 48 + 8) ? 0 : read_le64(&value[48]);
 	const u64 last_data_modification_time =
-		(value_size < 56 + 8) ? 0 : read_le64(&value[56]);
+		(value_size < 48 + 8) ? 0 : read_le64(&value[48]);
 	const u64 last_mft_modification_time =
+		(value_size < 56 + 8) ? 0 : read_le64(&value[56]);
+	const u64 last_access_time =
 		(value_size < 64 + 8) ? 0 : read_le64(&value[64]);
 	const u32 file_flags =
 		(value_size < 72 + 4) ? 0 : read_le32(&value[72]);
