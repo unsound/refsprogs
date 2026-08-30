@@ -152,7 +152,7 @@ static inline size_t _print_u8_dec(
 		max_offset) \
 	(((offset) + 1 <= (max_offset)) ? \
 		print_u8_dec((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_u8_hex(
@@ -179,7 +179,7 @@ static inline size_t _print_u8_hex(
 		max_offset) \
 	(((offset) + 1 <= (max_offset)) ? \
 		print_u8_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_u8_dechex(
@@ -208,7 +208,7 @@ static inline size_t _print_u8_dechex(
 		max_offset) \
 	(((offset) + 1 <= (max_offset)) ? \
 		print_u8_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_unknown8(
@@ -228,7 +228,7 @@ static inline size_t _print_unknown8(
 #define print_unknown8_safe(prefix, indent, base, offset, max_offset) \
 	(((offset) + 1 <= (max_offset)) ? \
 		print_unknown8((prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le16_dec(
@@ -255,7 +255,7 @@ static inline size_t _print_le16_dec(
 		max_offset) \
 	(((offset) + 2 <= (max_offset)) ? \
 		print_le16_dec((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le16_hex(
@@ -282,7 +282,7 @@ static inline size_t _print_le16_hex(
 		max_offset) \
 	(((offset) + 2 <= (max_offset)) ? \
 		print_le16_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le16_dechex(
@@ -311,7 +311,7 @@ static inline size_t _print_le16_dechex(
 		max_offset) \
 	(((offset) + 2 <= (max_offset)) ? \
 		print_le16_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_unknown16(
@@ -331,7 +331,7 @@ static inline size_t _print_unknown16(
 #define print_unknown16_safe(prefix, indent, base, offset, max_offset) \
 	(((offset) + 2 <= (max_offset)) ? \
 		print_unknown16((prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le32_dec(
@@ -358,7 +358,7 @@ static inline size_t _print_le32_dec(
 		max_offset) \
 	(((offset) + 4 <= (max_offset)) ? \
 		print_le32_dec((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le32_hex(
@@ -385,7 +385,7 @@ static inline size_t _print_le32_hex(
 		max_offset) \
 	(((offset) + 4 <= (max_offset)) ? \
 		print_le32_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le32_dechex(
@@ -414,7 +414,7 @@ static inline size_t _print_le32_dechex(
 		max_offset) \
 	(((offset) + 4 <= (max_offset)) ? \
 		print_le32_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_unknown32(
@@ -434,7 +434,7 @@ static inline size_t _print_unknown32(
 #define print_unknown32_safe(prefix, indent, base, offset, max_offset) \
 	(((offset) + 4 <= (max_offset)) ? \
 		print_unknown32((prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le64_dec(
@@ -461,7 +461,7 @@ static inline size_t _print_le64_dec(
 		max_offset) \
 	(((offset) + 8 <= (max_offset)) ? \
 		print_le64_dev((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le64_hex(
@@ -488,7 +488,7 @@ static inline size_t _print_le64_hex(
 		max_offset) \
 	(((offset) + 8 <= (max_offset)) ? \
 		print_le64_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_le64_dechex(
@@ -517,7 +517,7 @@ static inline size_t _print_le64_dechex(
 		max_offset) \
 	(((offset) + 8 <= (max_offset)) ? \
 		print_le64_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
+			&((const u8*) (base))[(offset)]) : \
 			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
 
 static inline size_t _print_unknown64(
