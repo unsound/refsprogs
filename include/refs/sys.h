@@ -112,6 +112,7 @@ extern __thread int __sys_log_indent;
 #define __sys_log_indent_arg ""
 #define __sys_log_indent_increment do {} while(0)
 #define __sys_log_indent_decrement do {} while(0)
+#define __sys_log_indent_if_below_cap
 #endif /* SYS_LOG_INDENT ... */
 
 /**
