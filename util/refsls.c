@@ -49,6 +49,7 @@ static struct refsls_options {
 	sys_bool show_all;
 	sys_bool show_eas;
 	sys_bool show_streams;
+	sys_bool show_object_ids;
 	sys_bool long_format;
 	sys_bool recursive;
 	sys_bool about;
@@ -104,8 +105,8 @@ static int refsls_node_symlink(
 static void print_help(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
-	fprintf(out, "usage: " BINARY_NAME " [-a] [-e] [-l] [-R] [-p <path>] "
-		"[-s] <device|file>\n");
+	fprintf(out, "usage: " BINARY_NAME " [-a] [-e] [-l] [-R] [-o] "
+		"[-p <path>] [-s] <device|file>\n");
 }
 
 static void print_about(FILE *out)
@@ -179,7 +180,6 @@ static int refsls_print_dirent(
 		ctx->cur_hard_link_id = hard_link_target_id;
 	}
 
-
 	{
 		if(!ctx->first_line) {
 			fprintf(stdout, "\n");
@@ -247,6 +247,13 @@ static int refsls_print_dirent(
 			fprintf(stdout, " -> <Hard linked to id 0x%" PRIX64 " "
 				"in directory 0x%" PRIX64 ">",
 				PRAX64(hard_link_target_id),
+				PRAX64(directory_object_id));
+		}
+		else if(options.show_object_ids && is_directory) {
+			fprintf(stdout, " -> <%s at id 0x%" PRIX64 ">",
+				!(file_flags &
+				REFS_FILE_ATTRIBUTE_REPARSE_POINT) ?
+					"Directory" : "Reparse point",
 				PRAX64(directory_object_id));
 		}
 	}
@@ -578,6 +585,13 @@ int main(int argc, char **argv)
 			(!strcmp(argv[1], "--long-format")))
 		{
 			options.long_format = SYS_TRUE;
+			argv = &argv[1];
+			argc -= 1;
+		}
+		else if(!strcmp(argv[1], "-o") ||
+			(!strcmp(argv[1], "--show-object-ids")))
+		{
+			options.show_object_ids = SYS_TRUE;
 			argv = &argv[1];
 			argc -= 1;
 		}

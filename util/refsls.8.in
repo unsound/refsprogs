@@ -30,6 +30,9 @@ Show extended attributes (EAs) of files in listing.
 \fB\-l\fR, \fB\-\-long\-format\fR
 Use long format when listing files, including file sizes and flags.
 .TP
+\fB\-o\fR, \fB\-\-show\-object\-ids\fR
+Display the object IDs of directories/reparse points in listings.
+.TP
 \fB\-p\fR, \fB\-\-path\fR PATH
 Path to the directory to list (must be a POSIX\-style absolute path, i.e.
 starting with a '/').
