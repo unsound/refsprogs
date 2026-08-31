@@ -310,7 +310,7 @@ int fsapi_iohandler_buffer_copy_data(
  * @return 0 on success and a non-0 @p errno value on failure.
  */
 int fsapi_iohandler_buffer_get_data(
-		void *_context,
+		void *context,
 		void *buffer,
 		size_t size);
 

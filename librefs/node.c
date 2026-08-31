@@ -1513,6 +1513,8 @@ u64 refs_node_logical_to_physical_block_number(
  *
  * @param[in] crawl_context
  *      The crawl context of the current session.
+ * @param[in] node_size
+ *      The size of the node to read.
  * @param[in, out] logical_blocks
  *      Array of logical blocks to read. At least one element must be valid, but
  *      if all logical blocks are known then they should all be supplied or the
