@@ -128,6 +128,19 @@ static inline u64 read_le64(const void *data)
 	return le64_to_cpup((const le64*) data);
 }
 
+#define _print_safe_generic(type, variant, identifier, prefix, indent, base, \
+		offset, max_offset, ...) \
+	(((offset) + sizeof(type) <= (max_offset)) ? \
+		print_##type##_##variant((identifier), (prefix), (indent), \
+			(base), &((const u8*) (base))[(offset)], \
+			##__VA_ARGS__) : 0)
+
+#define _print_safe_unknown(type, variant, prefix, indent, base, offset, \
+		max_offset) \
+	(((offset) + sizeof(type) <= (max_offset)) ? \
+		print_##variant((prefix), (indent), (base), \
+			&((const u8*) (base))[(offset)]) : 0)
+
 static inline size_t _print_u8_dec(
 		refs_node_print_visitor *const print_visitor,
 		const char *const identifier,
@@ -141,7 +154,7 @@ static inline size_t _print_u8_dec(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu8(*((const u8*) value)));
-	return 1;
+	return sizeof(u8);
 }
 
 #define print_u8_dec(identifier, prefix, indent, base, value) \
@@ -150,10 +163,8 @@ static inline size_t _print_u8_dec(
 
 #define print_u8_dec_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 1 <= (max_offset)) ? \
-		print_u8_dec((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(u8, dec, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_u8_hex(
 		refs_node_print_visitor *const print_visitor,
@@ -168,7 +179,7 @@ static inline size_t _print_u8_hex(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAX8(*((const u8*) value)));
-	return 1;
+	return sizeof(u8);
 }
 
 #define print_u8_hex(identifier, prefix, indent, base, value) \
@@ -177,10 +188,8 @@ static inline size_t _print_u8_hex(
 
 #define print_u8_hex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 1 <= (max_offset)) ? \
-		print_u8_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(u8, hex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_u8_dechex(
 		refs_node_print_visitor *const print_visitor,
@@ -197,7 +206,7 @@ static inline size_t _print_u8_dechex(
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu8(*((const u8*) value)),
 		PRAX8(*((const u8*) value)));
-	return 1;
+	return sizeof(u8);
 }
 
 #define print_u8_dechex(identifier, prefix, indent, base, value) \
@@ -206,10 +215,8 @@ static inline size_t _print_u8_dechex(
 
 #define print_u8_dechex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 1 <= (max_offset)) ? \
-		print_u8_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(u8, dechex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_unknown8(
 		refs_node_print_visitor *const print_visitor,
@@ -226,10 +233,8 @@ static inline size_t _print_unknown8(
 		(const u8*) (value))
 
 #define print_unknown8_safe(prefix, indent, base, offset, max_offset) \
-	(((offset) + 1 <= (max_offset)) ? \
-		print_unknown8((prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_unknown(u8, unknown8, prefix, indent, base, offset, \
+		max_offset)
 
 static inline size_t _print_le16_dec(
 		refs_node_print_visitor *const print_visitor,
@@ -244,7 +249,7 @@ static inline size_t _print_le16_dec(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu16(read_le16(value)));
-	return 2;
+	return sizeof(le16);
 }
 
 #define print_le16_dec(identifier, prefix, indent, base, value) \
@@ -253,10 +258,8 @@ static inline size_t _print_le16_dec(
 
 #define print_le16_dec_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 2 <= (max_offset)) ? \
-		print_le16_dec((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le16, dec, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_le16_hex(
 		refs_node_print_visitor *const print_visitor,
@@ -271,7 +274,7 @@ static inline size_t _print_le16_hex(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAX16(read_le16(value)));
-	return 2;
+	return sizeof(le16);
 }
 
 #define print_le16_hex(identifier, prefix, indent, base, value) \
@@ -280,10 +283,8 @@ static inline size_t _print_le16_hex(
 
 #define print_le16_hex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 2 <= (max_offset)) ? \
-		print_le16_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le16, hex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_le16_dechex(
 		refs_node_print_visitor *const print_visitor,
@@ -300,7 +301,7 @@ static inline size_t _print_le16_dechex(
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu16(read_le16(value)),
 		PRAX16(read_le16(value)));
-	return 2;
+	return sizeof(le16);
 }
 
 #define print_le16_dechex(identifier, prefix, indent, base, value) \
@@ -309,10 +310,8 @@ static inline size_t _print_le16_dechex(
 
 #define print_le16_dechex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 2 <= (max_offset)) ? \
-		print_le16_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le16, dechex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_unknown16(
 		refs_node_print_visitor *const print_visitor,
@@ -329,10 +328,8 @@ static inline size_t _print_unknown16(
 		(const le16p*) (value))
 
 #define print_unknown16_safe(prefix, indent, base, offset, max_offset) \
-	(((offset) + 2 <= (max_offset)) ? \
-		print_unknown16((prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_unknown(le16, unknown16, prefix, indent, base, offset, \
+		max_offset)
 
 static inline size_t _print_le32_dec(
 		refs_node_print_visitor *const print_visitor,
@@ -347,7 +344,7 @@ static inline size_t _print_le32_dec(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu32(read_le32(value)));
-	return 4;
+	return sizeof(le32);
 }
 
 #define print_le32_dec(identifier, prefix, indent, base, value) \
@@ -356,10 +353,8 @@ static inline size_t _print_le32_dec(
 
 #define print_le32_dec_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 4 <= (max_offset)) ? \
-		print_le32_dec((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le32, dec, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_le32_hex(
 		refs_node_print_visitor *const print_visitor,
@@ -374,7 +369,7 @@ static inline size_t _print_le32_hex(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAX32(read_le32(value)));
-	return 4;
+	return sizeof(le32);
 }
 
 #define print_le32_hex(identifier, prefix, indent, base, value) \
@@ -383,10 +378,8 @@ static inline size_t _print_le32_hex(
 
 #define print_le32_hex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 4 <= (max_offset)) ? \
-		print_le32_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le32, hex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_le32_dechex(
 		refs_node_print_visitor *const print_visitor,
@@ -403,7 +396,7 @@ static inline size_t _print_le32_dechex(
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu32(read_le32(value)),
 		PRAX32(read_le32(value)));
-	return 4;
+	return sizeof(le32);
 }
 
 #define print_le32_dechex(identifier, prefix, indent, base, value) \
@@ -412,10 +405,8 @@ static inline size_t _print_le32_dechex(
 
 #define print_le32_dechex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 4 <= (max_offset)) ? \
-		print_le32_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le32, dechex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_unknown32(
 		refs_node_print_visitor *const print_visitor,
@@ -432,10 +423,8 @@ static inline size_t _print_unknown32(
 		(const le32p*) (value))
 
 #define print_unknown32_safe(prefix, indent, base, offset, max_offset) \
-	(((offset) + 4 <= (max_offset)) ? \
-		print_unknown32((prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_unknown(le32, unknown32, prefix, indent, base, offset, \
+		max_offset)
 
 static inline size_t _print_le64_dec(
 		refs_node_print_visitor *const print_visitor,
@@ -450,19 +439,17 @@ static inline size_t _print_le64_dec(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu64(read_le64(value)));
-	return 8;
+	return sizeof(le64);
 }
 
 #define print_le64_dec(identifier, prefix, indent, base, value) \
 	_print_le64_dec(print_visitor, (identifier), (prefix), (indent), \
 		(base), (value))
 
-#define print_le64_dev_safe(identifier, prefix, indent, base, offset, \
+#define print_le64_dec_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 8 <= (max_offset)) ? \
-		print_le64_dev((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le64, dec, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_le64_hex(
 		refs_node_print_visitor *const print_visitor,
@@ -477,7 +464,7 @@ static inline size_t _print_le64_hex(
 		PRAuz((uintptr_t) value - (uintptr_t) base),
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAX64(read_le64(value)));
-	return 8;
+	return sizeof(le64);
 }
 
 #define print_le64_hex(identifier, prefix, indent, base, value) \
@@ -486,10 +473,8 @@ static inline size_t _print_le64_hex(
 
 #define print_le64_hex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 8 <= (max_offset)) ? \
-		print_le64_hex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le64, hex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_le64_dechex(
 		refs_node_print_visitor *const print_visitor,
@@ -506,7 +491,7 @@ static inline size_t _print_le64_dechex(
 		PRAXz((uintptr_t) value - (uintptr_t) base),
 		PRAu64(read_le64(value)),
 		PRAX64(read_le64(value)));
-	return 8;
+	return sizeof(le64);
 }
 
 #define print_le64_dechex(identifier, prefix, indent, base, value) \
@@ -515,10 +500,8 @@ static inline size_t _print_le64_dechex(
 
 #define print_le64_dechex_safe(identifier, prefix, indent, base, offset, \
 		max_offset) \
-	(((offset) + 8 <= (max_offset)) ? \
-		print_le64_dechex((identifier), (prefix), (indent), (base), \
-			&((const u8*) (base))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_generic(le64, dechex, identifier, prefix, indent, base, \
+		offset, max_offset)
 
 static inline size_t _print_unknown64(
 		refs_node_print_visitor *const print_visitor,
@@ -535,10 +518,8 @@ static inline size_t _print_unknown64(
 		(const le64p*) (value))
 
 #define print_unknown64_safe(prefix, indent, base, offset, max_offset) \
-	(((offset) + 8 <= (max_offset)) ? \
-		print_unknown64((prefix), (indent), (base), \
-			&((const u8*) (value))[(offset)]) : \
-			((offset) < (max_offset) ? (max_offset) - (offset) : 0))
+	_print_safe_unknown(le64, unknown64, prefix, indent, base, offset, \
+		max_offset)
 
 static inline char makeprintable(const char c)
 {
