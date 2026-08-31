@@ -5549,8 +5549,8 @@ static int refs_node_parse_generic_block_body(
 				/* u32 num_entries */
 				values_count,
 				/* void *context */
-				(!print_visitor || (should_add_subnode &&
-					!added_subnode)) ? context : NULL,
+				(!print_visitor || !should_add_subnode ||
+					!added_subnode) ? context : NULL,
 				/* int (*parse_key)(
 				 *      refs_node_crawl_context *crawl_context,
 				 *      refs_node_walk_visitor *visitor,
@@ -8518,8 +8518,7 @@ static int refs_node_parse_level2_block(
 		/* u16 fixed_no_kv_entry_size */
 		0,
 		/* void *context */
-		(object_id == 0x2 && object_id_mapping &&
-			*object_id_mapping != 0x2) ? &context : NULL,
+		(object_id == 0x2) ? &context : NULL,
 		/* int (*parse_key)(
 		 *     refs_node_crawl_context *crawl_context,
 		 *     refs_node_walk_visitor *visitor,
