@@ -503,6 +503,92 @@ static inline size_t _print_le64_dechex(
 	_print_safe_generic(le64, dechex, identifier, prefix, indent, base, \
 		offset, max_offset)
 
+static inline size_t _print_le64_dechex_byte_offset(
+		refs_node_print_visitor *const print_visitor,
+		const char *const identifier,
+		const char *const prefix,
+		const size_t indent,
+		const void *const base,
+		const void *const value,
+		const u64 byte_offset)
+{
+	emit(prefix, indent, "%s @ %" PRIuz " / 0x%" PRIXz ": %" PRIu64 " / "
+		"0x%" PRIX64 " (byte offset: %" PRIu64 ")",
+		identifier,
+		PRAuz((uintptr_t) value - (uintptr_t) base),
+		PRAXz((uintptr_t) value - (uintptr_t) base),
+		PRAu64(read_le64(value)),
+		PRAX64(read_le64(value)),
+		PRAu64(byte_offset));
+	return sizeof(le64);
+}
+
+/**
+ * Read a little-endian 64-bit value from the @p value pointer and print it in
+ * decimal and hexadecimal form with an identifier prefix and a caller-provided
+ * byte offset suffix.
+ *
+ * @param[in] identifier
+ *      The identifier string to use as prefix.
+ * @param[in] prefix
+ *      The prefix that will be passed on unmodified to @ref emit.
+ * @param[in] indent
+ *      The indent that will be passed on unmodified to @ref emit.
+ * @param[in] base
+ *      Pointer containing the base address of the containing structure. The
+ *      printed offset into the structure will be calculated by subtracting this
+ *      base address.
+ * @param[in] value
+ *      Pointer to the @ref le64 value itself. The @ref le64 value will be read
+ *      from this address in an alignment-safe way before printing it.
+ * @param[in] byte_offset
+ *      The byte offset which will be appended to the end of the printed line as
+ *      a suffix.
+ *
+ * @return The number of bytes read (always 8).
+ */
+#define print_le64_dechex_byte_offset(identifier, prefix, indent, base, value, \
+		byte_offset) \
+	_print_le64_dechex_byte_offset(print_visitor, (identifier), (prefix), \
+		(indent), (base), (value), (byte_offset))
+
+/**
+ * Read a little-endian 64-bit value from the offset @p offset in the buffer
+ * at base address @p base and maximum offset @p max_offset and print it safely
+ * in decimal and hexadecimal form with an identifier prefix and a
+ * caller-provided byte offset suffix.
+ *
+ * This is a safer version of @p print_le64_dechex_byte_offset accepting an
+ * offset into the containing buffer along with the maximum possible offset that
+ * can be accessed in the buffer.
+ *
+ * The offset will be checked against the maximum possible offset before reading
+ * the value to prevent overflowing the source buffer.
+ *
+ * @param[in] identifier
+ *      The identifier string to use as prefix.
+ * @param[in] prefix
+ *      The prefix that will be passed on unmodified to @ref emit.
+ * @param[in] indent
+ *      The indent that will be passed on unmodified to @ref emit.
+ * @param[in] base
+ *      Pointer containing the base address of the containing structure.
+ * @param[in] offset
+ *      Offset to the @ref le64 value in @p base. The @ref le64 value will be
+ *      read from this address in an alignment-safe way before printing it.
+ * @param[in] max_offset
+ *      The maximum offset that can be safely accessed in @p base.
+ * @param[in] byte_offset
+ *      The byte offset which will be appended to the end of the printed line as
+ *      a suffix.
+ *
+ * @return The number of bytes read (8 if successful, or 0 if unsuccessful).
+ */
+#define print_le64_dechex_byte_offset_safe(identifier, prefix, indent, base, \
+		offset, max_offset, byte_offset) \
+	_print_safe_generic(le64, dechex_byte_offset, (identifier), (prefix), \
+		(indent), (base), (offset), (max_offset), (byte_offset))
+
 static inline size_t _print_unknown64(
 		refs_node_print_visitor *const print_visitor,
 		const char *prefix,

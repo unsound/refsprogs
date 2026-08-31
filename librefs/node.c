@@ -1994,9 +1994,7 @@ static void refs_node_parse_node_reference_v1(
 		base,
 		data);
 
-	print_le64_dec("Block number", prefix, indent,
-		base,
-		&data[0]);
+	print_le64_dec("Block number", prefix, indent, base, &data[0]);
 	logical_block = read_le64(&data[0]);
 	if(logical_block) {
 		physical_block =
@@ -2047,16 +2045,21 @@ static void refs_node_parse_node_reference_v1(
 		data);
 }
 
-static void refs_node_parse_node_reference_v3(
+static sys_bool refs_node_parse_node_reference_v3(
 		refs_node_crawl_context *const crawl_context,
 		refs_node_walk_visitor *const visitor,
 		const char *const prefix,
 		const size_t indent,
 		const u8 *const base,
-		const u8 *const data)
+		const u8 *const data,
+		const size_t node_reference_size)
 {
 	refs_node_print_visitor *const print_visitor =
 		visitor ? &visitor->print_visitor : NULL;
+	const size_t base_offset = (size_t) data - (size_t) base;
+
+	sys_bool res = SYS_TRUE;
+	size_t i = 0;
 	u64 logical_block = 0;
 	u64 physical_block = 0;
 
@@ -2066,88 +2069,71 @@ static void refs_node_parse_node_reference_v3(
 		"prefix=%p, "
 		"indent=%" PRIuz ", "
 		"base=%p, "
-		"data=%p",
+		"data=%p,"
+		"node_reference_size=%" PRIuz,
 		crawl_context,
 		visitor,
 		prefix,
 		PRAuz(indent),
 		base,
-		data);
+		data,
+		PRAuz(node_reference_size));
 
-	print_le64_dechex("Block number 1", prefix, indent,
-		base,
-		&data[0]);
-	logical_block = read_le64(&data[0]);
-	if(logical_block) {
-		physical_block =
-			refs_node_crawl_context_logical_to_physical_block(
-				/* refs_node_crawl_context *crawl_context */
-				crawl_context,
-				/* u64 logical_block_number */
-				logical_block);
-		emit(prefix, indent + 1, "-> Physical block: %" PRIu64 " / "
-			"0x%" PRIX64 " (byte offset: %" PRIu64 ")",
-			PRAu64(physical_block),
-			PRAX64(physical_block),
-			PRAu64(physical_block *
-			crawl_context->block_index_unit));
+	for(; i < 4 * sizeof(le64); i += sizeof(le64)) {
+		if(i + sizeof(le64) > node_reference_size) {
+			goto out;
+		}
+
+		physical_block = 0;
+		logical_block = read_le64(&data[i]);
+		if(logical_block) {
+			physical_block =
+				refs_node_crawl_context_logical_to_physical_block(
+					/* refs_node_crawl_context
+					 * *crawl_context */
+					crawl_context,
+					/* u64 logical_block_number */
+					logical_block);
+		}
+
+		if(physical_block) {
+			char label[] = "Logical block number X";
+			label[sizeof(label) - 2] =
+				'1' + (char) (i / sizeof(le64));
+			print_le64_dechex_safe(label, prefix, indent, base,
+				base_offset + i,
+				base_offset + node_reference_size);
+
+			emit(prefix, indent + 1, "-> Physical block number: "
+				"%" PRIu64 " / 0x%" PRIX64 " (byte offset: "
+				"%" PRIu64 ")",
+				PRAu64(physical_block),
+				PRAX64(physical_block),
+				PRAu64(physical_block *
+				crawl_context->block_index_unit));
+		}
+		else {
+			/* No mapping, so this must be a direct physical block
+			 * reference. */
+			char label[] = "Physical block number X";
+			label[sizeof(label) - 2] =
+				'1' + (char) (i / sizeof(le64));
+
+			print_le64_dechex_byte_offset_safe(label, prefix,
+				indent, base, base_offset + i,
+				base_offset + node_reference_size,
+				logical_block *
+				crawl_context->block_index_unit);
+		}
 	}
-	print_le64_dechex("Block number 2", prefix, indent,
-		base,
-		&data[8]);
-	logical_block = read_le64(&data[8]);
-	if(logical_block) {
-		physical_block =
-			refs_node_crawl_context_logical_to_physical_block(
-				/* refs_node_crawl_context *crawl_context */
-				crawl_context,
-				/* u64 logical_block_number */
-				logical_block);
-		emit(prefix, indent + 1, "-> Physical block: %" PRIu64 " / "
-			"0x%" PRIX64 " (byte offset: %" PRIu64 ")",
-			PRAu64(physical_block),
-			PRAX64(physical_block),
-			PRAu64(physical_block *
-			crawl_context->block_index_unit));
+
+	i += print_unknown16_safe(prefix, indent, base, base_offset + 32,
+		base_offset + node_reference_size);
+	if(34 + sizeof(u8) > node_reference_size) {
+		goto out;
 	}
-	print_le64_dechex("Block number 3", prefix, indent,
-		base,
-		&data[16]);
-	logical_block = read_le64(&data[16]);
-	if(logical_block) {
-		physical_block =
-			refs_node_crawl_context_logical_to_physical_block(
-				/* refs_node_crawl_context *crawl_context */
-				crawl_context,
-				/* u64 logical_block_number */
-				logical_block);
-		emit(prefix, indent + 1, "-> Physical block: %" PRIu64 " / "
-			"0x%" PRIX64 " (byte offset: %" PRIu64 ")",
-			PRAu64(physical_block),
-			PRAX64(physical_block),
-			PRAu64(physical_block *
-			crawl_context->block_index_unit));
-	}
-	print_le64_dechex("Block number 4", prefix, indent,
-		base,
-		&data[24]);
-	logical_block = read_le64(&data[24]);
-	if(logical_block) {
-		physical_block =
-			refs_node_crawl_context_logical_to_physical_block(
-				/* refs_node_crawl_context *crawl_context */
-				crawl_context,
-				/* u64 logical_block_number */
-				logical_block);
-		emit(prefix, indent + 1, "-> Physical block: %" PRIu64 " / "
-			"0x%" PRIX64 " (byte offset: %" PRIu64 ")",
-			PRAu64(physical_block),
-			PRAX64(physical_block),
-			PRAu64(physical_block *
-			crawl_context->block_index_unit));
-	}
-	print_unknown16(prefix, indent, base, &data[32]);
-	print_u8_dechex("Checksum type", prefix, indent, base, &data[34]);
+	i += print_u8_dechex_safe("Checksum type", prefix, indent, base,
+		base_offset + 34, base_offset + node_reference_size);
 	switch(data[34]) {
 	case 1:
 		emit(prefix, indent + 1, "CRC32C");
@@ -2159,12 +2145,28 @@ static void refs_node_parse_node_reference_v3(
 		emit(prefix, indent + 1, "<unknown checksum type>");
 		break;
 	}
-	print_u8_dechex("Checksum data offset", prefix, indent, base,
-		&data[35]);
-	print_le16_dechex("Checksum data size", prefix, indent, base,
-		&data[36]);
-	print_unknown16(prefix, indent, base, &data[38]);
-	print_le64_hex("Checksum", prefix, indent, base, &data[40]);
+	i += print_u8_dechex_safe("Checksum data offset", prefix, indent, base,
+		base_offset + 35, base_offset + node_reference_size);
+	i += print_le16_dechex_safe("Checksum data size", prefix, indent, base,
+		base_offset + 36, base_offset + node_reference_size);
+	i += print_unknown16_safe(prefix, indent, base, base_offset + 38,
+		base_offset + node_reference_size);
+	i += print_le64_hex_safe("Checksum", prefix, indent, base,
+		base_offset + 40, base_offset + node_reference_size);
+out:
+	if(i < node_reference_size) {
+		if(i < 48) {
+			sys_log_warning("Unable to parse complete node "
+				"reference: %" PRIuz " / %" PRIuz " bytes "
+				"parsed",
+				PRAuz(i), PRAuz(48));
+			res = SYS_FALSE;
+		}
+
+		print_data_with_base(prefix, indent, base_offset + i,
+			node_reference_size, &data[i],
+			node_reference_size - i);
+	}
 
 	sys_log_leave(
 		"crawl_context=%p, "
@@ -2172,13 +2174,17 @@ static void refs_node_parse_node_reference_v3(
 		"prefix=%p, "
 		"indent=%" PRIuz ", "
 		"base=%p, "
-		"data=%p",
+		"data=%p,"
+		"node_reference_size=%" PRIuz,
 		crawl_context,
 		visitor,
 		prefix,
 		PRAuz(indent),
 		base,
-		data);
+		data,
+		PRAuz(node_reference_size));
+
+	return res;
 }
 
 static void refs_node_parse_node_reference(
@@ -2188,7 +2194,8 @@ static void refs_node_parse_node_reference(
 		const char *const prefix,
 		const size_t indent,
 		const u8 *const base,
-		const u8 *const data)
+		const u8 *const data,
+		const size_t node_reference_size)
 {
 	sys_log_enter(
 		"crawl_context=%p, "
@@ -2219,7 +2226,9 @@ static void refs_node_parse_node_reference(
 			/* const u8 *base */
 			base,
 			/* const u8 *data */
-			data);
+			data,
+			/* size_t node_reference_size */
+			node_reference_size);
 	}
 	else {
 		refs_node_parse_node_reference_v1(
@@ -2263,7 +2272,8 @@ static int refs_node_parse_node_reference_list_v1(
 		const u8 *const block,
 		const size_t block_size,
 		const u32 *const node_reference_offsets,
-		const size_t node_references_size,
+		const u32 node_reference_size,
+		const u32 node_reference_count,
 		refs_node_block_queue_element **const out_node_references,
 		u32 *const out_total_size)
 {
@@ -2285,7 +2295,8 @@ static int refs_node_parse_node_reference_list_v1(
 		"block=%p, "
 		"block_size=%" PRIu32 ", "
 		"node_reference_offsets=%p, "
-		"node_references_size=%" PRIuz ", "
+		"node_reference_size=%" PRIu32 ", "
+		"node_reference_count=%" PRIu32 ", "
 		"out_node_references=%p, "
 		"out_total_size=%p (->%" PRIu32 ")",
 		crawl_context,
@@ -2296,26 +2307,34 @@ static int refs_node_parse_node_reference_list_v1(
 		block,
 		PRAu32(block_size),
 		node_reference_offsets,
-		PRAuz(node_references_size),
+		PRAu32(node_reference_size),
+		PRAu32(node_reference_count),
 		out_node_references,
 		out_total_size, PRAu32(out_total_size ? *out_total_size : 0));
 
-	emit(prefix, indent - 1, "%s (%" PRIuz " bytes @ %" PRIu32 " / "
+	emit(prefix, indent - 1, "%s (%" PRIu64 " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
 		list_name,
-		PRAuz(node_references_size),
+		PRAu64(node_reference_count * ((u64) node_reference_size)),
 		PRAu32(node_reference_offsets[0]),
 		PRAX32(node_reference_offsets[0]));
-	for(i = 0; i + 24 <= node_references_size; i += 24) {
-		const size_t reference_index = i / 24;
-		const u32 reference_offset =
-			node_reference_offsets[reference_index];
+	for(i = 0; i < node_reference_count; ++i) {
+		const u32 reference_offset = node_reference_offsets[i];
+
+		if(reference_offset + (u64) node_reference_size > block_size) {
+			sys_log_warning("Node reference list entry %" PRIu32 " "
+				"/ %" PRIu32 " is outside the bounds of its "
+				"block.",
+				PRAu32(i + 1), PRAu32(node_reference_count));
+			break;
+		}
 
 		if(i && reference_offset >
-			node_reference_offsets[reference_index - 1] + 24)
+			node_reference_offsets[i - 1] + node_reference_size)
 		{
 			const u32 prev_reference_end =
-				node_reference_offsets[reference_index - 1] + 24;
+				node_reference_offsets[i - 1] +
+				node_reference_size;
 
 			/* Print padding / data in between node references. */
 			print_data_with_base(prefix, indent, prev_reference_end,
@@ -2326,7 +2345,7 @@ static int refs_node_parse_node_reference_list_v1(
 
 		emit(prefix, indent, "[%" PRIu32 "] @ %" PRIu32 " / "
 			"0x%" PRIX32 ":",
-			PRAu32(reference_index + 1),
+			PRAu32(i + 1),
 			PRAu32(reference_offset),
 			PRAX32(reference_offset));
 		refs_node_parse_node_reference_v1(
@@ -2373,7 +2392,7 @@ static int refs_node_parse_node_reference_list_v1(
 			}
 		}
 
-		total_size += 24;
+		total_size += node_reference_size;
 	}
 
 	if(out_node_references) {
@@ -2393,7 +2412,8 @@ out:
 		"block=%p, "
 		"block_size=%" PRIu32 ", "
 		"node_reference_offsets=%p, "
-		"node_references_size=%" PRIuz ", "
+		"node_reference_size=%" PRIu32 ", "
+		"node_reference_count=%" PRIu32 ", "
 		"out_node_references=%p, "
 		"out_total_size=%p (->%" PRIu32 ")",
 		crawl_context,
@@ -2404,7 +2424,8 @@ out:
 		block,
 		PRAu32(block_size),
 		node_reference_offsets,
-		PRAuz(node_references_size),
+		PRAu32(node_reference_size),
+		PRAu32(node_reference_count),
 		out_node_references,
 		out_total_size, PRAu32(out_total_size ? *out_total_size : 0));
 
@@ -2420,7 +2441,8 @@ static int refs_node_parse_node_reference_list_v3(
 		const u8 *const block,
 		const size_t block_size,
 		const u32 *const node_reference_offsets,
-		const size_t node_references_size,
+		const u32 node_reference_size,
+		const u32 node_reference_count,
 		refs_node_block_queue_element **const out_node_references,
 		u32 *const out_total_size)
 {
@@ -2429,7 +2451,7 @@ static int refs_node_parse_node_reference_list_v3(
 
 	int err = 0;
 	u32 total_size = 0;
-	size_t i;
+	u32 i;
 	refs_node_block_queue_element *first_element = NULL;
 	refs_node_block_queue_element *last_element = NULL;
 
@@ -2442,7 +2464,8 @@ static int refs_node_parse_node_reference_list_v3(
 		"block=%p, "
 		"block_size=%" PRIu32 ", "
 		"node_reference_offsets=%p, "
-		"node_references_size=%" PRIuz ", "
+		"node_reference_size=%" PRIu32 ", "
+		"node_reference_count=%" PRIu32 ", "
 		"out_node_references=%p, "
 		"out_total_size=%p (->%" PRIu32 ")",
 		crawl_context,
@@ -2453,28 +2476,33 @@ static int refs_node_parse_node_reference_list_v3(
 		block,
 		PRAu32(block_size),
 		node_reference_offsets,
-		PRAuz(node_references_size),
+		PRAu32(node_reference_size),
+		PRAu32(node_reference_count),
 		out_node_references,
 		out_total_size, PRAu32(out_total_size ? *out_total_size : 0));
 
-	emit(prefix, indent - 1, "%s (%" PRIuz " bytes @ %" PRIu32 " / "
+	emit(prefix, indent - 1, "%s (%" PRIu64 " bytes @ %" PRIu32 " / "
 		"0x%" PRIX32 "):",
 		list_name,
-		PRAuz(node_references_size),
+		PRAu64(node_reference_size * (u64) node_reference_count),
 		PRAu32(node_reference_offsets[0]),
 		PRAX32(node_reference_offsets[0]));
-	for(i = 0; i + 48 <= node_references_size; i += 48) {
-		const size_t reference_index = i / 48;
-		const u32 reference_offset =
-			node_reference_offsets[reference_index];
 
-		if(i && reference_offset >
-			node_reference_offsets[reference_index - 1] + 48)
+	for(i = 0; i < node_reference_count; ++i) {
+		const u32 reference_offset = node_reference_offsets[i];
+		u32 prev_reference_end;
+
+		if(reference_offset + (u64) node_reference_size > block_size) {
+			sys_log_warning("Node reference list entry %" PRIu32 " "
+				"/ %" PRIu32 " is outside the bounds of its "
+				"block.",
+				PRAu32(i + 1), PRAu32(node_reference_count));
+			break;
+		}
+
+		if(i && reference_offset > (prev_reference_end =
+			node_reference_offsets[i - 1] + node_reference_size))
 		{
-			const u32 prev_reference_end =
-				node_reference_offsets[reference_index - 1] +
-				48;
-
 			/* Print padding / data in between node references. */
 			print_data_with_base(prefix, indent - 1,
 				prev_reference_end, block_size,
@@ -2485,10 +2513,10 @@ static int refs_node_parse_node_reference_list_v3(
 
 		emit(prefix, indent, "[%" PRIu32 "] @ %" PRIu32 " / "
 			"0x%" PRIX32 ":",
-			PRAu32(reference_index + 1),
+			PRAu32(i + 1),
 			PRAu32(reference_offset),
 			PRAX32(reference_offset));
-		refs_node_parse_node_reference_v3(
+		if(!refs_node_parse_node_reference_v3(
 			/* refs_node_crawl_context *crawl_context */
 			crawl_context,
 			/* refs_node_walk_visitor *visitor */
@@ -2500,8 +2528,14 @@ static int refs_node_parse_node_reference_list_v3(
 			/* const u8 *base */
 			&block[reference_offset],
 			/* const u8 *data */
-			&block[reference_offset]);
-		if(out_node_references) {
+			&block[reference_offset],
+			/* size_t node_reference_size */
+			node_reference_size))
+		{
+			sys_log_debug("Couldn't parse complete node "
+				"reference.");
+		}
+		else if(out_node_references) {
 			refs_node_block_queue_element *cur_element = NULL;
 
 			err = sys_malloc(sizeof(*cur_element), &cur_element);
@@ -2535,7 +2569,7 @@ static int refs_node_parse_node_reference_list_v3(
 			}
 		}
 
-		total_size += 48;
+		total_size += node_reference_size;
 	}
 
 	if(out_node_references) {
@@ -2555,7 +2589,8 @@ out:
 		"block=%p, "
 		"block_size=%" PRIu32 ", "
 		"node_reference_offsets=%p, "
-		"node_references_size=%" PRIuz ", "
+		"node_references_size=%" PRIu32 ", "
+		"node_references_count=%" PRIu32 ", "
 		"out_node_references=%p, "
 		"out_total_size=%p (->%" PRIu32 ")",
 		crawl_context,
@@ -2566,7 +2601,8 @@ out:
 		block,
 		PRAu32(block_size),
 		node_reference_offsets,
-		PRAuz(node_references_size),
+		PRAu32(node_reference_size),
+		PRAu32(node_reference_count),
 		out_node_references,
 		out_total_size, PRAu32(out_total_size ? *out_total_size : 0));
 
@@ -2938,8 +2974,10 @@ static int refs_node_parse_superblock_v1(
 			block_size,
 			/* const u32 *node_reference_offsets */
 			&self_reference_offset,
-			/* u32 node_references_size */
+			/* u32 node_reference_size */
 			(self_reference_size > 24) ? 24 : self_reference_size,
+			/* u32 node_reference_count */
+			1,
 			/* refs_node_block_queue_element
 			 * **out_node_references */
 			NULL,
@@ -2980,8 +3018,10 @@ static int refs_node_parse_superblock_v1(
 			block_size,
 			/* const u32 *node_reference_offsets */
 			&self_reference_offset,
-			/* u32 node_references_size */
+			/* u32 node_reference_size */
 			(self_reference_size > 24) ? 24 : self_reference_size,
+			/* u32 node_reference_count */
+			1,
 			/* refs_node_block_queue_element
 			 * **out_node_references */
 			NULL,
@@ -3184,8 +3224,10 @@ static int refs_node_parse_superblock_v3(
 			block_size,
 			/* const u32 *node_reference_offsets */
 			&self_reference_offset,
-			/* u32 node_references_size */
+			/* u32 node_reference_size */
 			(self_reference_size > 48) ? 48 : self_reference_size,
+			/* u32 node_reference_count */
+			1,
 			/* refs_node_block_queue_element
 			 * **out_node_references */
 			NULL,
@@ -3226,8 +3268,10 @@ static int refs_node_parse_superblock_v3(
 			block_size,
 			/* const u32 *node_reference_offsets */
 			&self_reference_offset,
-			/* u32 node_references_size */
+			/* u32 node_reference_size */
 			(self_reference_size > 48) ? 48 : self_reference_size,
+			/* u32 node_reference_count */
+			1,
 			/* refs_node_block_queue_element
 			 * **out_node_references */
 			NULL,
@@ -3471,9 +3515,9 @@ static int refs_node_parse_checkpoint_block(
 	u64 object_id = 0;
 	u32 self_reference_offset = 0 ;
 	u32 self_reference_size = 0;
+	u32 level2_node_reference_size = 0;
 	u32 level2_node_reference_count = 0;
 	u32 *level2_node_reference_offsets = NULL;
-	u64 level2_node_reference_list_size = 0;
 	u32 level2_node_reference_offsets_end_offset = 0;
 	refs_node_block_queue_element *level2_node_references = NULL;
 
@@ -3533,6 +3577,10 @@ static int refs_node_parse_checkpoint_block(
 	i -= 0x30;
 	header = &block[i];
 
+	if(block_size < i + 0x58) {
+		goto out;
+	}
+
 	print_unknown32(prefix, indent, block, &header[0x30]);
 	print_unknown16(prefix, indent, block, &header[0x34]);
 	print_unknown16(prefix, indent, block, &header[0x36]);
@@ -3551,8 +3599,15 @@ static int refs_node_parse_checkpoint_block(
 	i += 0x58;
 
 	if(is_v3) {
+		if(block_size < i + 0x18) {
+			goto out;
+		}
+
+		level2_node_reference_size = read_le32(&header[0x5C]);
+
 		print_unknown32(prefix, indent, block, &header[0x58]);
-		print_unknown32(prefix, indent, block, &header[0x5C]);
+		print_le32_dechex("Size of each level 2 node reference",
+			prefix, indent, block, &header[0x5C]);
 		print_unknown32(prefix, indent, block, &header[0x60]);
 		print_unknown32(prefix, indent, block, &header[0x64]);
 		print_unknown32(prefix, indent, block, &header[0x68]);
@@ -3625,8 +3680,10 @@ static int refs_node_parse_checkpoint_block(
 			block_size,
 			/* const u32 *node_reference_offsets */
 			&self_reference_offset,
-			/* u32 node_references_size */
+			/* u32 node_reference_size */
 			(self_reference_size > 48) ? 48 : self_reference_size,
+			/* u32 node_reference_count */
+			1,
 			/* refs_node_block_queue_element
 			 * **out_node_references */
 			NULL,
@@ -3660,8 +3717,10 @@ static int refs_node_parse_checkpoint_block(
 			block_size,
 			/* const u32 *node_reference_offsets */
 			&self_reference_offset,
-			/* u32 node_references_size */
+			/* u32 node_reference_size */
 			(self_reference_size > 24) ? 24 : self_reference_size,
+			/* u32 node_reference_count */
+			1,
 			/* refs_node_block_queue_element
 			 * **out_node_references */
 			NULL,
@@ -3691,9 +3750,10 @@ static int refs_node_parse_checkpoint_block(
 				block_size) - i);
 		}
 
-		level2_node_reference_list_size =
-			level2_node_reference_count *
-			(size_t) (is_v3 ? 48 : 24);
+		if(!level2_node_reference_size) {
+			level2_node_reference_size =
+				(size_t) (is_v3 ? 48 : 24);
+		}
 
 		i = level2_node_reference_offsets[0];
 		if(is_v3) {
@@ -3716,8 +3776,10 @@ static int refs_node_parse_checkpoint_block(
 				block_size,
 				/* const u32 *node_reference_offsets */
 				level2_node_reference_offsets,
-				/* size_t node_references_size */
-				level2_node_reference_list_size,
+				/* u32 node_reference_size */
+				level2_node_reference_size,
+				/* u32 node_reference_count */
+				level2_node_reference_count,
 				/* refs_node_block_queue_element
 				 * **out_node_references */
 				&level2_node_references,
@@ -3751,8 +3813,10 @@ static int refs_node_parse_checkpoint_block(
 				block_size,
 				/* const u32 *node_reference_offsets */
 				level2_node_reference_offsets,
-				/* u32 node_references_size */
-				level2_node_reference_list_size,
+				/* u32 node_reference_size */
+				level2_node_reference_size,
+				/* u32 node_reference_count */
+				level2_node_reference_count,
 				/* refs_node_block_queue_element
 				 * **out_node_references */
 				&level2_node_references,
@@ -3766,16 +3830,16 @@ static int refs_node_parse_checkpoint_block(
 		}
 	}
 
+	*out_level2_node_references_count = level2_node_reference_count;
+	*out_level2_node_references = level2_node_references;
+out:
 	if(i < block_size) {
 		print_data_with_base(prefix, indent, i, block_size, &block[i],
 			block_size - i);
 	}
 
-	*out_level2_node_references_count = level2_node_reference_count;
-	*out_level2_node_references = level2_node_references;
-out:
 	if(level2_node_reference_offsets) {
-		sys_free(level2_node_reference_list_size *
+		sys_free(level2_node_reference_count *
 			sizeof(level2_node_reference_offsets[0]),
 			&level2_node_reference_offsets);
 	}
@@ -4201,7 +4265,9 @@ static int refs_node_parse_index_value(
 			/* const u8 *base */
 			value,
 			/* const u8 *data */
-			&value[j]);
+			&value[j],
+			/* size_t node_reference_size */
+			value_size);
 
 		if(block_queue && add_to_queue) {
 			/* Add the next level block number parsed from the value
@@ -6198,9 +6264,15 @@ static int refs_node_parse_level2_0x2_leaf_value(
 			/* const u8 *base */
 			value,
 			/* const u8 *data */
-			&value[i]);
+			&value[i],
+			/* size_t node_reference_size */
+			value_size - i);
 
-		i += (is_v3 ? 0x30 : 0x18);
+		/* TODO: We know that node references are variable-sized
+		 * depending on the checksum type, but does this node reference
+		 * always extend to the end of the value or is is size-limited
+		 * with non-node reference data following it? */
+		i = value_size;
 	}
 
 	if(value_size >= i + 0x18) {
@@ -6600,11 +6672,15 @@ static int refs_node_parse_level2_0x4_leaf_value(
 			/* const u8 *base */
 			value,
 			/* const u8 *data */
-			&value[20]);
-		i += 0x30;
-	}
-	if(value_size >= 0x58) {
-		i += print_unknown64(prefix, indent, value, &value[0x50]);
+			&value[0x20],
+			/* size_t node_reference_size */
+			value_size - 0x20);
+
+		/* TODO: We know that node references are variable-sized
+		 * depending on the checksum type, but does this node reference
+		 * always extend to the end of the value or is is size-limited
+		 * with non-node reference data following it? */
+		i = value_size;
 	}
 
 	if(i < value_size) {
@@ -11955,7 +12031,9 @@ static int refs_node_parse_non_resident_attribute_list_value(
 			/* const u8 *base */
 			data,
 			/* const u8 *data */
-			&data[j]);
+			&data[j],
+			/* size_t node_reference_size */
+			value_size - j);
 	}
 
 	/* 0x10 */
