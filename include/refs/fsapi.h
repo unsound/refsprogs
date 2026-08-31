@@ -279,7 +279,7 @@ int fsapi_iohandler_buffer_handle_io(
 		size_t size);
 
 /**
- * Handler for copying data into the buffer (e.g. a read operation).
+ * @brief Handler for copying data into the buffer (e.g.\ a read operation).
  *
  * @param context
  *      (in) The context for the I/O target handler (for this handler this is an
@@ -297,7 +297,7 @@ int fsapi_iohandler_buffer_copy_data(
 		size_t size);
 
 /**
- * Handler for getting data from the buffer (e.g. a write operation).
+ * @brief Handler for getting data from the buffer (e.g.\ a write operation).
  *
  * @param context
  *      (in) The context for the I/O target handler (for this handler this is an
