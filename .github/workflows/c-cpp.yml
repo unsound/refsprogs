@@ -28,6 +28,15 @@ jobs:
     - name: make distcheck
       run: make distcheck
 
+  build-ubuntu-resolute-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: cd targets/linux && make
+
   build-ubuntu-noble-kernel:
 
     runs-on: ubuntu-24.04
