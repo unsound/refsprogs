@@ -38,8 +38,8 @@ struct refs_volume {
 	u64 sector_count;
 	u64 cluster_count;
 	REFS_SUPERBLOCK_HEADER *sb;
-	REFS_LEVEL1_NODE *primary_level1_node;
-	REFS_LEVEL1_NODE *secondary_level1_node;
+	REFS_CHECKPOINT_BLOCK *primary_checksum_block;
+	REFS_CHECKPOINT_BLOCK *secondary_checksum_block;
 	refs_block_map *block_map;
 	refs_node_cache *node_cache;
 };

@@ -30,6 +30,7 @@
 #endif
 
 /* Headers - librefs. */
+#include "util.h"
 #include "volume.h"
 #include "sys.h"
 
@@ -64,7 +65,7 @@ static void print_help(FILE *out)
 static void print_about(FILE *out)
 {
 	fprintf(out, BINARY_NAME " %s\n", VERSION);
-	fprintf(out, "Copyright (c) 2022-2025 Erik Larsson\n");
+	fprintf(out, REFS_PROJECT_COPYRIGHT_MESSAGE "\n");
 }
 
 typedef struct {
@@ -858,10 +859,10 @@ int main(int argc, char **argv)
 		vol->bs,
 		/* REFS_SUPERBLOCK_HEADER **sb */
 		&vol->sb,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
-		&vol->primary_level1_node,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
-		&vol->secondary_level1_node,
+		/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+		&vol->primary_checksum_block,
+		/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+		&vol->secondary_checksum_block,
 		/* refs_block_map **block_map */
 		&vol->block_map,
 		/* refs_node_cache **node_cache */
@@ -902,10 +903,10 @@ int main(int argc, char **argv)
 			vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
 			&vol->sb,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&vol->primary_level1_node,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&vol->secondary_level1_node,
+			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+			&vol->primary_checksum_block,
+			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+			&vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
 			&vol->block_map,
 			/* refs_node_cache **node_cache */
@@ -952,10 +953,10 @@ int main(int argc, char **argv)
 			vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
 			&vol->sb,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&vol->primary_level1_node,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&vol->secondary_level1_node,
+			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+			&vol->primary_checksum_block,
+			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+			&vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
 			&vol->block_map,
 			/* refs_node_cache **node_cache */

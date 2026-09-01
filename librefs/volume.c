@@ -206,10 +206,10 @@ int refs_volume_create(
 		vol->bs,
 		/* REFS_SUPERBLOCK **sb */
 		&vol->sb,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
-		&vol->primary_level1_node,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
-		&vol->secondary_level1_node,
+		/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+		&vol->primary_checksum_block,
+		/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+		&vol->secondary_checksum_block,
 		/* refs_block_map **block_map */
 		&vol->block_map,
 		/* refs_node_cache **node_cache */
@@ -260,8 +260,8 @@ void refs_volume_destroy(
 			&vol->block_map);
 	}
 
-	sys_free(vol->metadata_block_size, &vol->secondary_level1_node);
-	sys_free(vol->metadata_block_size, &vol->primary_level1_node);
+	sys_free(vol->metadata_block_size, &vol->secondary_checksum_block);
+	sys_free(vol->metadata_block_size, &vol->primary_checksum_block);
 	sys_free(vol->metadata_block_size, &vol->sb);
 	sys_free(sizeof(*vol->bs), &vol->bs);
 	sys_free(sizeof(**out_vol), out_vol);
@@ -532,10 +532,10 @@ static int refs_volume_resolve_hard_link_target_internal(
 		vol->bs,
 		/* REFS_SUPERBLOCK **sb */
 		&vol->sb,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
-		&vol->primary_level1_node,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
-		&vol->secondary_level1_node,
+		/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+		&vol->primary_checksum_block,
+		/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+		&vol->secondary_checksum_block,
 		/* refs_block_map **block_map */
 		&vol->block_map,
 		/* refs_node_cache **node_cache */
@@ -857,10 +857,10 @@ static int refs_volume_lookup(
 			vol->bs,
 			/* REFS_SUPERBLOCK **sb */
 			&vol->sb,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&vol->primary_level1_node,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&vol->secondary_level1_node,
+			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+			&vol->primary_checksum_block,
+			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+			&vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
 			&vol->block_map,
 			/* refs_node_cache **node_cache */
@@ -1050,10 +1050,10 @@ int refs_volume_lookup_by_posix_path(
 			vol->bs,
 			/* REFS_SUPERBLOCK **sb */
 			&vol->sb,
-			/* REFS_LEVEL1_NODE **primary_level1_node */
-			&vol->primary_level1_node,
-			/* REFS_LEVEL1_NODE **secondary_level1_node */
-			&vol->secondary_level1_node,
+			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+			&vol->primary_checksum_block,
+			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+			&vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
 			&vol->block_map,
 			/* refs_node_cache **node_cache */
@@ -1175,10 +1175,10 @@ int refs_volume_lookup_by_object_id(
 		vol->bs,
 		/* REFS_SUPERBLOCK **sb */
 		&vol->sb,
-		/* REFS_LEVEL1_NODE **primary_level1_node */
-		&vol->primary_level1_node,
-		/* REFS_LEVEL1_NODE **secondary_level1_node */
-		&vol->secondary_level1_node,
+		/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
+		&vol->primary_checksum_block,
+		/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
+		&vol->secondary_checksum_block,
 		/* refs_block_map **block_map */
 		&vol->block_map,
 		/* refs_node_cache **node_cache */
