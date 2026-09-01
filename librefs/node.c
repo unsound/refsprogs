@@ -14602,7 +14602,7 @@ static int refs_node_parse_level3_block(
 		 *     u32 entry_index,
 		 *     u32 num_entries,
 		 *     void *context) */
-		NULL,
+		visitor ? visitor->should_add_fstree_subnode : NULL,
 		/* int (*parse_leaf_value)(
 		 *     refs_node_crawl_context *crawl_context,
 		 *     refs_node_walk_visitor *visitor,
