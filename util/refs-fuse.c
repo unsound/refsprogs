@@ -50,6 +50,9 @@ typedef unsigned int mode_t;
 #include "fsapi.h"
 #include "layout.h"
 
+/* Headers - librefs (private). */
+#include "librefs/rb_tree.h"
+
 #if REFS_FUSE_USE_LOWLEVEL_API
 #ifndef FUSE_ROOT_ID
 #define FUSE_ROOT_ID 1
@@ -1118,6 +1121,25 @@ static struct fuse_operations refs_fuse_operations = {
 #endif
 };
 #else
+
+typedef struct {
+	fsapi_volume *vol;
+
+	sys_mutex ino_tree_lock;
+	struct refs_rb_tree *ino_tree;
+} refs_fuse_ll_context;
+
+typedef struct {
+	fsapi_node *node;
+	size_t refcount;
+} refs_fuse_ll_node_context;
+
+static fsapi_volume* refs_fuse_ll_get_volume(
+		const fuse_req_t req)
+{
+	return ((refs_fuse_ll_context*) fuse_req_userdata(req))->vol;
+}
+
 static fsapi_node* refs_fuse_ll_fuse_ino_to_node(
 		fuse_ino_t ino,
 		fsapi_volume *vol)
@@ -1137,13 +1159,210 @@ static fsapi_node* refs_fuse_ll_fuse_ino_to_node(
 	return (fsapi_node*) (uintptr_t) ino;
 }
 
+static int refs_fuse_ll_add_node_reference(
+		const fuse_req_t req,
+		fsapi_node *const node)
+{
+	refs_fuse_ll_context *const context =
+		(refs_fuse_ll_context*) fuse_req_userdata(req);
+
+	int err = 0;
+	refs_fuse_ll_node_context search_context;
+	sys_bool ino_tree_locked = SYS_FALSE;
+	refs_fuse_ll_node_context *node_context;
+
+	memset(&search_context, 0, sizeof(search_context));
+
+	err = sys_mutex_lock(
+		/* sys_mutex *mutex */
+		&context->ino_tree_lock);
+	if(err) {
+		sys_log_perror(err, "Error while locking inode tree lock");
+		goto out;
+	}
+
+	ino_tree_locked = SYS_TRUE;
+
+	search_context.node = node;
+
+	node_context = refs_rb_tree_find(
+		/* struct refs_rb_tree *self */
+		context->ino_tree,
+		/* void *value */
+		&search_context);
+	if(node_context) {
+		if(node_context->refcount < SIZE_MAX) {
+			++node_context->refcount;
+		}
+		else {
+			sys_log_warning("Attempted to add more node references "
+				"than we have available memory. Will leak "
+				"references...");
+		}
+	}
+	else {
+		err = sys_malloc(sizeof(*node_context), &node_context);
+		if(err) {
+			goto out;
+		}
+
+		memset(node_context, 0, sizeof(*node_context));
+		node_context->node = node;
+		node_context->refcount = 1;
+
+		if(!refs_rb_tree_insert(
+			/* struct refs_rb_tree *self */
+			context->ino_tree,
+			/* void *value */
+			node_context))
+		{
+			sys_log_error("Error while inserting new node "
+				"context.");
+			err = ENOMEM;
+			goto out;
+		}
+	}
+out:
+	if(ino_tree_locked) {
+		int cleanup_err;
+		cleanup_err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&context->ino_tree_lock);
+		if(cleanup_err) {
+			sys_log_perror(cleanup_err, "Error while unlocking "
+				"inode tree lock");
+			err = err ? err : cleanup_err;
+		}
+	}
+
+	return err;
+}
+
+static int refs_fuse_ll_remove_node_references(
+		const fuse_req_t req,
+		fsapi_node *const node,
+		const size_t refcount)
+{
+	refs_fuse_ll_context *const context =
+		(refs_fuse_ll_context*) fuse_req_userdata(req);
+
+	int err = 0;
+	refs_fuse_ll_node_context search_context;
+	sys_bool ino_tree_locked = SYS_FALSE;
+	refs_fuse_ll_node_context *node_context;
+
+	memset(&search_context, 0, sizeof(search_context));
+
+	err = sys_mutex_lock(
+		/* sys_mutex *mutex */
+		&context->ino_tree_lock);
+	if(err) {
+		sys_log_perror(err, "Error while locking inode tree lock");
+		goto out;
+	}
+
+	ino_tree_locked = SYS_TRUE;
+
+	search_context.node = node;
+
+	node_context = refs_rb_tree_find(
+		/* struct refs_rb_tree *self */
+		context->ino_tree,
+		/* void *value */
+		&search_context);
+	if(!node_context) {
+		sys_log_error("No context found in inode tree for node %p!",
+			node);
+		err = EIO;
+		goto out;
+	}
+
+	sys_log_debug("Dereferencing node %p with refcount %" PRIuz " "
+		"%" PRIuz " times...",
+		node_context->node, PRAuz(node_context->refcount),
+		PRAuz(refcount));
+
+	if(!node_context->refcount) {
+		sys_log_warning("0-reference node context encountered in the "
+			"inode tree for node %p.", node);
+	}
+	else {
+		node_context->refcount -= refcount;
+	}
+
+	if(!node_context->refcount) {
+		sys_log_debug("Deallocating released node context %p with no "
+			"remaining references.", node_context);
+
+		if(!refs_rb_tree_remove(
+			/* struct refs_rb_tree *self */
+			context->ino_tree,
+			/* void *value */
+			node_context))
+		{
+			sys_log_error("Error while removing node context %p "
+				"for node %p from inode tree.",
+				node_context, node);
+			err = EIO;
+		}
+
+		sys_free(sizeof(*node_context), &node_context);
+	}
+out:
+	if(ino_tree_locked) {
+		int cleanup_err;
+		cleanup_err = sys_mutex_unlock(
+			/* sys_mutex *mutex */
+			&context->ino_tree_lock);
+		if(cleanup_err) {
+			sys_log_perror(cleanup_err, "Error while unlocking "
+				"inode tree lock");
+			err = err ? err : cleanup_err;
+		}
+	}
+
+	return err;
+}
+
+static int refs_fuse_ll_forget_common(
+		fuse_req_t req,
+		fsapi_volume *vol,
+		fsapi_node **nodep,
+		size_t release_count)
+{
+	fsapi_node *const node = *nodep;
+
+	int err = 0;
+
+	err = fsapi_node_release(
+		/* fsapi_volume *vol */
+		vol,
+		/* fsapi_node **node */
+		nodep,
+		/* size_t release_count */
+		release_count);
+	if(err) {
+		goto out;
+	}
+
+	err = refs_fuse_ll_remove_node_references(
+		/* fuse_req_t req */
+		req,
+		/* fsapi_node *node */
+		node,
+		/* size_t refcount */
+		release_count);
+out:
+	return err;
+}
+
 static void refs_fuse_ll_op_lookup(
 		fuse_req_t req,
 		fuse_ino_t parent,
 		const char *name)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const parent_node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -1207,6 +1426,15 @@ static void refs_fuse_ll_op_lookup(
 		&entry_param.attr,
 		/* const fsapi_node_attributes *attributes */
 		&attributes);
+	if(err) {
+		goto out;
+	}
+
+	err = refs_fuse_ll_add_node_reference(
+		/* fuse_req_t req */
+		req,
+		/* fsapi_node *node */
+		node);
 out:
 	if(err && node) {
 		/* An error after the node has been looked up means that we need
@@ -1250,7 +1478,7 @@ static void refs_fuse_ll_op_forget(
 		)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 
 	int err = 0;
 	fsapi_node *node =
@@ -1263,10 +1491,12 @@ static void refs_fuse_ll_op_forget(
 	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 ", nlookup=%" PRIu64 ")",
 		__FUNCTION__, req, PRAX64(ino), PRAu64(nlookup));
 
-	err = fsapi_node_release(
+	err = refs_fuse_ll_forget_common(
+		/* fuse_req_t req */
+		req,
 		/* fsapi_volume *vol */
 		vol,
-		/* fsapi_node **node */
+		/* fsapi_node **nodep */
 		&node,
 		/* size_t release_count */
 		nlookup);
@@ -1288,7 +1518,7 @@ static void refs_fuse_ll_op_getattr(
 		struct fuse_file_info *fi)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -1352,7 +1582,7 @@ static void refs_fuse_ll_op_readlink(
 		fuse_ino_t ino)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -1416,7 +1646,7 @@ static void refs_fuse_ll_op_open(
 		struct fuse_file_info *fi)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -1469,7 +1699,7 @@ static void refs_fuse_ll_op_read(
 		struct fuse_file_info *fi)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -1536,7 +1766,7 @@ static void refs_fuse_ll_op_statfs(
 		fuse_ino_t ino)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 
 	int err = 0;
 	fsapi_volume_attributes attributes;
@@ -1699,7 +1929,7 @@ static void refs_fuse_ll_op_readdir(
 		struct fuse_file_info *fi)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -1877,7 +2107,7 @@ static void refs_fuse_ll_op_getxattr(
 #endif
 
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -1963,7 +2193,7 @@ static void refs_fuse_ll_op_listxattr(
 		size_t size)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 	fsapi_node *const node =
 		refs_fuse_ll_fuse_ino_to_node(
 			/* fuse_ino_t ino */
@@ -2027,7 +2257,7 @@ static void refs_fuse_ll_op_forget_multi(
 		struct fuse_forget_data *forgets)
 {
 	fsapi_volume *const vol =
-		(fsapi_volume*) fuse_req_userdata(req);
+		refs_fuse_ll_get_volume(req);
 
 	int err = 0;
 	size_t i;
@@ -2043,10 +2273,12 @@ static void refs_fuse_ll_op_forget_multi(
 				/* fsapi_volume *vol */
 				vol);
 
-		err = fsapi_node_release(
+		err = refs_fuse_ll_forget_common(
+			/* fuse_req_t req */
+			req,
 			/* fsapi_volume *vol */
 			vol,
-			/* fsapi_node **node */
+			/* fsapi_node **nodep */
 			&node,
 			/* size_t release_count */
 			forgets[i].nlookup);
@@ -2107,6 +2339,53 @@ static struct fuse_lowlevel_ops refs_fuse_ll_operations = {
 	.forget_multi = refs_fuse_ll_op_forget_multi,
 #endif /* FUSE_VERSION >= 29 */
 };
+
+static int refs_fuse_ll_compare_ino_tree_nodes(
+		struct refs_rb_tree *self,
+		struct refs_rb_node *a,
+		struct refs_rb_node *b)
+{
+	refs_fuse_ll_node_context *const a_context = a->value;
+	refs_fuse_ll_node_context *const b_context = b->value;
+
+	int ret;
+
+	(void) self;
+
+	if((size_t) a_context->node < (size_t) b_context->node) {
+		ret = -1;
+	}
+	else if((size_t) a_context->node > (size_t) b_context->node) {
+		ret = 1;
+	}
+	else {
+		ret = 0;
+	}
+
+	return ret;
+}
+
+static void refs_fuse_ll_deallocate_ino_tree_node(
+		struct refs_rb_tree *const self,
+		struct refs_rb_node *const node)
+{
+	refs_fuse_ll_context *const context = self->info;
+	refs_fuse_ll_node_context *node_context = node->value;
+
+	sys_log_debug("Cleaning up cached node %p with %" PRIuz " "
+		"references...",
+		node_context->node, PRAuz(node_context->refcount));
+
+	fsapi_node_release(
+		/* fsapi_volume *vol */
+		context->vol,
+		/* fsapi_node **node */
+		&node_context->node,
+		/* size_t release_count */
+		node_context->refcount);
+
+	sys_free(sizeof(*node_context), &node_context);
+}
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API ... */
 
 int main(int argc, char **argv)
@@ -2119,6 +2398,8 @@ int main(int argc, char **argv)
 	sys_device *dev = NULL;
 	fsapi_volume *vol = NULL;
 #if REFS_FUSE_USE_LOWLEVEL_API
+	refs_fuse_ll_context context;
+	sys_bool ino_tree_lock_inited = SYS_FALSE;
 	int i;
 	sys_bool foreground = SYS_FALSE;
 	struct fuse_args args;
@@ -2130,6 +2411,8 @@ int main(int argc, char **argv)
 	struct fuse_session *ses = NULL;
 	sys_bool signal_handlers_set = SYS_FALSE;
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
+
+	memset(&context, 0, sizeof(context));
 
 	if(argc < 3) {
 		fprintf(stderr, "usage: refs-fuse <device> <mountpoint> [fuse "
@@ -2170,6 +2453,30 @@ int main(int argc, char **argv)
 	}
 
 #if REFS_FUSE_USE_LOWLEVEL_API
+	context.vol = vol;
+
+	err = sys_mutex_init(
+		/* sys_mutex *mutex */
+		&context.ino_tree_lock);
+	if(err) {
+		sys_log_perror(err, "Error while creating FUSE inode tree "
+			"lock");
+		goto out;
+	}
+
+	ino_tree_lock_inited = SYS_TRUE;
+
+	context.ino_tree = refs_rb_tree_create(
+		/* refs_rb_tree_node_cmp_f cmp */
+		refs_fuse_ll_compare_ino_tree_nodes);
+	if(!context.ino_tree) {
+		sys_log_perror(errno, "Error while creating FUSE inode tree");
+		err = (err = errno) ? err : ENOMEM;
+		goto out;
+	}
+
+	context.ino_tree->info = &context;
+
 	/* Remove the device and mount point argument from FUSE options. */
 	if(argc > 3) {
 		memmove(&argv[1], &argv[3], (argc - 3) * sizeof(argv[0]));
@@ -2214,7 +2521,7 @@ int main(int argc, char **argv)
 		/* size_t op_size */
 		sizeof(refs_fuse_ll_operations),
 		/* void *userdata */
-		vol);
+		&context);
 	if(!ses) {
 		err = (err = errno) ? err : EINVAL;
 		goto out;
@@ -2252,7 +2559,7 @@ int main(int argc, char **argv)
 		/* size_t op_size */
 		sizeof(refs_fuse_ll_operations),
 		/* void *userdata */
-		vol);
+		&context);
 #endif /* FUSE_VERSION < 30 */
 	if(!ses) {
 		err = EINVAL;
@@ -2360,6 +2667,28 @@ out:
 			ses);
 	}
 #endif /* FUSE_VERSION >= 30 */
+
+	if(context.ino_tree) {
+		refs_rb_tree_dealloc(
+			/* struct refs_rb_tree *self */
+			context.ino_tree,
+			/* refs_rb_tree_node_f node_cb */
+			refs_fuse_ll_deallocate_ino_tree_node);
+	}
+
+	if(ino_tree_lock_inited) {
+		int cleanup_err;
+
+		cleanup_err = sys_mutex_deinit(
+			/* sys_mutex *mutex */
+			&context.ino_tree_lock);
+		if(cleanup_err) {
+			sys_log_perror(cleanup_err, "Error while cleaning up "
+				"inode tree lock");
+			err = err ? err : cleanup_err;
+		}
+	}
+
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	if(vol) {
