@@ -72,7 +72,8 @@ typedef struct {
 	le32 reserved44;                              /* offset = 0x2C     44 */
 	le64 reserved48;                              /* offset = 0x30     48 */
 	le64 serial_number;                           /* offset = 0x38     56 */
-	u8 reserved64[448];                           /* offset = 0x40     64 */
+	le32 reserved64;                              /* offset = 0x40     64 */
+	u8 reserved68[444];                           /* offset = 0x44     68 */
 	                                              /* size   = 0x200   512 */
 } __attribute__ ((__packed__)) REFS_BOOT_SECTOR;
 

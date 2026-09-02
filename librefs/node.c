@@ -2726,7 +2726,7 @@ static int refs_node_parse_block_header(
 			PRAX64(cluster_number));
 	}
 
-	emit(prefix, indent + 1, "Block header:");
+	emit(prefix, indent + 1, "Block header @ 0 / 0x0:");
 	if(is_v3) {
 		emit(prefix, indent + 2, "Signature @ %" PRIuz " / "
 			"0x%" PRIXz ": \"%" PRIbs "\"",
@@ -2909,16 +2909,16 @@ static int refs_node_parse_superblock_v1(
 	print_unknown64(prefix, indent, block, &header->reserved72);
 	checkpoint_block_list_offset =
 		le32_to_cpu(header->checkpoint_block_list_offset);
-	print_le32_dec("Offset of checkpoint block list", prefix, indent,
+	print_le32_dechex("Offset of checkpoint block list", prefix, indent,
 		header, &header->checkpoint_block_list_offset);
 	checkpoint_blocks_count = le32_to_cpu(header->checkpoint_blocks_count);
-	print_le32_dec("Number of checkpoint blocks", prefix, indent,
+	print_le32_dechex("Number of checkpoint blocks", prefix, indent,
 		header, &header->checkpoint_blocks_count);
 	self_reference_offset = le32_to_cpu(header->self_extents_offset);
-	print_le32_dec("Offset of self reference", prefix, indent, header,
+	print_le32_dechex("Offset of self reference", prefix, indent, header,
 		&header->self_extents_offset);
 	self_reference_size = le32_to_cpu(header->self_extents_size);
-	print_le32_dec("Size of self reference", prefix, indent, header,
+	print_le32_dechex("Size of self reference", prefix, indent, header,
 		&header->self_extents_size);
 
 	if(sys_min(checkpoint_block_list_offset, self_reference_offset) > 96) {
@@ -3155,19 +3155,19 @@ static int refs_node_parse_superblock_v3(
 	i += print_unknown64(prefix, indent, sb, &sb->reserved104);
 
 	checkpoint_block_list_offset = le32_to_cpu(sb->reserved112);
-	i += print_le32_dec("Offset of checkpoint block list", prefix, indent,
-		sb, &sb->reserved112);
+	i += print_le32_dechex("Offset of checkpoint block list", prefix,
+		indent, sb, &sb->reserved112);
 
 	checkpoint_block_list_count = le32_to_cpu(sb->reserved116);
-	i += print_le32_dec("Number of checkpoint blocks", prefix, indent, sb,
-		&sb->reserved116);
+	i += print_le32_dechex("Number of checkpoint blocks", prefix, indent,
+		sb, &sb->reserved116);
 
 	self_reference_offset = le32_to_cpu(sb->reserved120);
-	i += print_le32_dec("Offset of self reference", prefix, indent, sb,
+	i += print_le32_dechex("Offset of self reference", prefix, indent, sb,
 		&sb->reserved120);
 
 	self_reference_size = le32_to_cpu(sb->reserved124);
-	i += print_le32_dec("Size of self reference", prefix, indent, sb,
+	i += print_le32_dechex("Size of self reference", prefix, indent, sb,
 		&sb->reserved124);
 
 	if(sys_min(checkpoint_block_list_offset, self_reference_offset) > i) {
@@ -3585,15 +3585,21 @@ static int refs_node_parse_checkpoint_block(
 	print_unknown16(prefix, indent, block, &header[0x34]);
 	print_unknown16(prefix, indent, block, &header[0x36]);
 	self_reference_offset = read_le32(&header[0x38]);
-	print_le64_dec("Offset of self reference", prefix, indent, block,
+	print_le32_dechex("Offset of self reference", prefix, indent, block,
 		&header[0x38]);
 	self_reference_size = read_le32(&header[0x3C]);
-	print_le64_dec("Size of self reference", prefix, indent, block,
+	print_le32_dechex("Size of self reference", prefix, indent, block,
 		&header[0x3C]);
 	print_le64_dechex("Checkpoint number", prefix, indent, block,
 		&header[0x40]);
-	print_le64_dechex("First checkpoint number (?)", prefix, indent, block,
-		&header[0x48]);
+	if(is_v3) {
+		print_le64_dechex("First checkpoint number (?)", prefix, indent,
+			block, &header[0x48]);
+	}
+	else {
+		print_unknown32(prefix, indent, block, &header[0x48]);
+		print_unknown32(prefix, indent, block, &header[0x4C]);
+	}
 	print_unknown32(prefix, indent, block, &header[0x50]);
 	print_unknown32(prefix, indent, block, &header[0x54]);
 	i += 0x58;
