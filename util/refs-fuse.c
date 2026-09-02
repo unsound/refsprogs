@@ -51,7 +51,7 @@ typedef unsigned int mode_t;
 #include "layout.h"
 
 /* Headers - librefs (private). */
-#include "librefs/rb_tree.h"
+#include "rb_tree.h"
 
 #if REFS_FUSE_USE_LOWLEVEL_API
 #ifndef FUSE_ROOT_ID
