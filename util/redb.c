@@ -111,48 +111,52 @@ static void print_help(FILE *out)
 static void print_about(FILE *out)
 {
 	fprintf(out, "%s %s\n", BINARY_NAME, VERSION);
-	fprintf(out, "Copyright (c) 2022-2025 Erik Larsson\n");
+	fprintf(out, REFS_PROJECT_COPYRIGHT_MESSAGE "\n");
 }
 
 static void print_boot_sector(REFS_BOOT_SECTOR *const bs)
 {
 	static const char *const prefix = "\t";
 
-	emitln("%sJump instruction: 0x%" PRI0PAD(2) PRIX8 "%" PRI0PAD(2) PRIX8
+	emitln("%sJump instruction @ 0 / 0x0: "
+		"0x%" PRI0PAD(2) PRIX8 "%" PRI0PAD(2) PRIX8
 		"%" PRI0PAD(2) PRIX8,
 		prefix,
 		PRAX8(bs->jump[0]), PRAX8(bs->jump[1]), PRAX8(bs->jump[2]));
-	emitln("%sOEM ID: \"%" PRIbs "\"",
+	emitln("%sOEM ID @ 3 / 0x3: \"%" PRIbs "\"",
 		prefix,
 		PRAbs(8, bs->oem_id));
-	emitln("%sReserved:", prefix);
+	emitln("%sReserved @ 7 / 0x7:", prefix);
 	print_data(prefix, 1, bs->reserved7, sizeof(bs->reserved7));
-	emitln("%sSignature: \"%" PRIbs "\"",
+	emitln("%sSignature @ 16 / 0x10: \"%" PRIbs "\"",
 		prefix,
 		PRAbs(4, bs->signature));
-	emitln("%sUnknown @ 20:", prefix);
+	emitln("%sUnknown @ 20 / 0x14:", prefix);
 	print_data(prefix, 1, bs->reserved20, sizeof(bs->reserved20));
-	emitln("%sNumber of sectors: %" PRIu64 " (%" PRIu64 " bytes)",
+	emitln("%sNumber of sectors @ 24 / 0x18: %" PRIu64 " (%" PRIu64 " "
+		"bytes)",
 		prefix, PRAu64(le64_to_cpu(bs->num_sectors)),
 		PRAu64(le32_to_cpu(bs->bytes_per_sector) *
 		le64_to_cpu(bs->num_sectors)));
-	emitln("%sBytes per sector: %" PRIu32 " bytes",
+	emitln("%sBytes per sector @ 32 / 0x20: %" PRIu32 " bytes",
 		prefix, PRAu32(le32_to_cpu(bs->bytes_per_sector)));
-	emitln("%sSectors per cluster: %" PRIu32 " (%" PRIu64 " bytes)",
+	emitln("%sSectors per cluster @ 36 / 0x24: %" PRIu32 " (%" PRIu64 " "
+		"bytes)",
 		prefix, PRAu32(le32_to_cpu(bs->sectors_per_cluster)),
 		PRAu64(((u64) le32_to_cpu(bs->sectors_per_cluster)) *
 		le32_to_cpu(bs->bytes_per_sector)));
-	emitln("%sVersion: %" PRIu8 ".%" PRIu8,
+	emitln("%sVersion @ 40 / 0x28: %" PRIu8 ".%" PRIu8,
 		prefix,
 		PRAu8(bs->version_major), PRAu8(bs->version_minor));
 	print_unknown16(prefix, 0, bs, &bs->reserved42);
 	print_unknown32(prefix, 0, bs, &bs->reserved44);
 	print_unknown64(prefix, 0, bs, &bs->reserved48);
-	emitln("%sSerial number: 0x%" PRIx64,
+	emitln("%sSerial number @ 56 / 0x38: 0x%" PRIx64,
 		prefix, PRAx64(le64_to_cpu(bs->serial_number)));
+	print_unknown32(prefix, 0, bs, &bs->reserved64);
 
-	print_data_with_base(prefix, 1, 64, 512, bs->reserved64,
-		sizeof(bs->reserved64));
+	print_data_with_base(prefix, 1, 68, 512, bs->reserved68,
+		sizeof(bs->reserved68));
 #if 0
 	emitln("%sBoot signature: 0x%" PRI0PAD(4) PRIX16,
 		prefix, PRAX16(le16_to_cpu(bs->end_of_sector_signature)));
@@ -320,9 +324,11 @@ int main(int argc, char **argv)
 				&bs,
 				/* REFS_SUPERBLOCK **bs */
 				NULL,
-				/* REFS_LEVEL1_NODE **primary_level1_node */
+				/* REFS_CHECKSUM_BLOCK
+				 *     **primary_checksum_block */
 				NULL,
-				/* REFS_LEVEL1_NODE **secondary_level1_node */
+				/* REFS_CHECKSUM_BLOCK
+				 *     **secondary_checksum_block */
 				NULL,
 				/* refs_block_map **block_map */
 				NULL,

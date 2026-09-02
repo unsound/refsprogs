@@ -72,7 +72,8 @@ typedef struct {
 	le32 reserved44;                              /* offset = 0x2C     44 */
 	le64 reserved48;                              /* offset = 0x30     48 */
 	le64 serial_number;                           /* offset = 0x38     56 */
-	u8 reserved64[448];                           /* offset = 0x40     64 */
+	le32 reserved64;                              /* offset = 0x40     64 */
+	u8 reserved68[444];                           /* offset = 0x44     68 */
 	                                              /* size   = 0x200   512 */
 } __attribute__ ((__packed__)) REFS_BOOT_SECTOR;
 
@@ -113,8 +114,8 @@ typedef struct {
 	REFS_GUID block_guid;                         /* offset = 0x30     48 */
 	le64 reserved64;                              /* offset = 0x40     64 */
 	le64 reserved72;                              /* offset = 0x48     72 */
-	le32 level1_blocks_offset;                    /* offset = 0x50     80 */
-	le32 level1_blocks_count;                     /* offset = 0x54     84 */
+	le32 checkpoint_block_list_offset;            /* offset = 0x50     80 */
+	le32 checkpoint_blocks_count;                 /* offset = 0x54     84 */
 	le32 self_extents_offset;                     /* offset = 0x58     88 */
 	le32 self_extents_size;                       /* offset = 0x5C     92 */
 	                                              /* size   = 0x60     96 */
@@ -303,7 +304,7 @@ typedef struct {
 	le16 unknown54;                               /* offset = 0x36     54 */
 	le32 unknown56;                               /* offset = 0x38     56 */
 
-} __attribute__ ((__packed__)) REFS_V1_LEVEL1_NODE;
+} __attribute__ ((__packed__)) REFS_V1_CHECKPOINT_BLOCK;
 
 typedef struct {
 	REFS_V3_NODE_HEADER header;                   /* offset = 0x0       0 */
@@ -323,12 +324,12 @@ typedef struct {
 	le32 unknown140;                              /* offset = 0x8C    140 */
 	le32 level2_blocks_count;                     /* offset = 0x90    144 */
 	/* le32 level2_blocks[]; */                   /* offset = 0x94    148 */
-} __attribute__ ((__packed__)) REFS_V3_LEVEL1_NODE;
+} __attribute__ ((__packed__)) REFS_V3_CHECKPOINT_BLOCK;
 
 typedef union {
-	REFS_V1_LEVEL1_NODE v1;
-	REFS_V3_LEVEL1_NODE v3;
-} __attribute__ ((__packed__)) REFS_LEVEL1_NODE;
+	REFS_V1_CHECKPOINT_BLOCK v1;
+	REFS_V3_CHECKPOINT_BLOCK v3;
+} __attribute__ ((__packed__)) REFS_CHECKPOINT_BLOCK;
 
 /**
  * Tests if the version number is at least @p major.minor and returns

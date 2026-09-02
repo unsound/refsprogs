@@ -55,7 +55,8 @@ refs_fuse_CFLAGS += \
 	-DFUSE_USE_VERSION=26
 endif # ENABLE_FUSE3
 refs_fuse_CFLAGS += \
-	$(refs_common_cflags)
+	$(refs_common_cflags) \
+	-I$(top_srcdir)/librefs
 refs_fuse_SOURCES = \
 	refs-fuse.c
 endif # ENABLE_REFS_FUSE

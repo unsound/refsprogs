@@ -74,6 +74,10 @@ typedef struct sys_iohandler sys_iohandler;
 #define SYS_LOG_INDENT_MAX 32
 #endif /* !defined(SYS_LOG_INDENT_MAX) */
 
+#ifndef SYS_LOG_INDENT_CAP
+#define SYS_LOG_INDENT_CAP 0
+#endif /* !defined(SYS_LOG_INDENT_CAP) */
+
 extern __thread int __sys_log_indent;
 
 #define __sys_log_indent_declarations \
@@ -95,6 +99,8 @@ extern __thread int __sys_log_indent;
 #define __sys_log_indent_arg __sys_log_indent_buffer
 #define __sys_log_indent_increment ++__sys_log_indent
 #define __sys_log_indent_decrement --__sys_log_indent
+#define __sys_log_indent_if_below_cap \
+	if(!SYS_LOG_INDENT_CAP || __sys_log_indent < SYS_LOG_INDENT_CAP)
 #else
 #define __sys_log_indent_declarations \
 	do {} while(0)
@@ -106,6 +112,7 @@ extern __thread int __sys_log_indent;
 #define __sys_log_indent_arg ""
 #define __sys_log_indent_increment do {} while(0)
 #define __sys_log_indent_decrement do {} while(0)
+#define __sys_log_indent_if_below_cap
 #endif /* SYS_LOG_INDENT ... */
 
 /**
@@ -254,6 +261,8 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #endif
 
 #if SYS_LOG_PROFILING
+#include <sys/time.h>
+
 #define __sys_log_enter_time_declarations \
 	sys_difftime __sys_log_enter_start_ts; \
 	sys_difftime __sys_log_enter_end_ts
@@ -277,8 +286,10 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #define __sys_log_do_enter(level, fmt, ...) \
 	__sys_log_enter_time_declarations; \
 	do { \
-		sys_log_##level("Entering %s(" fmt ")...", \
-			__FUNCTION__, ##__VA_ARGS__); \
+		__sys_log_indent_if_below_cap { \
+			sys_log_##level("Entering %s(" fmt ")...", \
+				__FUNCTION__, ##__VA_ARGS__); \
+		} \
 		__sys_log_indent_increment; \
 		__sys_log_get_difftime(&__sys_log_enter_start_ts); \
 	} while(0)
@@ -287,9 +298,12 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 	do { \
 		__sys_log_get_difftime(&__sys_log_enter_end_ts); \
 		__sys_log_indent_decrement; \
-		sys_log_##level("Leaving %s(" fmt ")." \
-			__sys_log_profiling_fmt, \
-			__FUNCTION__, ##__VA_ARGS__ __sys_log_profiling_arg); \
+		__sys_log_indent_if_below_cap { \
+			sys_log_##level("Leaving %s(" fmt ")." \
+				__sys_log_profiling_fmt, \
+				__FUNCTION__, ##__VA_ARGS__ \
+				__sys_log_profiling_arg); \
+		} \
 	} while(0)
 
 #if SYS_LOG_INFO_ENABLED
@@ -319,6 +333,14 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #define sys_log_enter(...) sys_log_enter_trace(__VA_ARGS__)
 #define sys_log_leave(...) sys_log_leave_trace(__VA_ARGS__)
 
+/**
+ * Define SYS_FALLTHROUGH as a redirect for the toolchain's preferred way to
+ * indicate a deliberate fallthrough in a switch statement.
+ *
+ * This was first introduced in gcc 7 as '__attribute__((__fallthrough__))' to
+ * counter the effects of the newly introduced '-Wimplicit-fallthrough' warning.
+ */
+
 #if defined(__GNUC__)
 #if __GNUC__ >= 7
 #define SYS_FALLTHROUGH() __attribute__((__fallthrough__))
@@ -328,6 +350,13 @@ static inline void __sys_log_pnoop(int err, const char *const fmt, ...)
 #ifndef SYS_FALLTHROUGH
 #define SYS_FALLTHROUGH() do {} while(0)
 #endif /* !defined(SYS_FALLTHROUGH) */
+
+/*
+ * Include platform-specific system macros. These will differ depending on the
+ * platform we are building for, through all userspace platforms using a regular
+ * libc are currently considered to be one platform with various special cases
+ * in 'sys_user.h' to cater for platform diferences.
+ */
 
 #if defined(__linux__) && defined(__KERNEL__)
 #include "sys_linux.h"
