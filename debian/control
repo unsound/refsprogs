@@ -18,7 +18,7 @@ Architecture: linux-any kfreebsd-any hurd-any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
- librefs16 (= ${binary:Version}),
+ librefs17 (= ${binary:Version}),
  fuse3 [linux-any],
  fuse4bsd [kfreebsd-any]
 #Provides: ${refsprogs:Provides}
@@ -41,7 +41,7 @@ Architecture: linux-any kfreebsd-any hurd-any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
- librefs16 (= ${binary:Version}),
+ librefs17 (= ${binary:Version}),
 #Provides: ${refsprogs:Provides}
 Description: Read-only ReFS progs,
  refsprogs includes 'refls', 'refcat', useful for listing and retrieving data
@@ -55,14 +55,14 @@ Architecture: linux-any kfreebsd-any hurd-any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
- librefs16 (= ${binary:Version}),
+ librefs17 (= ${binary:Version}),
 Description: read-only ReFS library (development)
  librefs provides a read-only interface for interacting with the ReFS filesystem
  filesystem used by recent versions of Microsoft Windows.
  .
  This package contains the development files.
 
-Package: librefs16
+Package: librefs17
 Section: libs
 Architecture: linux-any kfreebsd-any hurd-any
 Multi-Arch: same
