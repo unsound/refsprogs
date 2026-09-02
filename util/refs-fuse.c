@@ -2410,9 +2410,9 @@ int main(int argc, char **argv)
 #endif /* FUSE_VERSION >= 30 ... */
 	struct fuse_session *ses = NULL;
 	sys_bool signal_handlers_set = SYS_FALSE;
-#endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	memset(&context, 0, sizeof(context));
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	if(argc < 3) {
 		fprintf(stderr, "usage: refs-fuse <device> <mountpoint> [fuse "
