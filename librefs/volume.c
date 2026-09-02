@@ -28,6 +28,7 @@
 #include "sys.h"
 #include "layout.h"
 #include "node.h"
+#include "util.h"
 
 static int refs_volume_create_visit_node_header(
 		void *context,
@@ -508,6 +509,141 @@ out:
 	return err;
 }
 
+static sys_bool refs_volume_resolve_hard_link_target_add_fstree_subnode(
+		refs_node_crawl_context *const crawl_context,
+		refs_node_walk_visitor *const visitor,
+		const sys_bool is_v3,
+		const u8 *const key,
+		const u16 key_size,
+		const u32 entry_index,
+		const u32 num_entries,
+		void *const _context)
+{
+	refs_volume_lookup_context *const context =
+		(refs_volume_lookup_context*) visitor->context;
+
+	sys_bool should_add_subnode = SYS_TRUE;
+	u16 type;
+	u16 flags;
+	u16 reserved;
+	u64 hard_link_id;
+	u64 parent_directory_id;
+
+	sys_log_enter(
+		"crawl_context=%p, "
+		"visitor=%p, "
+		"is_v3=%d, "
+		"key=%p, "
+		"key_size=%" PRIu16 ", "
+		"entry_index=%" PRIu32 ", "
+		"num_entries=%" PRIu32 ", "
+		"context=%p",
+		crawl_context,
+		visitor,
+		is_v3,
+		key,
+		PRAu16(key_size),
+		PRAu32(entry_index),
+		PRAu32(num_entries),
+		_context);
+
+	(void) is_v3;
+	(void) _context;
+
+	if(entry_index == num_entries - 1) {
+		/* Always add the last node as its last key may be lazily
+		 * updated and often it doesn't even have a key associated with
+		 * it. */
+	}
+	else if(key_size < 2) {
+		/* Can't even read the type, add subnode as a precaution. */
+	}
+	else if((type = read_le16(&key[0])) < 0x40) {
+		/* The last key in the node has a type that is smaller than our
+		 * requested hard link type. We can safely skip this one. */
+		sys_log_debug("Skipping descent into fstree subnode preceding "
+			"hard link type. Type: %" PRIu64 " Requested type: "
+			"0x40",
+			PRAu64(type));
+		should_add_subnode = SYS_FALSE;
+	}
+	else if(type != 0x40) {
+		/* If the last key in the node's type is larger than 0x40, then
+		 * we should add the node as it may also contain 0x40 type
+		 * keys. */
+	}
+	else if(key_size < 24) {
+		/* Can't read the relevant fields. Add subnode as a
+		 * precaution. */
+		sys_log_warning("Unexpected key size for hard link type key: "
+			"%" PRIu16 " (expected at least 24) Adding node as a "
+			"precaution.",
+			PRAu16(key_size));
+	}
+	else if((flags = read_le16(&key[2])) && flags != 0x8000) {
+		sys_log_warning("Unexpected flags field in hard link key: "
+			"0x%" PRIX16 " (expected 0x8000) Adding node as a "
+			"precaution.",
+			PRAX16(flags));
+	}
+	else if((reserved = read_le32(&key[4])) && reserved != 0) {
+		sys_log_warning("Unexpected reserved field in hard link key: "
+			"0x%" PRIX32 " (expected 0x0) Adding node as a "
+			"precaution.",
+			PRAX32(reserved));
+	}
+	else if((hard_link_id = read_le64(&key[8])) < context->hard_link_id) {
+		/* The last key in the node is a hard link type key but with a
+		 * hard link id that is smaller than the requested hard link id.
+		 * We can safely skip this one. */
+		sys_log_debug("Skipping descent into fstree subnode preceding "
+			"requested hard link id. Requested hard link id: "
+			"%" PRIu64 " Hard link id: %" PRIu64,
+			PRAu64(context->hard_link_id), PRAu64(hard_link_id));
+		should_add_subnode = SYS_FALSE;
+	}
+	else if(hard_link_id != context->hard_link_id) {
+		/* If the last hard link key in the node has a hard link id
+		 * larger than the requested id, then we should add the node as
+		 * it may also contain keys with our requested id. */
+	}
+	else if((parent_directory_id = read_le64(&key[16])) <
+		context->directory_object_id)
+	{
+		/* The last key in the node is a hard link type key, with
+		 * matching hard link id but with a hard link parent directory
+		 * id that is smaller than the requested parent directory id.
+		 * We can safely skip this one. */
+		sys_log_debug("Skipping descent into fstree subnode preceding "
+			"requested hard link parent directory id. Requested "
+			"hard link parent directory link id: %" PRIu64 " "
+			"Parent directory hard link id: %" PRIu64,
+			PRAu64(context->directory_object_id),
+			PRAu64(parent_directory_id));
+		should_add_subnode = SYS_FALSE;
+	}
+
+	sys_log_leave(
+		"crawl_context=%p, "
+		"visitor=%p, "
+		"is_v3=%d, "
+		"key=%p, "
+		"key_size=%" PRIu16 ", "
+		"entry_index=%" PRIu32 ", "
+		"num_entries=%" PRIu32 ", "
+		"context=%p",
+		crawl_context,
+		visitor,
+		is_v3,
+		key,
+		PRAu16(key_size),
+		PRAu32(entry_index),
+		PRAu32(num_entries),
+		_context);
+
+	return should_add_subnode;
+}
+
 static int refs_volume_resolve_hard_link_target_internal(
 		refs_volume *const vol,
 		refs_volume_lookup_context *const context)
@@ -515,10 +651,18 @@ static int refs_volume_resolve_hard_link_target_internal(
 	int err = 0;
 	refs_node_walk_visitor visitor;
 
+	sys_log_enter(
+		"vol=%p, "
+		"context=%p",
+		vol,
+		context);
+
 	memset(&visitor, 0, sizeof(visitor));
 
 	visitor.context = context;
 	visitor.node_leaf_entry = refs_volume_resolve_hard_link_node_leaf_entry;
+	visitor.should_add_fstree_subnode =
+		refs_volume_resolve_hard_link_target_add_fstree_subnode;
 
 	sys_log_debug("Resolving hard link entry to parent 0x%" PRIX64 " / id "
 		"%" PRIX64 " in leaf.",
@@ -572,6 +716,12 @@ static int refs_volume_resolve_hard_link_target_internal(
 		context->record ? *context->record : NULL,
 		PRAuz(context->record_size ? *context->record_size : 0));
 out:
+	sys_log_leave(
+		"vol=%p, "
+		"context=%p",
+		vol,
+		context);
+
 	return err;
 }
 

@@ -207,6 +207,15 @@ struct refs_node_walk_visitor {
 		u32 entry_index,
 		u32 num_entries,
 		void *context);
+	sys_bool (*should_add_fstree_subnode)(
+		refs_node_crawl_context *crawl_context,
+		refs_node_walk_visitor *visitor,
+		sys_bool is_v3,
+		const u8 *key,
+		u16 key_size,
+		u32 entry_index,
+		u32 num_entries,
+		void *context);
 };
 
 typedef struct refs_node_cache refs_node_cache;
