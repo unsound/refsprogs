@@ -2369,15 +2369,31 @@ static int fsapi_node_get_attributes_common(
 		attributes->windows_flags = node->attributes.windows_flags;
 	}
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) {
-		err = sys_strndup(node->attributes.symlink_target,
-			node->attributes.symlink_target_length,
-			&attributes->symlink_target);
-		if(err) {
-			goto out;
-		}
+		if(attributes->symlink_target) {
+			if(attributes->symlink_target_length >
+				node->attributes.symlink_target_length)
+			{
+				attributes->symlink_target_length =
+					node->attributes.symlink_target_length;
+				attributes->symlink_target[attributes->
+					symlink_target_length] = '\0';
+			}
 
-		attributes->symlink_target_length =
-			node->attributes.symlink_target_length;
+			memcpy(attributes->symlink_target,
+				node->attributes.symlink_target,
+				attributes->symlink_target_length);
+		}
+		else {
+			err = sys_strndup(node->attributes.symlink_target,
+				node->attributes.symlink_target_length,
+				&attributes->symlink_target);
+			if(err) {
+				goto out;
+			}
+
+			attributes->symlink_target_length =
+				node->attributes.symlink_target_length;
+		}
 	}
 
 	attributes->valid = provided_mask;
@@ -4373,7 +4389,6 @@ int fsapi_node_rename(
 {
 	int err;
 
-
 	fsapi_log_enter("vol=%p, source_dir_node=%p, "
 		"source_name=%p (->%.*s), source_name_length=%" PRIuz ", "
 		"target_dir_node=%p, target_name=%p (->%.*s), "
@@ -4571,7 +4586,6 @@ int fsapi_node_list_extended_attributes(
 			size_t size))
 {
 	int err = 0;
-
 	fsapi_node_list_extended_attributes_context xattr_context;
 	refs_node_crawl_context crawl_context;
 	refs_node_walk_visitor visitor;
@@ -4997,6 +5011,7 @@ static int fsapi_node_read_extended_attribute_visit_stream(
 {
 	fsapi_node_read_extended_attribute_context *const context =
 		(fsapi_node_read_extended_attribute_context*) _context;
+
 	int err = 0;
 
 	if(name_length != context->xattr_name_length ||
