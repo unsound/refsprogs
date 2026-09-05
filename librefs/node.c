@@ -12714,6 +12714,9 @@ static int refs_node_parse_reparse_point_attribute(
 		case 0xA000000CUL:
 			reparse_tag_string = "IO_REPARSE_TAG_SYMLINK";
 			break;
+		case 0x8000001BUL:
+			reparse_tag_string = "IO_REPARSE_TAG_APPEXECLINK";
+			break;
 		case 0xA000001DUL:
 			reparse_tag_string = "IO_REPARSE_TAG_LX_SYMLINK";
 			break;
