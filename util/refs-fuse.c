@@ -796,17 +796,41 @@ out:
 	return -err;
 }
 
-static void* refs_fuse_op_init(struct fuse_conn_info *const conn)
+static void* refs_fuse_op_init(
+		struct fuse_conn_info *const conn
+#if FUSE_VERSION >= 30
+		, struct fuse_config *const cfg
+#endif /* FUSE_VERSION >= 30 */
+		)
 {
 	void *ret;
 
-	sys_log_debug("%s(conn=%p)",
-		__FUNCTION__, conn);
+	sys_log_debug("%s(conn=%p"
+#if FUSE_VERSION >= 30
+		", cfg=%p"
+#endif /* FUSE_VERSION >= 30 */
+		")",
+		__FUNCTION__, conn
+#if FUSE_VERSION >= 30
+		, cfg
+#endif /* FUSE_VERSION >= 30 */
+		);
 
 	ret = fuse_get_context()->private_data;
+#if FUSE_VERSION >= 30
+	cfg->use_ino = 1;
+#endif /* FUSE_VERSION >= 30 */
 
-	sys_log_debug("%s(conn=%p): %p",
-		__FUNCTION__, conn, ret);
+	sys_log_debug("%s(conn=%p"
+#if FUSE_VERSION >= 30
+		", cfg=%p"
+#endif /* FUSE_VERSION >= 30 */
+		": %p)",
+		__FUNCTION__, conn
+#if FUSE_VERSION >= 30
+		, cfg
+#endif /* FUSE_VERSION >= 30 */
+		, ret);
 
 	return ret;
 }
