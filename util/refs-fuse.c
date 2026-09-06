@@ -2426,6 +2426,7 @@ static void refs_fuse_ll_deallocate_ino_tree_node(
 		node_context->refcount);
 
 	sys_free(sizeof(*node_context), &node_context);
+	free(node);
 }
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API ... */
 
