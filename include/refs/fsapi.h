@@ -31,6 +31,51 @@ typedef struct {
 	u32 tv_nsec;
 } fsapi_timespec;
 
+typedef struct {
+	const char *option_name;
+	sys_bool (*parse_value)(
+		void *custom_mount_options,
+		const char *value,
+		size_t value_length);
+} fsapi_option_specification_entry;
+
+typedef struct {
+	fsapi_option_specification_entry *entries;
+	size_t entries_count;
+} fsapi_options_specification;
+
+int fsapi_options_parse_custom_mount_option(
+		const char *name,
+		size_t name_length,
+		const char *value,
+		size_t value_length,
+		fsapi_options_specification *spec,
+		int (*const parse_unrecognized_option)(
+			void *context,
+			const char *name,
+			size_t name_length,
+			const char *value,
+			size_t value_length),
+		void *parse_unrecognized_option_context,
+		void **out_custom_mount_options);
+
+int fsapi_options_parse_custom_mount_options(
+		const char *options,
+		size_t options_length,
+		sys_bool comma_separated,
+		fsapi_options_specification *spec,
+		int (*parse_unrecognized_option)(
+			void *context,
+			const char *name,
+			size_t name_length,
+			const char *value,
+			size_t value_length),
+		void *parse_unrecognized_option_context,
+		void **out_custom_mount_options);
+
+int fsapi_options_release_custom_mount_options(
+		void **custom_mount_optionsp);
+
 typedef enum {
 	FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_SIZE = 0x1,
 	FSAPI_VOLUME_ATTRIBUTE_TYPE_BLOCK_COUNT = 0x2,
@@ -124,8 +169,9 @@ typedef struct {
 	 * @ref SYS_TRUE if this is directory, @ref SYS_FALSE if this is a file,
 	 * symlink, device or other non-directory entry.
 	 *
-	 * This field is always filled in and doesn't have any bit reserved in
-	 * @ref fsapi_node_attributes::requested or
+	 * This field is implicitly both requested and valid in all requests as
+	 * this is relevant for most operations and doesn't have any bit
+	 * reserved in @ref fsapi_node_attributes::requested or
 	 * @ref fsapi_node_attributes::valid.
 	 */
 	sys_bool is_directory;
@@ -256,6 +302,11 @@ typedef struct {
 	size_t remaining_size;
 	sys_bool is_read;
 } fsapi_iohandler_buffer_context;
+
+/**
+ * Options specification for the fsapi implementation.
+ */
+extern fsapi_options_specification fsapi_options_spec;
 
 /**
  * I/O handler for the buffer I/O handler.

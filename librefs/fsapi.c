@@ -50,6 +50,10 @@ struct fsapi_volume {
 	refs_volume *vol;
 	fsapi_node *root_node;
 	fsapi_refs_xattr_mode xattr_mode;
+	sys_bool uid_defined;
+	sys_bool gid_defined;
+	u64 uid;
+	u64 gid;
 
 	char *volume_label_cstr;
 	size_t volume_label_cstr_length;
@@ -106,6 +110,21 @@ struct fsapi_node {
 	fsapi_node *next;
 };
 
+static sys_bool fsapi_options_parse_uid_value(
+		void *const custom_mount_options,
+		const char *const value,
+		const size_t value_length);
+
+static sys_bool fsapi_options_parse_gid_value(
+		void *const custom_mount_options,
+		const char *const value,
+		const size_t value_length);
+
+static sys_bool fsapi_options_parse_xattr_mode_value(
+		void *custom_mount_options,
+		const char *value,
+		size_t value_length);
+
 static int fsapi_node_get_attributes_visit_symlink(
 		void *context,
 		refs_symlink_type type,
@@ -122,6 +141,541 @@ static int fsapi_node_path_element_compare(
 		const fsapi_node_path_element *const a,
 		const fsapi_node_path_element *const b);
 
+
+static fsapi_option_specification_entry fsapi_options_entries[] =
+{
+	{
+		.option_name = "uid",
+		.parse_value = fsapi_options_parse_uid_value
+	},
+	{
+		.option_name = "gid",
+		.parse_value = fsapi_options_parse_gid_value
+	},
+	{
+		.option_name = "xattr_mode",
+		.parse_value = fsapi_options_parse_xattr_mode_value
+	}
+};
+
+fsapi_options_specification fsapi_options_spec =
+{
+	.entries = fsapi_options_entries,
+	.entries_count =
+		sizeof(fsapi_options_entries) / sizeof(fsapi_options_entries[0])
+};
+
+#define fsapi_options_log_missing_value(name, suffix) \
+	sys_log_error("Missing value for mount option \"%s\"%s.", \
+		(name), (suffix))
+
+#define fsapi_options_log_duplicate_definition(name) \
+	sys_log_error("Duplicate definition of mount option \"%s\".", \
+		(name));
+
+
+#define fsapi_options_log_invalid_value(value_length, value, name, suffix) \
+	sys_log_error("Invalid value \"%" PRIbs "\" for mount option " \
+		"\"%s\"%s.", PRAbs((value_length), (value)), (name), (suffix))
+
+static sys_bool fsapi_options_parse_generic_unsigned_integer_value(
+		const char *const name,
+		const u64 max_value,
+		const char *const value,
+		const size_t value_length,
+		u64 *const out_value,
+		sys_bool *const out_value_valid)
+{
+	sys_bool res = SYS_FALSE;
+	size_t i;
+	u64 parsed_value = 0;
+
+	if(!value) {
+		fsapi_options_log_missing_value(name,
+			" (expects an unsigned integer value)");
+		goto out;
+	}
+
+	if(*out_value_valid) {
+		fsapi_options_log_duplicate_definition(name);
+		goto out;
+	}
+
+	for(i = 0; i < value_length; ++i) {
+		if(value[i] < '0' || value[i] > '9') {
+			fsapi_options_log_invalid_value(value_length, value,
+				name,
+				" (non-digits in integer value)");
+			goto out;
+		}
+
+		parsed_value = parsed_value * 10 + (u64) (value[i] - '0');
+	}
+
+	if(max_value && parsed_value > max_value) {
+		fsapi_options_log_invalid_value(value_length, value, name,
+			" (exceeds the maximum value of the option)");
+		goto out;
+	}
+
+	res = SYS_TRUE;
+	*out_value = parsed_value;
+	*out_value_valid = SYS_TRUE;
+out:
+	return res;
+}
+
+static sys_bool fsapi_options_parse_uid_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length)
+{
+	fsapi_refs_custom_mount_options *const custom_mount_options =
+		(fsapi_refs_custom_mount_options*) _custom_mount_options;
+
+	return fsapi_options_parse_generic_unsigned_integer_value(
+		/* const char *name */
+		"uid",
+		/* u64 max_value */
+		U64_MAX,
+		/* const char *value */
+		value,
+		/* size_t value_length */
+		value_length,
+		/* u64 *out_value */
+		&custom_mount_options->uid,
+		/* sys_bool *out_value_valid */
+		&custom_mount_options->valid.uid);
+}
+
+static sys_bool fsapi_options_parse_gid_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length)
+{
+	fsapi_refs_custom_mount_options *const custom_mount_options =
+		(fsapi_refs_custom_mount_options*) _custom_mount_options;
+
+	return fsapi_options_parse_generic_unsigned_integer_value(
+		/* const char *name */
+		"gid",
+		/* u64 max_value */
+		U64_MAX,
+		/* const char *value */
+		value,
+		/* size_t value_length */
+		value_length,
+		/* u64 *out_value */
+		&custom_mount_options->gid,
+		/* sys_bool *out_value_valid */
+		&custom_mount_options->valid.gid);
+}
+
+static sys_bool fsapi_options_parse_xattr_mode_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length)
+{
+	fsapi_refs_custom_mount_options *const custom_mount_options =
+		(fsapi_refs_custom_mount_options*) _custom_mount_options;
+
+	sys_bool res = SYS_FALSE;
+
+	if(!value) {
+		fsapi_options_log_missing_value("xattr_mode",
+			" (expects one of \"none\", \"streams\", \"eas\" or "
+			"\"both\")");
+		goto out;
+	}
+	else if(custom_mount_options->valid.xattr_mode) {
+		fsapi_options_log_duplicate_definition("xattr_mode");
+		goto out;
+	}
+
+	if(value_length == 4 && !memcmp(value, "none", 4)) {
+		custom_mount_options->xattr_mode =
+			FSAPI_REFS_XATTR_MODE_NONE;
+		custom_mount_options->valid.xattr_mode = SYS_TRUE;
+	}
+	else if(value_length == 7 && !memcmp(value, "streams", 7)) {
+		custom_mount_options->xattr_mode =
+			FSAPI_REFS_XATTR_MODE_STREAMS;
+		custom_mount_options->valid.xattr_mode = SYS_TRUE;
+	}
+	else if(value_length == 3 && !memcmp(value, "eas", 3)) {
+		custom_mount_options->xattr_mode =
+			FSAPI_REFS_XATTR_MODE_EAS;
+		custom_mount_options->valid.xattr_mode = SYS_TRUE;
+	}
+	else if(value_length == 4 && !memcmp(value, "both", 4)) {
+		custom_mount_options->xattr_mode =
+			FSAPI_REFS_XATTR_MODE_BOTH;
+		custom_mount_options->valid.xattr_mode = SYS_TRUE;
+	}
+	else {
+		fsapi_options_log_invalid_value(value_length, value,
+			"xattr_mode",
+			" (should be one of \"none\", \"streams\", \"eas\" or "
+			"\"both\")");
+		goto out;
+	}
+
+	res = SYS_TRUE;
+out:
+	return res;
+}
+
+static int fsapi_options_init(
+		void **const out_custom_mount_options)
+{
+	int err = 0;
+	fsapi_refs_custom_mount_options *custom_mount_options = NULL;
+
+	err = sys_calloc(sizeof(*custom_mount_options), &custom_mount_options);
+	if(err) {
+		goto out;
+	}
+
+	*out_custom_mount_options = custom_mount_options;
+out:
+	return err;
+}
+
+static void fsapi_options_deinit(
+		void **const custom_mount_optionsp)
+{
+	fsapi_refs_custom_mount_options *const custom_mount_options =
+		(fsapi_refs_custom_mount_options*) *custom_mount_optionsp;
+
+	sys_free(sizeof(*custom_mount_options), custom_mount_optionsp);
+}
+
+int fsapi_options_parse_custom_mount_option(
+		const char *const name,
+		const size_t name_length,
+		const char *const value,
+		const size_t value_length,
+		fsapi_options_specification *const spec,
+		int (*const parse_unrecognized_option)(
+			void *context,
+			const char *name,
+			size_t name_length,
+			const char *value,
+			size_t value_length),
+		void *const parse_unrecognized_option_context,
+		void **const out_custom_mount_options)
+{
+	int err = 0;
+	sys_bool cleanup_custom_mount_options = SYS_FALSE;
+	void *custom_mount_options = NULL;
+	size_t i;
+	fsapi_option_specification_entry *matching_entry = NULL;
+
+	if(*out_custom_mount_options) {
+		/* Allow appending to previously created custom mount
+		 * options. */
+		custom_mount_options = *out_custom_mount_options;
+	}
+	else {
+		err = fsapi_options_init(
+			/* void **out_custom_mount_options */
+			&custom_mount_options);
+		if(err) {
+			goto out;
+		}
+
+		cleanup_custom_mount_options = SYS_TRUE;
+	}
+
+	/* Match one of the spec entries against the name. */
+	for(i = 0; i < spec->entries_count; ++i) {
+		const size_t entry_name_length =
+			strlen(spec->entries[i].option_name);
+
+		if(entry_name_length == name_length &&
+			!memcmp(spec->entries[i].option_name, name,
+			name_length))
+		{
+			matching_entry = &spec->entries[i];
+			break;
+		}
+	}
+
+	if(matching_entry && matching_entry->parse_value(
+		/* void *custom_mount_options */
+		custom_mount_options,
+		/* const char *value */
+		value,
+		/* size_t value_length */
+		value_length));
+	else if(!matching_entry && parse_unrecognized_option) {
+		/* If there is no matching entry and there is an unrecognized
+		 * option handler, then call that handler for the option. */
+		err = parse_unrecognized_option(
+			/* void *context */
+			parse_unrecognized_option_context,
+			/* const char *name */
+			name,
+			/* size_t name_length */
+			name_length,
+			/* const char *value */
+			value,
+			/* size_t value_length */
+			value_length);
+		if(err) {
+			goto out;
+		}
+	}
+	else {
+		/* If there's no matching entry, or the value didn't parse
+		 * properly, then the option is unknown. We signal this by
+		 * returning NULL in '*out_custom_mount_options' rather than
+		 * returning an error as this is part of normal operation.
+		 * The caller must take care to handle this condition and save a
+		 * copy of any preexisting mount options pointer before calling
+		 * this function. */
+
+		if(!matching_entry) {
+			sys_log_error("Unrecognized mount option "
+				"\"%" PRIbs "\".",
+				PRAbs(name_length, name));
+		}
+
+		/* If the mount option is recognized but doesn't have a
+		 * valid value, then we expect the 'parse_value'
+		 * callback to emit an error message with more specific
+		 * details. */
+
+		*out_custom_mount_options = NULL;
+		goto out;
+	}
+
+	*out_custom_mount_options = custom_mount_options;
+	cleanup_custom_mount_options = SYS_FALSE;
+out:
+	if(cleanup_custom_mount_options) {
+		fsapi_options_deinit(
+			/* void **custom_mount_optionsp */
+			&custom_mount_options);
+	}
+
+	return err;
+}
+
+int fsapi_options_parse_custom_mount_options(
+		const char *const options,
+		const size_t options_length,
+		const sys_bool comma_separated,
+		fsapi_options_specification *const spec,
+		int (*const parse_unrecognized_option)(
+			void *context,
+			const char *name,
+			size_t name_length,
+			const char *value,
+			size_t value_length),
+		void *const parse_unrecognized_option_context,
+		void **const out_custom_mount_options)
+{
+	int err = 0;
+	sys_bool cleanup_custom_mount_options = SYS_FALSE;
+	void *custom_mount_options = NULL;
+	size_t i = 0;
+	size_t value_length = 0;
+	char *value_alloc = NULL;
+
+	if(*out_custom_mount_options) {
+		/* Allow appending to previously created custom mount
+		 * options. */
+		custom_mount_options = *out_custom_mount_options;
+	}
+	else {
+		err = fsapi_options_init(
+			/* void **out_custom_mount_options */
+			&custom_mount_options);
+		if(err) {
+			goto out;
+		}
+
+		cleanup_custom_mount_options = SYS_TRUE;
+	}
+
+	do {
+		const char *const name = &options[i];
+		size_t j;
+		size_t name_length;
+		const char *value = NULL;
+		void *local_custom_mount_options = NULL;
+
+		/* Parse the name part of this option. If options are comma
+		 * separated we don't parse escape sequences in the name, as
+		 * nobody in their right mind would introduce option names with
+		 * commas in them. */
+		for(j = i; j < options_length && options[j] != '=' &&
+			(!comma_separated || options[j] != ','); ++j);
+
+		name_length = j - i;
+		if(!name_length) {
+			/* Silently ignore empty options. Debatable, it could be
+			 * considered an error. */
+			break;
+		}
+
+		i = j;
+		value_length = 0;
+
+		if(i < options_length && options[i] == '=') {
+			/* Parse the value part of this option. For the value
+			 * part we parse comma escapes.  */
+
+			value = &options[++i];
+
+			if(comma_separated) {
+				sys_bool escape = SYS_FALSE;
+				sys_bool has_escapes = SYS_FALSE;
+				size_t escaped_length = 0;
+
+				/* Iterate over characters until we find the
+				 * next comma, taking into account escape
+				 * sequences. */
+
+				for(j = i; j < options_length; ++j) {
+					const char c = options[j];
+
+					if(c == ',' && !escape) {
+						break;
+					}
+					else if(escape) {
+						has_escapes = SYS_TRUE;
+						--escaped_length;
+						/* Reset 'escape' state
+						 * variable. */
+						escape = SYS_FALSE;
+					}
+					else if(c == '\\') {
+						escape = SYS_TRUE;
+					}
+
+					++escaped_length;
+				}
+
+				value_length = j - i;
+				if(j < options_length && options[j] == ',') {
+					++j;
+				}
+				i = j;
+
+				if(has_escapes) {
+					err = sys_malloc(escaped_length + 1,
+						&value_alloc);
+					if(err) {
+						goto out;
+					}
+
+					escaped_length = 0;
+					escape = SYS_FALSE;
+
+					for(j = 0; j < value_length; ++j) {
+						const char c = value[j];
+
+						if(escape) {
+							/* Backtrack one
+							 * position and store
+							 * the escaped character
+							 * in place of the
+							 * escape character. */
+							--escaped_length;
+							value_alloc[
+								escaped_length]
+								= c;
+							/* Reset 'escape' state
+							 * variable. */
+							escape = SYS_FALSE;
+						}
+						else if(c == '\\') {
+							value_alloc[
+								escaped_length]
+								= c;
+							escape = SYS_TRUE;
+						}
+
+						++escaped_length;
+					}
+
+					value_alloc[escaped_length] = '\0';
+
+					value = value_alloc;
+					value_length = escaped_length;
+				}
+			}
+			else {
+				i = value_length = options_length - i;
+			}
+		}
+		else if(comma_separated && options[i] == ',') {
+			++i;
+		}
+
+		local_custom_mount_options = custom_mount_options;
+
+		err = fsapi_options_parse_custom_mount_option(
+			/* const char *name */
+			name,
+			/* size_t name_length */
+			name_length,
+			/* const char *value */
+			value,
+			/* size_t value_length */
+			value_length,
+			/* fsapi_options_specification *spec */
+			spec,
+			/* int (*parse_unrecognized_option)(
+			 *     void *context,
+			 *     const char *name,
+			 *     size_t name_length,
+			 *     const char *value,
+			 *     size_t value_length) */
+			parse_unrecognized_option,
+			/* void *parse_unrecognized_option_context */
+			parse_unrecognized_option_context,
+			/* void **out_custom_mount_options */
+			&local_custom_mount_options);
+		if(err || !local_custom_mount_options) {
+			goto out;
+		}
+
+		custom_mount_options = local_custom_mount_options;
+
+		if(value_alloc) {
+			sys_free(value_length + 1, &value_alloc);
+			value_length = 0;
+		}
+	} while(i < options_length);
+
+	*out_custom_mount_options = custom_mount_options;
+	cleanup_custom_mount_options = SYS_FALSE;
+out:
+	if(value_alloc) {
+		sys_free(value_length + 1, &value_alloc);
+	}
+
+	if(cleanup_custom_mount_options) {
+		fsapi_options_deinit(
+			/* void **custom_mount_optionsp */
+			&custom_mount_options);
+	}
+
+	return err;
+}
+
+int fsapi_options_release_custom_mount_options(
+		void **const custom_mount_optionsp)
+{
+	fsapi_options_deinit(
+		/* void **custom_mount_optionsp */
+		custom_mount_optionsp);
+
+	return 0;
+}
 
 static void fsapi_node_path_element_release(
 		fsapi_node_path_element **const element)
@@ -2344,8 +2898,16 @@ static int fsapi_node_get_attributes_common(
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_UID) {
 		attributes->uid = node->attributes.uid;
 	}
+	else if(vol->uid_defined) {
+		attributes->uid = vol->uid;
+		provided_mask |= FSAPI_NODE_ATTRIBUTE_TYPE_UID;
+	}
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_GID) {
 		attributes->gid = node->attributes.gid;
+	}
+	else if(vol->gid_defined) {
+		attributes->gid = vol->gid;
+		provided_mask |= FSAPI_NODE_ATTRIBUTE_TYPE_GID;
 	}
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_CREATION_TIME) {
 		attributes->creation_time = node->attributes.creation_time;
@@ -2668,11 +3230,21 @@ int fsapi_volume_mount(
 
 	vol->vol = rvol;
 	vol->root_node = root_node;
-	if(refs_mount_options) {
+	if(refs_mount_options && refs_mount_options->valid.xattr_mode) {
 		vol->xattr_mode = refs_mount_options->xattr_mode;
 	}
 	else {
 		vol->xattr_mode = FSAPI_REFS_XATTR_MODE_STREAMS;
+	}
+
+	if(refs_mount_options && refs_mount_options->valid.uid) {
+		vol->uid = refs_mount_options->uid;
+		vol->uid_defined = SYS_TRUE;
+	}
+
+	if(refs_mount_options && refs_mount_options->valid.gid) {
+		vol->gid = refs_mount_options->gid;
+		vol->gid_defined = SYS_TRUE;
 	}
 
 	if(out_attrs) {
@@ -5232,8 +5804,7 @@ int fsapi_node_read_extended_attribute(
 		suffix_length = xattr_name_length - prefix_length;
 	}
 
-	if(!prefix_length);
-	else if(suffix_length == 6 && !memcmp(suffix, "attrib", 6)) {
+	if(suffix_length == 6 && !memcmp(suffix, "attrib", 6)) {
 		/* Handle pseudo-attribute 'attrib'. This returns the attribute
 		 * flags in raw format as a little-endian 32-bit value. */
 		context.requested_metadata =
@@ -5300,9 +5871,18 @@ int fsapi_node_read_extended_attribute(
 			fsapi_node_read_extended_attribute_visit_reparse_data;
 	}
 	else {
-		visitor.node_ea = fsapi_node_read_extended_attribute_visit_ea;
-		visitor.node_stream =
-			fsapi_node_read_extended_attribute_visit_stream;
+		if(vol->xattr_mode == FSAPI_REFS_XATTR_MODE_BOTH ||
+			vol->xattr_mode == FSAPI_REFS_XATTR_MODE_EAS)
+		{
+			visitor.node_ea =
+				fsapi_node_read_extended_attribute_visit_ea;
+		}
+		if(vol->xattr_mode == FSAPI_REFS_XATTR_MODE_BOTH ||
+			vol->xattr_mode == FSAPI_REFS_XATTR_MODE_STREAMS)
+		{
+			visitor.node_stream =
+				fsapi_node_read_extended_attribute_visit_stream;
+		}
 	}
 
 	err = refs_node_parse_level3_long_value(

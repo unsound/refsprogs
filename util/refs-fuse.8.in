@@ -20,13 +20,114 @@ Examples (see \fBmount.fuse(8)\fR for more):
 Foreground mode. Suppresses daemonizing the filesystem when the mount is
 successful.
 .TP
+\fB\-s\fR
+Single-threaded mode. Runs the FUSE file system operations in a single thread
+(mainly useful for troubleshooting and debugging).
+.TP
 \fB\-o\fR MOUNT OPTIONS...
-A comma-separated list of options to modify the mount. E.g. \fI\-odebug\fR for
-enabling debug output, \fI\-ononempty\fR to allow mounting over a non-empty
-directory.
+A comma-separated list of options to modify the mount. For more details, see the
+.B MOUNT OPTIONS
+section.
+.SH MOUNT OPTIONS
+.B refs\-fuse
+accepts most FUSE mount options as described in the
+.BR mount.fuse (8)
+manpage, e.g. \fIdebug\fR for enabling debug output, \fInonempty\fR to allow
+mounting over a non-empty directory, ...
+.sp
+.B refs\-fuse
+supplies a few FUSE mount options by default, to bring it more in line with how
+users generally expect a mounted filesystem to behave:
+.RS
+.sp
+\fBro\fR to set the read-only flag for the mount. This makes FUSE return more
+sensible defaults when attempting to write to the volume, which is not supported
+at this time.
+.sp
+.br
+\fBallow_other\fR to allow all users access to the volume.
+.br
+This default option can be negated with the custom option \fBnoallow_other\fR.
+.sp
+.br
+\fBdefault_permissions\fR to enforce the permissions specified in the mount
+options.
+.br
+This default option can be negated with the custom option
+\fBnodefault_permissions\fR.
+.sp
+.br
+\fBsubtype=refs\fR to add a specific subtype to the filesystem type reported by
+e.g.
+.BR mount (8)
+\fB(Linux only)\fR.
+.br
+This default option can be negated with the custom option \fBnosubtype\fR or by
+specifying another subtype.
+.sp
+.br
+\fBblkdev\fR if we are mounting a device to make sure that FUSE uses the
+\fBfuseblk\fR filesystem type (which is more optimal for a device backed
+filesystem) \fB(Linux only)\fR.
+.br
+This default option can be negated with the custom option \fBnoblkdev\fR.
+.sp
+.br
+\fBblksize=BLOCKSIZE\fR if we are mounting a device to make sure that FUSE uses
+an appropriate block size for the \fBfuseblk\fR filesystem type \fB(Linux
+only)\fR.
+.br
+This default option can be negated with the custom option \fBnoblksize\fR or by
+supplying another block size.
+.sp
+.br
+\fBfsname=NAME\fR to supply the name of the device that is being mounted to
+FUSE so that it's reported correctly in mount listings.
+.br
+This default option can be negated with the custom option \fBnofsname\fR or by
+supplying another name.
+.sp
+.RE
+.sp
+In addition to the standard FUSE mount options, \fBrefs\-fuse\fR supports the
+following custom mount options:
+.TP
+.BI uid=NUMBER
+Set the user ID (uid) of all files in the mounted volume to \fBNUMBER\fR.
+.TP
+.BI gid=NUMBER
+Set the group ID (gid) of all files in the mounted volume to \fBNUMBER\fR.
+.TP
+.BI xattr_mode=MODE
+Set the extended attributes mode of the volume to \fBMODE\fR.
+.br
+Valid modes are:
+.sp
+\fBnone\fR - No filesystem data is exposed as extended attributes.
+.sp
+.br
+\fBstreams\fR - Named streams (alternate data streams, ADS) are exposed as
+extended attributes \fB(default)\fR.
+.sp
+.br
+\fBeas\fR - EAs (simple name-value pair attributes) are exposed as extended
+attributes.
+.br
+EAs are mostly used for internal operating system information in modern contexts
+and are typically not exposed to the user in Windows.
+.sp
+.br
+\fBboth\fR - Named streams and EAs are both exposed as extended attributes.
+.br
+This can in theory lead to name collisions as two separate namespaces are
+exposed as one.
+.br
+In practice the differing naming convention of EAs and named streams means
+that they rarely clash.
+.sp
 .SH BUGS
 .BR refs\-fuse
-is currently limited to read\-only operation, which isn't technically a bug but
+is currently limited to read-only operation, which isn't technically a bug but
 a design limitation for now.
 
 If you find a bug, then please report it to the refsprogs bug tracker on github:
