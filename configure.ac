@@ -1,4 +1,4 @@
-AC_PREREQ(2.59)
+AC_PREREQ(2.60)
 AC_INIT([refsprogs],[2026.9.2],[catacombae@gmail.com])
 LIBREFS_VERSION="17"
 AC_CONFIG_SRCDIR([util/refsls.c])
@@ -6,6 +6,14 @@ AC_CONFIG_SRCDIR([util/refsls.c])
 # Environment
 AC_CANONICAL_HOST
 AC_CANONICAL_TARGET
+
+# AC_USE_SYSTEM_EXTENSIONS is needed to access extra libc features that are
+# disabled by default.
+#
+# In particular what prompted this was attempting to use GNU/Hurd's libstore
+# which requires the 'off64_t' type to be defined, and it's only defined if the
+# _GNU_SOURCE feature define is present.
+AC_USE_SYSTEM_EXTENSIONS
 
 # Automake
 AM_INIT_AUTOMAKE([])
@@ -273,6 +281,16 @@ if test "x$enable_refs_fuse" = "xyes"; then
 	CFLAGS="$__SAVED_CFLAGS"
 	LIBS="$__SAVED_LIBS"
 fi
+
+case "$target_os" in
+gnu*)
+	# Link to libstore in GNU/Hurd as this is required to query the block
+	# device characteristics.
+	LIBS="$LIBS -lstore"
+	;;
+*)
+	;;
+esac
 
 AC_SYS_LARGEFILE
 
