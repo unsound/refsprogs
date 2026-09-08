@@ -9,6 +9,14 @@ typedef enum {
 } fsapi_refs_xattr_mode;
 
 typedef struct {
+	struct {
+		sys_bool uid;
+		sys_bool gid;
+		sys_bool xattr_mode;
+	} valid;
+
+	u64 uid;
+	u64 gid;
 	fsapi_refs_xattr_mode xattr_mode;
 } fsapi_refs_custom_mount_options;
 

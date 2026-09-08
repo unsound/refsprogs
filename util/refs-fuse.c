@@ -1,7 +1,7 @@
 /*-
  * refs-fuse.c - FUSE driver interface to librefs.
  *
- * Copyright (c) 2022-2025 Erik Larsson
+ * Copyright (c) 2022-2026 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -49,6 +49,7 @@ typedef unsigned int mode_t;
 /* Headers - librefs. */
 #include "fsapi.h"
 #include "layout.h"
+#include "util.h"
 
 /* Headers - librefs (private). */
 #include "rb_tree.h"
@@ -69,8 +70,6 @@ static int refs_fuse_fill_stat(
 		struct FUSE_STAT *const stbuf,
 		const fsapi_node_attributes *const attributes)
 {
-	memset(stbuf, 0, sizeof(*stbuf));
-
 	sys_log_trace("%s("
 		"stbuf=%p, "
 		"attributes=%p (->{ .is_directory=%d, "
@@ -100,6 +99,8 @@ static int refs_fuse_fill_stat(
 		PRAu64(attributes->size),
 		PRAu64(attributes->allocated_size));
 
+	memset(stbuf, 0, sizeof(*stbuf));
+
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
 		stbuf->st_mode = attributes->mode;
 	}
@@ -116,14 +117,31 @@ static int refs_fuse_fill_stat(
 		stbuf->st_ino = attributes->inode_number;
 	}
 
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_UID) {
+		stbuf->st_uid = (uid_t) attributes->uid;
+	}
 #ifdef __APPLE__
-	stbuf->st_uid = 99;
-	stbuf->st_gid = 99;
+	else {
+		stbuf->st_uid = 99;
+	}
+#endif /* defined(__APPLE__) */
 
+	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_GID) {
+		stbuf->st_gid = (gid_t) attributes->gid;
+	}
+#ifdef __APPLE__
+	else {
+		stbuf->st_gid = 99;
+	}
+#endif /* defined(__APPLE__) */
+
+#ifdef __APPLE__
+	/* Compatibility timestamp aliases for macOS. */
 #define st_atim st_atimespec
 #define st_mtim st_mtimespec
 #define st_ctim st_ctimespec
-#endif
+#endif /* defined(__APPLE__) */
+
 	if(attributes->valid & FSAPI_NODE_ATTRIBUTE_TYPE_LAST_DATA_ACCESS_TIME)
 	{
 		stbuf->st_atim.tv_sec =
@@ -173,43 +191,6 @@ static int refs_fuse_fill_stat(
 #endif
 
 	return 0;
-}
-
-static void refs_fuse_transform_symlink(
-		char *const symlink_data,
-		const size_t symlink_data_length)
-{
-	size_t i = 0;
-
-	/* Iterate over symlink_target and transform '\' to '/' and change
-	 * initial prefix for absolute links. */
-	if(symlink_data_length >= 3 &&
-		symlink_data[1] == ':' &&
-		symlink_data[2] >= '\\')
-	{
-		if(symlink_data[0] >= 'A' &&
-			symlink_data[0] <= 'Z')
-		{
-			symlink_data[1] =
-				'a' + (symlink_data[0] - 'A');
-		}
-		else {
-			symlink_data[1] =
-				symlink_data[0];
-		}
-
-		symlink_data[0] = '/';
-		i = 2;
-	}
-
-	for(; i < symlink_data_length; ++i) {
-		if(symlink_data[i] == '\\') {
-			symlink_data[i] = '/';
-		}
-		else if(symlink_data[i] == '/') {
-			symlink_data[i] = '\\';
-		}
-	}
 }
 
 typedef struct {
@@ -402,7 +383,7 @@ static int refs_fuse_op_readlink(const char *path, char *buf, size_t size)
 			'\0';
 	}
 
-	refs_fuse_transform_symlink(
+	refs_util_transform_win32_symlink_to_posix(
 		/* char *symlink_data */
 		attributes.symlink_target,
 		/* size_t symlink_data_length */
@@ -796,17 +777,41 @@ out:
 	return -err;
 }
 
-static void* refs_fuse_op_init(struct fuse_conn_info *const conn)
+static void* refs_fuse_op_init(
+		struct fuse_conn_info *const conn
+#if FUSE_VERSION >= 30
+		, struct fuse_config *const cfg
+#endif /* FUSE_VERSION >= 30 */
+		)
 {
 	void *ret;
 
-	sys_log_debug("%s(conn=%p)",
-		__FUNCTION__, conn);
+	sys_log_debug("%s(conn=%p"
+#if FUSE_VERSION >= 30
+		", cfg=%p"
+#endif /* FUSE_VERSION >= 30 */
+		")",
+		__FUNCTION__, conn
+#if FUSE_VERSION >= 30
+		, cfg
+#endif /* FUSE_VERSION >= 30 */
+		);
 
 	ret = fuse_get_context()->private_data;
+#if FUSE_VERSION >= 30
+	cfg->use_ino = 1;
+#endif /* FUSE_VERSION >= 30 */
 
-	sys_log_debug("%s(conn=%p): %p",
-		__FUNCTION__, conn, ret);
+	sys_log_debug("%s(conn=%p"
+#if FUSE_VERSION >= 30
+		", cfg=%p"
+#endif /* FUSE_VERSION >= 30 */
+		": %p)",
+		__FUNCTION__, conn
+#if FUSE_VERSION >= 30
+		, cfg
+#endif /* FUSE_VERSION >= 30 */
+		, ret);
 
 	return ret;
 }
@@ -1617,7 +1622,7 @@ static void refs_fuse_ll_op_readlink(
 		goto out;
 	}
 
-	refs_fuse_transform_symlink(
+	refs_util_transform_win32_symlink_to_posix(
 		/* char *symlink_data */
 		attributes.symlink_target,
 		/* size_t symlink_data_length */
@@ -2385,8 +2390,231 @@ static void refs_fuse_ll_deallocate_ino_tree_node(
 		node_context->refcount);
 
 	sys_free(sizeof(*node_context), &node_context);
+	free(node);
 }
 #endif /* !REFS_FUSE_USE_LOWLEVEL_API ... */
+
+typedef struct {
+	char *fuse_options;
+	size_t fuse_options_length;
+	char **default_option_names;
+	char **default_option_values;
+	int default_options_length;
+} refs_fuse_parse_fuse_option_context;
+
+static int refs_fuse_add_fuse_option(
+		refs_fuse_parse_fuse_option_context *const context,
+		const char *const name,
+		const size_t name_length,
+		const char *const value,
+		const size_t value_length)
+{
+	int err = 0;
+	size_t i;
+	size_t escaped_value_length = 0;
+	char *escaped_value = NULL;
+	const char *real_value;
+	size_t real_value_length;
+
+	if(value) {
+		for(i = 0; i < value_length; ++i) {
+			const char c = value[i];
+
+			if(c == ',' || c == '\\') {
+				++escaped_value_length;
+			}
+
+			++escaped_value_length;
+		}
+	}
+
+	if(escaped_value_length > value_length) {
+		err = sys_malloc(escaped_value_length + 1, &escaped_value);
+		if(err) {
+			goto out;
+		}
+
+		escaped_value_length = 0;
+		for(i = 0; i < value_length; ++i) {
+			const char c = value[i];
+
+			if(c == ',' || c == '\\') {
+				escaped_value[escaped_value_length++] = '\\';
+			}
+
+			escaped_value[escaped_value_length++] = c;
+		}
+
+		escaped_value[escaped_value_length] = '\0';
+
+		real_value = escaped_value;
+		real_value_length = escaped_value_length;
+	}
+	else {
+		real_value = value;
+		real_value_length = value_length;
+	}
+
+	{
+		const size_t option_length =
+			name_length + ((real_value && real_value_length) ?
+				1 + real_value_length : 0);
+		char *const old_fuse_options = context->fuse_options;
+		const size_t old_fuse_options_length =
+			context->fuse_options_length;
+		const size_t expanded_length =
+			(old_fuse_options ? 1 : 2) + option_length;
+		const size_t new_fuse_options_length =
+			(old_fuse_options ? old_fuse_options_length : 0) +
+			expanded_length;
+
+		char *new_fuse_options = NULL;
+		char *option_target;
+
+		if(!old_fuse_options) {
+			err = sys_malloc(new_fuse_options_length + 1,
+				&new_fuse_options);
+		}
+		else {
+			err = sys_realloc(old_fuse_options,
+				old_fuse_options_length + 1,
+				new_fuse_options_length + 1,
+				&new_fuse_options);
+		}
+		if(err) {
+			goto out;
+		}
+
+		if(!old_fuse_options) {
+			new_fuse_options[0] = '-';
+			new_fuse_options[1] = 'o';
+			option_target = &new_fuse_options[2];
+		}
+		else {
+			new_fuse_options[old_fuse_options_length] = ',';
+			option_target =
+				&new_fuse_options[old_fuse_options_length + 1];
+		}
+
+		memcpy(&option_target[0], name, name_length);
+		if(real_value && real_value_length) {
+			option_target[name_length] = '=';
+			memcpy(&option_target[name_length + 1], real_value,
+				real_value_length);
+		}
+		option_target[option_length] = '\0';
+
+		context->fuse_options = new_fuse_options;
+		context->fuse_options_length = new_fuse_options_length;
+
+		sys_log_debug("%s fuse option with name \"%" PRIbs "\""
+			"%s%" PRIbs "%s. fuse_options=\"%s\"",
+			old_fuse_options ? "Appended" : "Added initial",
+			PRAbs(name_length, name),
+			(value && value_length) ? " / value \"" : "",
+			PRAbs((value && value_length) ? value_length : 0,
+			(value && value_length) ? value : ""),
+			(value && value_length) ? "\"" : "",
+			context->fuse_options);
+	}
+out:
+	if(escaped_value_length) {
+		sys_free(escaped_value_length + 1, &escaped_value);
+	}
+
+	return err;
+}
+
+static int refs_fuse_parse_fuse_option(
+		void *const _context,
+		const char *const name,
+		const size_t name_length,
+		const char *const value,
+		const size_t value_length)
+{
+	refs_fuse_parse_fuse_option_context *const context =
+		(refs_fuse_parse_fuse_option_context*) _context;
+
+	int err = 0;
+	sys_bool negative_option = SYS_FALSE;
+	int i;
+
+	if(name_length > 2 && name[0] == 'n' && name[1] == 'o') {
+		negative_option = SYS_TRUE;
+	}
+
+	for(i = 0; i < context->default_options_length; ++i) {
+		char *const default_option_name =
+			context->default_option_names[i];
+		const size_t default_option_name_length =
+			strlen(default_option_name);
+
+		if(!default_option_name) {
+			continue;
+		}
+
+		if(default_option_name_length ==
+			name_length - (negative_option ? 2 : 0) &&
+			!memcmp(&name[negative_option ? 2 : 0],
+				default_option_name,
+				default_option_name_length))
+		{
+			/* The option matches a default option. Override the
+			 * default option by freeing it and setting it to
+			 * NULL. */
+			char *const default_option_value =
+				context->default_option_values[i];
+			size_t default_option_value_length =
+				default_option_value ?
+				strlen(default_option_value) : 0;
+
+			sys_log_debug("Option \"%" PRIbs "\"%s%" PRIbs "%s %s "
+				"default option \"%" PRIbs "\"%s%" PRIbs "%s.",
+				PRAbs(name_length, name),
+				value ? " / value \"" : "",
+				PRAbs(value ? value_length : 0,
+					value ? value : ""),
+				value ? "\"" : "",
+				negative_option ? "negates" : "overrides",
+				PRAbs(default_option_name_length,
+					default_option_name),
+				default_option_value ? " / value \"" : "",
+				PRAbs(default_option_value ?
+					default_option_value_length : 0,
+					default_option_value ?
+					default_option_value : ""),
+				default_option_value ? "\"" : "");
+
+			if(default_option_value) {
+				sys_free(default_option_value_length + 1,
+					&context->default_option_values[i]);
+			}
+
+			sys_free(default_option_name_length + 1,
+				&context->default_option_names[i]);
+
+			if(negative_option) {
+				/* Negative options silence the default option,
+				 * but aren't appended to the options line. */
+				goto out;
+			}
+		}
+	}
+
+	err = refs_fuse_add_fuse_option(
+		/* refs_fuse_parse_fuse_option_context *context */
+		context,
+		/* const char *name */
+		name,
+		/* size_t name_length */
+		name_length,
+		/* const char *value */
+		value,
+		/* size_t value_length */
+		value_length);
+out:
+	return err;
+}
 
 int main(int argc, char **argv)
 {
@@ -2395,13 +2623,20 @@ int main(int argc, char **argv)
 #if REFS_FUSE_USE_LOWLEVEL_API
 	const char *mount_point = NULL;
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
+	refs_fuse_parse_fuse_option_context fuse_options_context;
+	size_t max_default_options;
+	int i;
+	sys_bool expect_options = SYS_FALSE;
+#if REFS_FUSE_USE_LOWLEVEL_API
+	sys_bool foreground = SYS_FALSE;
+	sys_bool singlethreaded = SYS_FALSE;
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
+	void *custom_mount_options = NULL;
 	sys_device *dev = NULL;
 	fsapi_volume *vol = NULL;
 #if REFS_FUSE_USE_LOWLEVEL_API
 	refs_fuse_ll_context context;
 	sys_bool ino_tree_lock_inited = SYS_FALSE;
-	int i;
-	sys_bool foreground = SYS_FALSE;
 	struct fuse_args args;
 #if FUSE_VERSION >= 30
 	int mount_res = 1;
@@ -2410,7 +2645,10 @@ int main(int argc, char **argv)
 #endif /* FUSE_VERSION >= 30 ... */
 	struct fuse_session *ses = NULL;
 	sys_bool signal_handlers_set = SYS_FALSE;
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
+	memset(&fuse_options_context, 0, sizeof(fuse_options_context));
+#if REFS_FUSE_USE_LOWLEVEL_API
 	memset(&context, 0, sizeof(context));
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
@@ -2426,6 +2664,335 @@ int main(int argc, char **argv)
 	mount_point = argv[2];
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
+	/* There are currently at most 7 possible default options:
+	 * - ro
+	 * - allow_other
+	 * - default_permissions
+	 * - subtype=refs
+	 * - blkdev (Linux only)
+	 * - blksize=... (Linux only)
+	 * - fsname=...
+	 * So allocate an 8 slot array to be safe, in case we would need a NULL
+	 * terminator. */
+	max_default_options = 7;
+	err = sys_calloc((max_default_options + 1) *
+		sizeof(fuse_options_context.default_option_names[0]),
+		&fuse_options_context.default_option_names);
+	if(!err) {
+		err = sys_calloc((max_default_options + 1) *
+			sizeof(fuse_options_context.default_option_values[0]),
+			&fuse_options_context.default_option_values);
+	}
+	if(err) {
+		sys_log_perror(err, "Error while building default options (%s)",
+			"0");
+		goto out;
+	}
+
+	fuse_options_context.default_options_length = 0;
+
+	/* Add the 'ro' option by default as we are currently read-only. */
+	err = sys_strndup("ro", sizeof("ro") - 1,
+		&fuse_options_context.default_option_names[fuse_options_context.
+		default_options_length]);
+	if(err) {
+		sys_log_perror(err, "Error while building default options (%s)",
+			"1");
+		goto out;
+	}
+	fuse_options_context.default_option_values[fuse_options_context.
+		default_options_length] = NULL;
+	/* No value. */
+	fuse_options_context.default_option_values[fuse_options_context.
+		default_options_length] = NULL;
+	++fuse_options_context.default_options_length;
+
+	/* Add the 'allow_other' option by default to make the filesystem
+	 * accessible to all users. */
+	err = sys_strndup("allow_other", sizeof("allow_other") - 1,
+		&fuse_options_context.default_option_names[fuse_options_context.
+		default_options_length]);
+	if(err) {
+		sys_log_perror(err, "Error while building default options (%s)",
+			"2");
+		goto out;
+	}
+	fuse_options_context.default_option_values[fuse_options_context.
+		default_options_length] = NULL;
+	/* No value. */
+	fuse_options_context.default_option_values[fuse_options_context.
+		default_options_length] = NULL;
+	++fuse_options_context.default_options_length;
+
+	/* Add the 'default_permissions' option by default to enforce the
+	 * uid/gid and umask. */
+	err = sys_strndup("default_permissions",
+		sizeof("default_permissions") - 1,
+		&fuse_options_context.default_option_names[fuse_options_context.
+		default_options_length]);
+	if(err) {
+		sys_log_perror(err, "Error while building default options (%s)",
+			"3");
+		goto out;
+	}
+	/* No value. */
+	fuse_options_context.default_option_values[fuse_options_context.
+		default_options_length] = NULL;
+	++fuse_options_context.default_options_length;
+
+#ifdef __linux__
+	/* Add the 'subtype=refs' option by default to give the filesystem a
+	 * unique FUSE subtype. */
+	err = sys_strndup("subtype", sizeof("subtype") - 1,
+		&fuse_options_context.default_option_names[fuse_options_context.
+		default_options_length]);
+	if(err) {
+		sys_log_perror(err, "Error while building default options "
+			"(%s)", "4.1");
+		goto out;
+	}
+	err = sys_strndup("refs", sizeof("refs") - 1,
+		&fuse_options_context.default_option_values[
+		fuse_options_context.default_options_length]);
+	if(err) {
+		sys_log_perror(err, "Error while building default options "
+			"(%s)", "4.2");
+		goto out;
+	}
+	++fuse_options_context.default_options_length;
+
+	/* Note: TOCTOU is a known issue here, but TODO for later and likely not
+	 * having much impact. */
+	{
+		struct stat stbuf;
+
+		memset(&stbuf, 0, sizeof(stbuf));
+		if(stat(device_name, &stbuf)) {
+			sys_log_pdebug(errno, "Error while stat:ing device");
+			/* Ignore error and just don't add the block device
+			 * options. Mounting will likely fail anyway. */
+			errno = 0;
+		}
+		else if((stbuf.st_mode & S_IFMT) == S_IFBLK) {
+			const size_t blkdev_name_length = sizeof("blkdev") - 1;
+			const size_t blksize_name_length =
+				sizeof("blksize") - 1;
+			const size_t blksize_value_length =
+				/* 10 is the maximum number of digits for a
+				 * 32-bit unsigned integer. */
+				10;
+
+			char **option_ptr;
+
+			/* Add the 'blkdev' option by default for device backed
+			 * filesystems to get the 'fuseblk' filesystem type. */
+			option_ptr =
+				&fuse_options_context.default_option_names[
+				fuse_options_context.default_options_length];
+
+			err = sys_strndup("blkdev", blkdev_name_length,
+				option_ptr);
+			if(err) {
+				sys_log_perror(err, "Error while building "
+					"default options (%s)", "5");
+				goto out;
+			}
+
+			/* No value. */
+			fuse_options_context.default_option_values[
+				fuse_options_context.default_options_length] =
+				NULL;
+
+			++fuse_options_context.default_options_length;
+
+			/* Add the 'blksize=<page size>' option by default for
+			 * optimal I/O requests (this may need to be adjusted
+			 * when the block size is less than the page size, e.g.
+			 * 16k, 64k pages... but let's deal with it when we get
+			 * there). */
+			option_ptr =
+				&fuse_options_context.default_option_names[
+				fuse_options_context.default_options_length];
+
+			err = sys_strndup("blksize", blksize_name_length,
+				option_ptr);
+			if(err) {
+				sys_log_perror(err, "Error while building "
+					"default options (%s)", "6.1");
+				goto out;
+			}
+
+			option_ptr =
+				&fuse_options_context.default_option_values[
+				fuse_options_context.default_options_length];
+
+			err = sys_malloc(blksize_value_length + 1, option_ptr);
+			if(err) {
+				sys_log_perror(err, "Error while building "
+					"default options (%s)", "6.2");
+				goto out;
+			}
+
+			snprintf(*option_ptr, blksize_value_length + 1, "%u",
+				(unsigned int) sysconf(_SC_PAGESIZE));
+
+			++fuse_options_context.default_options_length;
+		}
+	}
+#endif /* defined(__linux__) */
+
+	/* Add the 'fsname' option by default to give the filesystem a proper
+	 * fsname in listings (e.g. /proc/mounts, mount(8), ...). */
+	{
+		const size_t fsname_name_length = sizeof("fsname") - 1;
+		const size_t fsname_value_length = strlen(device_name);
+
+		char **option_ptr;
+
+		option_ptr =
+			&fuse_options_context.default_option_names[
+			fuse_options_context.default_options_length];
+
+		err = sys_strndup("fsname", fsname_name_length, option_ptr);
+		if(err) {
+			sys_log_perror(err, "Error while building default "
+				"options (%s)", "7.1");
+			goto out;
+		}
+
+		option_ptr =
+			&fuse_options_context.default_option_values[
+			fuse_options_context.default_options_length];
+
+		err = sys_strndup(device_name, fsname_value_length, option_ptr);
+		if(err) {
+			sys_log_perror(err, "Error while building default "
+				"options (%s)", "7.2");
+			goto out;
+		}
+
+		++fuse_options_context.default_options_length;
+	}
+
+	sys_log_debug("%d default options:",
+		fuse_options_context.default_options_length);
+	for(i = 0; i < fuse_options_context.default_options_length; ++i) {
+		sys_log_debug("    [%d]: %s%s%s",
+			i, fuse_options_context.default_option_names[i],
+			fuse_options_context.default_option_values[i] ? "=" :
+				"",
+			fuse_options_context.default_option_values[i] ?
+				fuse_options_context.default_option_values[i] :
+				"");
+	}
+
+	for(i = 3; i < argc; ++i) {
+		const char *arg = argv[i];
+		sys_bool parsed = SYS_FALSE;
+		const char *option_argument = NULL;
+		void *local_custom_mount_options = custom_mount_options;
+
+		if(expect_options) {
+			option_argument = arg;
+			expect_options = SYS_FALSE;
+		}
+#if REFS_FUSE_USE_LOWLEVEL_API
+		else if(arg[0] == '-' && arg[1] == 'f' && !arg[2]) {
+			foreground = SYS_TRUE;
+			parsed = SYS_TRUE;
+		}
+		else if(arg[0] == '-' && arg[1] == 's' && !arg[2]) {
+			singlethreaded = SYS_TRUE;
+			parsed = SYS_TRUE;
+		}
+#endif /* REFS_FUSE_USE_LOWLEVEL_API */
+		else if(arg[0] == '-' && arg[1] == 'o') {
+			if(arg[2] == '\0') {
+				expect_options = SYS_TRUE;
+				parsed = SYS_TRUE;
+			}
+			else {
+				option_argument = &arg[2];
+			}
+		}
+
+		if(option_argument) {
+			err = fsapi_options_parse_custom_mount_options(
+				/* const char *options */
+				option_argument,
+				/* size_t options_length */
+				strlen(option_argument),
+				/* sys_bool comma_separated */
+				SYS_TRUE,
+				/* fsapi_options_specification *spec */
+				&fsapi_options_spec,
+				/* int (*parse_unrecognized_option)(
+				 *     void *context,
+				 *     const char *option,
+				 *     size_t option_length,
+				 *     size_t name_length) */
+				refs_fuse_parse_fuse_option,
+				/* void *parse_unrecognized_option_context */
+				&fuse_options_context,
+				/* void **out_custom_mount_options */
+				&local_custom_mount_options);
+			if(err) {
+				goto out;
+			}
+			else if(!local_custom_mount_options) {
+				err = EINVAL;
+				goto out;
+			}
+
+			custom_mount_options = local_custom_mount_options;
+			parsed = SYS_TRUE;
+		}
+
+		if(parsed) {
+			if(i + 1 < argc) {
+				memmove(&argv[i], &argv[i + 1],
+					(argc - (i + 1)) * sizeof(argv[0]));
+			}
+
+			--argc;
+			--i;
+		}
+	}
+
+	/* Add the default options. */
+	for(i = 0; i < fuse_options_context.default_options_length; ++i) {
+		char *const default_option_name =
+			fuse_options_context.default_option_names[i];
+		char *const default_option_value =
+			fuse_options_context.default_option_values[i];
+
+		if(!default_option_name) {
+			continue;
+		}
+
+		err = refs_fuse_add_fuse_option(
+			/* refs_fuse_parse_fuse_option_context *context */
+			&fuse_options_context,
+			/* const char *name */
+			default_option_name,
+			/* size_t name_length */
+			strlen(default_option_name),
+			/* const char *value */
+			default_option_value,
+			/* size_t value_length */
+			default_option_value ? strlen(default_option_value) :
+				0);
+		if(err) {
+			goto out;
+		}
+	}
+
+	if(fuse_options_context.fuse_options) {
+		sys_log_debug("Appending FUSE options to argv slot %d: \"%s\"",
+			argc, fuse_options_context.fuse_options);
+		argv[argc++] = fuse_options_context.fuse_options;
+	}
+
 	err = sys_device_open(&dev, device_name);
 	if(err) {
 		sys_log_perror(err, "Error while opening device \"%s\"",
@@ -2439,7 +3006,7 @@ int main(int argc, char **argv)
 		/* sys_bool read_only */
 		SYS_TRUE,
 		/* const void *custom_mount_options */
-		NULL,
+		custom_mount_options,
 		/* fsapi_volume **out_vol */
 		&vol,
 		/* fsapi_node **out_root_node */
@@ -2483,24 +3050,9 @@ int main(int argc, char **argv)
 	}
 	argc -= 2;
 
-	sys_log_debug("Args after trimming device/mount point:");
+	sys_log_debug("%d args after trimming device/mount point:", argc);
 	for(i = 0; i < argc; ++i) {
 		sys_log_debug("    [%d]: %s", i, argv[i]);
-	}
-
-	for(i = 1; i < argc; ++i) {
-		sys_bool parsed = SYS_FALSE;
-
-		if(!strcmp(argv[i], "-f")) {
-			foreground = SYS_TRUE;
-			parsed = SYS_TRUE;
-		}
-
-		if(parsed) {
-			memmove(&argv[i], &argv[i + 1],
-				(argc - (i + 1)) * sizeof(argv[0]));
-			--argc;
-		}
 	}
 
 	args.allocated = 0;
@@ -2589,25 +3141,29 @@ int main(int argc, char **argv)
 	}
 
 #ifdef HAVE_FUSE_SESSION_LOOP_MT
-	err = fuse_session_loop_mt(
-		/* struct fuse_session *se */
-		ses
+	if(!singlethreaded) {
+		err = fuse_session_loop_mt(
+			/* struct fuse_session *se */
+			ses
 #if FUSE_VERSION >= 30
-		,
+			,
 #if FUSE_VERSION >= 32
-		/* struct fuse_loop_config *config */
-		NULL
+			/* struct fuse_loop_config *config */
+			NULL
 #elif FUSE_VERSION >= 30
-		/* int clone_fd */
-		0
+			/* int clone_fd */
+			0
 #endif /* FUSE_VERSION >= 32 */
 #endif /* FUSE_VERSION >= 30 */
-		);
-#else /* !defined(HAVE_FUSE_SESSION_LOOP_MT) */
-	err = fuse_session_loop(
-		/* struct fuse_session *se */
-		ses);
-#endif /* defined(HAVE_FUSE_SESSION_LOOP_MT) ... */
+			);
+	}
+	else
+#endif /* defined(HAVE_FUSE_SESSION_LOOP_MT) */
+	{
+		err = fuse_session_loop(
+			/* struct fuse_session *se */
+			ses);
+	}
 
 #if FUSE_VERSION < 30
 	fuse_session_remove_chan(
@@ -2619,12 +3175,17 @@ int main(int argc, char **argv)
 	 * the first non-option argument and the device should not be passed on
 	 * to 'fuse_main'. */
 	argv[1] = argv[2];
-	argv[2] = NULL;
 	if(argc > 3) {
 		memmove(&argv[2], &argv[3], (argc - 3) * sizeof(argv[3]));
 	}
+	argv[--argc] = NULL;
 
-	if(fuse_main(argc - 1, argv, &refs_fuse_operations, vol)) {
+	sys_log_debug("%d args after trimming device:", argc);
+	for(i = 0; i < argc; ++i) {
+		sys_log_debug("    [%d]: %s", i, argv[i]);
+	}
+
+	if(fuse_main(argc, argv, &refs_fuse_operations, vol)) {
 		err = EIO;
 	}
 #endif /* REFS_FUSE_USE_LOWLEVEL_API ... */
@@ -2706,6 +3267,62 @@ out:
 
 	if(dev) {
 		sys_device_close(&dev);
+	}
+
+	if(fuse_options_context.fuse_options) {
+		sys_free(fuse_options_context.fuse_options_length + 1,
+			&fuse_options_context.fuse_options);
+	}
+
+	if(custom_mount_options) {
+		int cleanup_err;
+
+		cleanup_err = fsapi_options_release_custom_mount_options(
+			/* void **custom_mount_optionsp */
+			&custom_mount_options);
+		if(cleanup_err) {
+			sys_log_perror(cleanup_err, "Error while releasing "
+				"custom mount options");
+			err = err ? err : cleanup_err;
+		}
+	}
+
+	if(fuse_options_context.default_option_values) {
+		int i;
+
+		for(i = 0; i < fuse_options_context.default_options_length; ++i)
+		{
+			if(!fuse_options_context.default_option_values[i]) {
+				continue;
+			}
+
+			sys_free(strlen(fuse_options_context.
+				default_option_values[i]) + 1,
+				&fuse_options_context.default_option_values[i]);
+		}
+
+		sys_free((max_default_options + 1) *
+			sizeof(fuse_options_context.default_option_values[0]),
+			&fuse_options_context.default_option_values);
+	}
+
+	if(fuse_options_context.default_option_names) {
+		int i;
+
+		for(i = 0; i < fuse_options_context.default_options_length; ++i)
+		{
+			if(!fuse_options_context.default_option_names[i]) {
+				continue;
+			}
+
+			sys_free(strlen(fuse_options_context.
+				default_option_names[i]) + 1,
+				&fuse_options_context.default_option_names[i]);
+		}
+
+		sys_free((max_default_options + 1) *
+			sizeof(fuse_options_context.default_option_names[0]),
+			&fuse_options_context.default_option_names);
 	}
 
 	return err ? (EXIT_FAILURE) : (EXIT_SUCCESS);

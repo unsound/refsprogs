@@ -23,6 +23,7 @@
 
 #include "sys.h"
 #include "fsapi.h"
+#include "util.h"
 
 #include <linux/version.h>
 
@@ -6385,6 +6386,12 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 		goto out;
 	}
 
+	refs_util_transform_win32_symlink_to_posix(
+		/* char *symlink_data */
+		attributes.symlink_target,
+		/* size_t symlink_data_length */
+		attributes.symlink_target_length);
+
 	/* Can be used to clean up the link data when no longer used. */
 	callback->fn = fsapi_linux_symlink_inode_cleanup_link;
 	callback->arg = attributes.symlink_target;
@@ -8707,6 +8714,9 @@ static int fsapi_linux_fill_super(
 {
 	int ret = 0;
 	int err = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0))
+	void *custom_mount_options = NULL;
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
 	sys_device *dev = NULL;
 	fsapi_node *root_node = NULL;
 	fsapi_volume *vol = NULL;
@@ -8722,6 +8732,38 @@ static int fsapi_linux_fill_super(
 		sb,
 		FSAPI_IF_LINUX_6_18(fs_context)
 		FSAPI_NOT_LINUX_6_18(opt, silent));
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0))
+	if(opt) {
+		err = fsapi_options_parse_custom_mount_options(
+			/* const char *options */
+			(char*) opt,
+			/* size_t options_length */
+			strlen((char*) opt),
+			/* sys_bool comma_separated */
+			SYS_TRUE,
+			/* fsapi_options_specification *spec */
+			&fsapi_options_spec,
+			/* int (*parse_unrecognized_option)(
+			 *     void *context,
+			 *     const char *option,
+			 *     size_t option_length,
+			 *     size_t name_length) */
+			NULL,
+			/* void *parse_unrecognized_option_context */
+			NULL,
+			/* void **out_custom_mount_options */
+			&custom_mount_options);
+		if(err) {
+			ret = -err;
+			goto out;
+		}
+		else if(!custom_mount_options) {
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
 
 	err = sys_device_open(
 		/* sys_device **dev */
@@ -8754,7 +8796,11 @@ static int fsapi_linux_fill_super(
 		/* sys_bool read_only */
 		SYS_TRUE,
 		/* void *custom_mount_options */
-		NULL,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
+		fs_context->fs_private,
+#else /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
+		custom_mount_options,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)) ... */
 		/* fsapi_volume **out_vol */
 		&vol,
 		/* fsapi_node **out_root_node */
@@ -8894,6 +8940,21 @@ out:
 		}
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0))
+	if(custom_mount_options) {
+		int cleanup_err;
+
+		cleanup_err = fsapi_options_release_custom_mount_options(
+			/* void **custom_mount_optionsp */
+			&custom_mount_options);
+		if(cleanup_err) {
+			sys_log_perror(cleanup_err, "Error while releasing "
+				"custom mount options");
+			ret = ret ? ret : -EIO;
+		}
+	}
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)) */
+
 	fsapi_linux_op_log_leave(ret, "sb=%p, "
 		FSAPI_IF_LINUX_6_18("fs_context=%p")
 		FSAPI_NOT_LINUX_6_18("opt=%p, silent=%d"),
@@ -8905,17 +8966,6 @@ out:
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0))
-enum {
-	Opt_uid,
-	Opt_gid,
-};
-
-static const struct fs_parameter_spec fsapi_linux_param_specs[] = {
-	fsparam_uid("uid", Opt_uid),
-	fsparam_gid("gid", Opt_gid),
-	{}
-};
-
 static int fsapi_linux_context_op_parse_param(
 		struct fs_context *fc,
 		struct fs_parameter *param)
@@ -8927,20 +8977,61 @@ static int fsapi_linux_context_op_parse_param(
 
 	fsapi_linux_op_log_enter("fc=%p, param=%p", fc, param);
 
-	ret = fs_parse(fc, fsapi_linux_param_specs, param, &result);
-	if(ret < 0) {
-		goto out;
+	sys_log_debug("%s got key=\"%s\" type=%d",
+		__FUNCTION__, param->key, param->type);
+	if(param->type == fs_value_is_string) {
+		sys_log_debug("%s got value=\"%s\"",
+			__FUNCTION__, param->string);
 	}
 
-	switch(ret) {
-	case Opt_uid:
-		/* ... = result.uid; */
-                break;
-	case Opt_gid:
-		/* ... = result.gid; */
-                break;
+	if(param->type == fs_value_is_flag ||
+		param->type == fs_value_is_string)
+	{
+		int err;
+		void *custom_mount_options = fc->fs_private;
+
+		err = fsapi_options_parse_custom_mount_option(
+			/* const char *name */
+			param->key,
+			/* size_t name_length */
+			strlen(param->key),
+			/* const char *value */
+			(param->type == fs_value_is_string) ? param->string :
+			NULL,
+			/* size_t value_length */
+			(param->type == fs_value_is_string) ?
+			strlen(param->string) : 0,
+			/* fsapi_options_specification *spec */
+			&fsapi_options_spec,
+			/* int (*const parse_unrecognized_option)(
+			 *     void *context,
+			 *     const char *name,
+			 *     size_t name_length,
+			 *     const char *value,
+			 *     size_t value_length) */
+			NULL,
+			/* void *parse_unrecognized_option_context */
+			NULL,
+			/* void **out_custom_mount_options */
+			&custom_mount_options);
+		if(err) {
+			ret = -err;
+		}
+		else if(!custom_mount_options) {
+			/* Introduce a way to distinguish between an invalid
+			 * option and an unrecognized one. */
+			ret = -ENOPARAM;
+		}
+		else {
+			fc->fs_private = custom_mount_options;
+		}
 	}
-out:
+	else {
+		ret = -ENOPARAM;
+	}
+
+	sys_log_debug("%s returning %d.", __FUNCTION__, ret);
+
 	fsapi_linux_op_log_leave(ret, "fc=%p, param=%p", fc, param);
 
 	return ret;
@@ -8975,6 +9066,18 @@ static int fsapi_linux_context_op_reconfigure(struct fs_context *fc)
 static void fsapi_linux_context_op_fc_free(struct fs_context *fc)
 {
 	fsapi_linux_op_log_enter("fc=%p", fc);
+
+	if(fc->fs_private) {
+		int cleanup_err;
+
+		cleanup_err = fsapi_options_release_custom_mount_options(
+			/* void **custom_mount_optionsp */
+			&fc->fs_private);
+		if(cleanup_err) {
+			sys_log_perror(cleanup_err, "Error while releasing "
+				"custom mount options");
+		}
+	}
 
 	fsapi_linux_op_log_leave(0, "fc=%p", fc);
 }

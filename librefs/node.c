@@ -1,7 +1,7 @@
 /*-
  * node.c - ReFS node handling definitions.
  *
- * Copyright (c) 2022-2025 Erik Larsson
+ * Copyright (c) 2022-2026 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -12713,6 +12713,9 @@ static int refs_node_parse_reparse_point_attribute(
 			break;
 		case 0xA000000CUL:
 			reparse_tag_string = "IO_REPARSE_TAG_SYMLINK";
+			break;
+		case 0x8000001BUL:
+			reparse_tag_string = "IO_REPARSE_TAG_APPEXECLINK";
 			break;
 		case 0xA000001DUL:
 			reparse_tag_string = "IO_REPARSE_TAG_LX_SYMLINK";
