@@ -895,4 +895,41 @@ static inline void refs_util_reverse_search_string(
 
 	*sizep = i;
 }
+
+static inline void refs_util_transform_win32_symlink_to_posix(
+		char *const symlink_data,
+		const size_t symlink_data_length)
+{
+	size_t i = 0;
+
+	/* Iterate over symlink_target and transform '\' to '/' and change
+	 * initial prefix for absolute links. */
+	if(symlink_data_length >= 3 &&
+		symlink_data[1] == ':' &&
+		symlink_data[2] >= '\\')
+	{
+		if(symlink_data[0] >= 'A' &&
+			symlink_data[0] <= 'Z')
+		{
+			symlink_data[1] =
+				'a' + (symlink_data[0] - 'A');
+		}
+		else {
+			symlink_data[1] =
+				symlink_data[0];
+		}
+
+		symlink_data[0] = '/';
+		i = 2;
+	}
+
+	for(; i < symlink_data_length; ++i) {
+		if(symlink_data[i] == '\\') {
+			symlink_data[i] = '/';
+		}
+		else if(symlink_data[i] == '/') {
+			symlink_data[i] = '\\';
+		}
+	}
+}
 #endif /* !defined(_REFS_UTIL_H) */
