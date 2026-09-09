@@ -382,12 +382,6 @@ static int refs_fuse_op_readlink(const char *path, char *buf, size_t size)
 		attributes.symlink_target[attributes.symlink_target_length] =
 			'\0';
 	}
-
-	refs_util_transform_win32_symlink_to_posix(
-		/* char *symlink_data */
-		attributes.symlink_target,
-		/* size_t symlink_data_length */
-		attributes.symlink_target_length);
 out:
 	if(node) {
 		fsapi_node_release(
@@ -1621,12 +1615,6 @@ static void refs_fuse_ll_op_readlink(
 		err = EINVAL;
 		goto out;
 	}
-
-	refs_util_transform_win32_symlink_to_posix(
-		/* char *symlink_data */
-		attributes.symlink_target,
-		/* size_t symlink_data_length */
-		attributes.symlink_target_length);
 out:
 	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 "): %d (%s)",
 		__FUNCTION__, req, PRAX64(ino), err, strerror(err));
@@ -3005,7 +2993,7 @@ int main(int argc, char **argv)
 		dev,
 		/* sys_bool read_only */
 		SYS_TRUE,
-		/* const void *custom_mount_options */
+		/* void *custom_mount_options */
 		custom_mount_options,
 		/* fsapi_volume **out_vol */
 		&vol,

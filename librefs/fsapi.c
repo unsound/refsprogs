@@ -50,10 +50,13 @@ struct fsapi_volume {
 	refs_volume *vol;
 	fsapi_node *root_node;
 	fsapi_refs_xattr_mode xattr_mode;
+	fsapi_refs_symlink_mode symlink_mode;
 	sys_bool uid_defined;
 	sys_bool gid_defined;
 	u64 uid;
 	u64 gid;
+	size_t drive_mappings_length;
+	fsapi_refs_drive_mapping *drive_mappings;
 
 	char *volume_label_cstr;
 	size_t volume_label_cstr_length;
@@ -121,21 +124,21 @@ static sys_bool fsapi_options_parse_gid_value(
 		const size_t value_length);
 
 static sys_bool fsapi_options_parse_xattr_mode_value(
-		void *custom_mount_options,
-		const char *value,
-		size_t value_length);
+		void *const custom_mount_options,
+		const char *const value,
+		const size_t value_length);
 
 static int fsapi_node_get_attributes_visit_symlink(
-		void *context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length);
+		void *const context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length);
 
 static int fsapi_node_list_visit_symlink(
-		void *_context,
-		refs_symlink_type type,
-		const char *target,
-		size_t target_length);
+		void *const _context,
+		const refs_symlink_type type,
+		const char *const target,
+		const size_t target_length);
 
 static int fsapi_node_path_element_compare(
 		const fsapi_node_path_element *const a,
@@ -347,6 +350,24 @@ static void fsapi_options_deinit(
 	fsapi_refs_custom_mount_options *const custom_mount_options =
 		(fsapi_refs_custom_mount_options*) *custom_mount_optionsp;
 
+	if(custom_mount_options->drive_mappings) {
+		size_t i;
+
+		for(i = 0; i < custom_mount_options->drive_mappings_length; ++i)
+		{
+			if(custom_mount_options->drive_mappings[i].path) {
+				sys_free(custom_mount_options->
+					drive_mappings[i].path_length + 1,
+					&custom_mount_options->
+					drive_mappings[i].path);
+			}
+		}
+
+		sys_free(custom_mount_options->drive_mappings_length *
+			sizeof(custom_mount_options->drive_mappings[0]),
+			&custom_mount_options->drive_mappings);
+	}
+
 	sys_free(sizeof(*custom_mount_options), custom_mount_optionsp);
 }
 
@@ -368,7 +389,8 @@ int fsapi_options_parse_custom_mount_option(
 	int err = 0;
 	sys_bool cleanup_custom_mount_options = SYS_FALSE;
 	void *custom_mount_options = NULL;
-	size_t i;
+	char *dup_value = NULL;
+	size_t i = 0;
 	fsapi_option_specification_entry *matching_entry = NULL;
 
 	if(*out_custom_mount_options) {
@@ -385,6 +407,54 @@ int fsapi_options_parse_custom_mount_option(
 		}
 
 		cleanup_custom_mount_options = SYS_TRUE;
+	}
+
+	/* Check if this is a drive mapping. This is a special case as it is
+	 * prefixed with 'drive_' and then the drive letter in lowercase. */
+	if(name_length == 7 && !memcmp(name, "drive_", 6) &&
+		name[6] >= 'a' && name[6] <= 'z' && value)
+	{
+		fsapi_refs_custom_mount_options *const opts =
+			(fsapi_refs_custom_mount_options*) custom_mount_options;
+
+		err = sys_strndup(value, value_length, &dup_value);
+		if(err) {
+			goto out;
+		}
+
+		if(!opts->drive_mappings_length) {
+			err = sys_malloc(sizeof(opts->drive_mappings[0]),
+				&opts->drive_mappings);
+		}
+		else {
+			void *new_drive_mappings = NULL;
+
+			err = sys_realloc(opts->drive_mappings,
+				opts->drive_mappings_length *
+				sizeof(opts->drive_mappings[0]),
+				(opts->drive_mappings_length + 1) *
+				sizeof(opts->drive_mappings[0]),
+				&new_drive_mappings);
+			if(!err) {
+				opts->drive_mappings = new_drive_mappings;
+			}
+		}
+		if(err) {
+			goto out;
+		}
+
+		opts->drive_mappings[opts->drive_mappings_length].letter =
+			name[6];
+		opts->drive_mappings[opts->drive_mappings_length].path_length =
+			value_length;
+		opts->drive_mappings[opts->drive_mappings_length].path =
+			dup_value;
+		dup_value = NULL;
+		++opts->drive_mappings_length;
+
+		*out_custom_mount_options = custom_mount_options;
+		cleanup_custom_mount_options = SYS_FALSE;
+		goto out;
 	}
 
 	/* Match one of the spec entries against the name. */
@@ -453,6 +523,10 @@ int fsapi_options_parse_custom_mount_option(
 	*out_custom_mount_options = custom_mount_options;
 	cleanup_custom_mount_options = SYS_FALSE;
 out:
+	if(dup_value) {
+		sys_free(value_length + 1, &dup_value);
+	}
+
 	if(cleanup_custom_mount_options) {
 		fsapi_options_deinit(
 			/* void **custom_mount_optionsp */
@@ -2545,8 +2619,120 @@ static int fsapi_fill_attributes(
 	return 0;
 }
 
+static int fsapi_fill_symlink_target(
+		fsapi_volume *const vol,
+		const char *const raw_target,
+		const size_t raw_target_length,
+		char **const out_target,
+		size_t *const out_target_length)
+{
+	int err = 0;
+	fsapi_refs_drive_mapping *mapping = NULL;
+	size_t full_target_size;
+	size_t symlink_target_size;
+	size_t target_offset;
+	size_t target_remaining;
+
+	if(raw_target_length >= 3 && raw_target[0] >= 'A' &&
+		raw_target[0] <= 'Z' && raw_target[1] == ':' &&
+		raw_target[2] == '\\')
+	{
+		/* The target prefix is [A-Z]:\. Check if we have a drive letter
+		 * mapping for this target. */
+		const char drive_letter = 'a' + (raw_target[0] - 'A');
+		size_t i;
+
+		for(i = 0; i < vol->drive_mappings_length; ++i) {
+			fsapi_refs_drive_mapping *const cur_mapping =
+				&vol->drive_mappings[i];
+			if(cur_mapping->letter == drive_letter) {
+				mapping = cur_mapping;
+				break;
+			}
+		}
+	}
+
+
+	if(!*out_target) {
+		if(mapping) {
+			/* If there is a drive letter mapping, then we insert it
+			 * before the target string, and then strip the first
+			 * two characters in the target string before appending
+			 * it, to eliminate the drive letter + ':'. */
+			full_target_size =
+				mapping->path_length +
+				(raw_target_length - 2) + 1;
+		}
+		else {
+			/* If there is no drive letter mapping, we allocate the
+			 * same number of bytes as the raw target string, plus a
+			 * NULL terminator.
+			 * Transformation to the POSIX symlink format does not
+			 * change the length of the string as the first three
+			 * characters in an absolute path (e.g. "C:\") are
+			 * transformed to a three character POSIX path (e.g.
+			 * "/c/"), preserving the same length. */
+			full_target_size = raw_target_length + 1;
+		}
+
+		symlink_target_size = full_target_size;
+		err = sys_malloc(symlink_target_size, out_target);
+		if(err) {
+			goto out;
+		}
+	}
+	else {
+		symlink_target_size = *out_target_length;
+	}
+
+	target_offset = 0;
+	target_remaining = symlink_target_size;
+
+	/* Fill the drive letter mapping component (if any). */
+	if(mapping) {
+		const size_t mapping_bytes_to_copy =
+			sys_min(target_remaining, mapping->path_length);
+
+		memcpy(&(*out_target)[target_offset], mapping->path,
+			mapping_bytes_to_copy);
+
+		target_offset += mapping_bytes_to_copy;
+		target_remaining -= mapping_bytes_to_copy;
+	}
+
+	/* Fill the symlink component. */
+	{
+		const size_t target_copy_offset = mapping ? 2 : 0;
+		const size_t target_copy_length =
+			raw_target_length - target_copy_offset;
+		const size_t target_bytes_to_copy =
+			sys_min(target_remaining, target_copy_length);
+
+		memcpy(&(*out_target)[target_offset],
+			&raw_target[target_copy_offset], target_bytes_to_copy);
+		if(vol->symlink_mode == FSAPI_REFS_SYMLINK_MODE_POSIX) {
+			refs_util_transform_win32_symlink_to_posix(
+				/* char *symlink_data */
+				&(*out_target)[target_offset],
+				/* size_t symlink_data_length */
+				target_bytes_to_copy);
+		}
+
+		target_offset += target_bytes_to_copy;
+		target_remaining -= target_bytes_to_copy;
+	}
+
+	if(target_remaining) {
+		(*out_target)[target_offset] = '\0';
+	}
+
+	*out_target_length = target_offset;
+out:
+	return err;
+}
+
 typedef struct {
-	refs_volume *vol;
+	fsapi_volume *vol;
 	fsapi_node_attributes *attrs;
 } fsapi_node_get_attributes_context;
 
@@ -2628,19 +2814,19 @@ static int fsapi_node_get_attributes_visit_short_entry(
 		/* TODO: Should queue this instead of descending directly. */
 		err = refs_node_walk(
 			/* sys_device *dev */
-			context->vol->dev,
+			context->vol->vol->dev,
 			/* const REFS_BOOT_SECTOR *bs */
-			context->vol->bs,
+			context->vol->vol->bs,
 			/* REFS_SUPERBLOCK_HEADER **sb */
-			&context->vol->sb,
+			&context->vol->vol->sb,
 			/* REFS_CHECKSUM_BLOCK **primary_checksum_block */
-			&context->vol->primary_checksum_block,
+			&context->vol->vol->primary_checksum_block,
 			/* REFS_CHECKSUM_BLOCK **secondary_checksum_block */
-			&context->vol->secondary_checksum_block,
+			&context->vol->vol->secondary_checksum_block,
 			/* refs_block_map **block_map */
-			&context->vol->block_map,
+			&context->vol->vol->block_map,
 			/* refs_node_cache **node_cache */
-			&context->vol->node_cache,
+			&context->vol->vol->node_cache,
 			/* const u64 *start_node */
 			NULL,
 			/* const u64 *object_id */
@@ -2688,13 +2874,14 @@ static int fsapi_node_get_attributes_visit_leaf_entry(
 }
 
 static int fsapi_node_get_attributes_visit_symlink(
-		void *const context,
+		void *const _context,
 		const refs_symlink_type type,
 		const char *const target,
 		const size_t target_length)
 {
-	fsapi_node_attributes *const attrs =
-		((fsapi_node_get_attributes_context*) context)->attrs;
+	fsapi_node_get_attributes_context *const context =
+		(fsapi_node_get_attributes_context*) _context;
+	fsapi_node_attributes *const attrs = context->attrs;
 
 	int err = 0;
 
@@ -2714,26 +2901,20 @@ static int fsapi_node_get_attributes_visit_symlink(
 	if((attrs->requested & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET) &&
 		!(attrs->valid & FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET))
 	{
-		size_t symlink_target_size;
-
-		if(!attrs->symlink_target) {
-			symlink_target_size = target_length + 1;
-			err = sys_malloc(symlink_target_size,
-				&attrs->symlink_target);
-			if(err) {
-				goto out;
-			}
+		err = fsapi_fill_symlink_target(
+			/* fsapi_volume *vol */
+			context->vol,
+			/* const char *raw_target */
+			target,
+			/* size_t raw_target_length */
+			target_length,
+			/* char **out_target */
+			&attrs->symlink_target,
+			/* size_t *out_target_length */
+			&attrs->symlink_target_length);
+		if(err) {
+			goto out;
 		}
-		else {
-			symlink_target_size = attrs->symlink_target_length;
-		}
-
-		memcpy(attrs->symlink_target, target,
-			sys_min(symlink_target_size, target_length));
-		if(symlink_target_size > target_length) {
-			attrs->symlink_target[target_length] = '\0';
-		}
-		attrs->symlink_target_length = target_length;
 
 		attrs->valid |= FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET;
 	}
@@ -2764,7 +2945,7 @@ static int fsapi_node_get_attributes_common(
 		crawl_context = refs_volume_init_node_crawl_context(
 			/* refs_volume *vol */
 			vol->vol);
-		context.vol = vol->vol;
+		context.vol = vol;
 		context.attrs = &node->attributes;
 		visitor.context = &context;
 
@@ -3091,13 +3272,13 @@ int fsapi_iohandler_buffer_get_data(
 int fsapi_volume_mount(
 		sys_device *dev,
 		sys_bool read_only,
-		const void *custom_mount_options,
+		void *custom_mount_options,
 		fsapi_volume **out_vol,
 		fsapi_node **out_root_node,
 		fsapi_volume_attributes *out_attrs)
 {
-	const fsapi_refs_custom_mount_options *const refs_mount_options =
-		(const fsapi_refs_custom_mount_options*) custom_mount_options;
+	fsapi_refs_custom_mount_options *const refs_mount_options =
+		(fsapi_refs_custom_mount_options*) custom_mount_options;
 
 	int err = 0;
 	fsapi_volume *vol = NULL;
@@ -3237,6 +3418,13 @@ int fsapi_volume_mount(
 		vol->xattr_mode = FSAPI_REFS_XATTR_MODE_STREAMS;
 	}
 
+	if(refs_mount_options && refs_mount_options->valid.symlink_mode) {
+		vol->symlink_mode = refs_mount_options->symlink_mode;
+	}
+	else {
+		vol->symlink_mode = FSAPI_REFS_SYMLINK_MODE_POSIX;
+	}
+
 	if(refs_mount_options && refs_mount_options->valid.uid) {
 		vol->uid = refs_mount_options->uid;
 		vol->uid_defined = SYS_TRUE;
@@ -3245,6 +3433,16 @@ int fsapi_volume_mount(
 	if(refs_mount_options && refs_mount_options->valid.gid) {
 		vol->gid = refs_mount_options->gid;
 		vol->gid_defined = SYS_TRUE;
+	}
+
+	if(refs_mount_options && refs_mount_options->drive_mappings) {
+		/* Steal the drive mappings from the mount options. They're
+		 * unlikely to be needed after the mount call returns. */
+		vol->drive_mappings_length =
+			refs_mount_options->drive_mappings_length;
+		vol->drive_mappings = refs_mount_options->drive_mappings;
+		refs_mount_options->drive_mappings_length = 0;
+		refs_mount_options->drive_mappings = NULL;
 	}
 
 	if(out_attrs) {
@@ -3426,6 +3624,21 @@ int fsapi_volume_unmount(
 	if((*vol)->volume_label_cstr) {
 		sys_free((*vol)->volume_label_cstr_length,
 			&(*vol)->volume_label_cstr);
+	}
+
+	if((*vol)->drive_mappings) {
+		size_t i;
+
+		for(i = 0; i < (*vol)->drive_mappings_length; ++i) {
+			if((*vol)->drive_mappings[i].path) {
+				sys_free((*vol)->drive_mappings[i].path_length + 1,
+					&(*vol)->drive_mappings[i].path);
+			}
+		}
+
+		sys_free((*vol)->drive_mappings_length *
+			sizeof((*vol)->drive_mappings[0]),
+			&(*vol)->drive_mappings);
 	}
 
 	refs_volume_destroy(
@@ -4156,26 +4369,19 @@ static int fsapi_node_list_visit_symlink(
 	if(context->attributes->requested &
 		FSAPI_NODE_ATTRIBUTE_TYPE_SYMLINK_TARGET)
 	{
-		size_t symlink_target_size;
-
-		if(!context->attributes->symlink_target) {
-			symlink_target_size = target_length + 1;
-			err = sys_malloc(symlink_target_size,
-				&context->attributes->symlink_target);
-			if(err) {
-				goto out;
-			}
-		}
-		else {
-			symlink_target_size =
-				context->attributes->symlink_target_length;
-		}
-
-		memcpy(context->attributes->symlink_target, target,
-			sys_min(symlink_target_size, target_length));
-		if(symlink_target_size > target_length) {
-			context->attributes->symlink_target[target_length] =
-				'\0';
+		err = fsapi_fill_symlink_target(
+			/* fsapi_volume *vol */
+			context->vol,
+			/* const char *raw_target */
+			target,
+			/* size_t raw_target_length */
+			target_length,
+			/* char **out_target */
+			&context->attributes->symlink_target,
+			/* size_t *out_target_length */
+			&context->attributes->symlink_target_length);
+		if(err) {
+			goto out;
 		}
 
 		context->attributes->valid |=

@@ -98,6 +98,16 @@ Set the user ID (uid) of all files in the mounted volume to \fBNUMBER\fR.
 .BI gid=NUMBER
 Set the group ID (gid) of all files in the mounted volume to \fBNUMBER\fR.
 .TP
+.BI drive_[a-z]=PATH
+Redirect any of the Windows drive letters (A: to Z:) to the path \fBPATH\fR in
+the filesystem.
+.br
+This allows retargeting symbolic links and junction points to appropriate
+locations in the local directory hierarchy, e.g. if the volume mapped to the
+Windows drive 'D:' is mounted at "/mnt/storage" you can supply the mount
+option 'drive_d=/mnt/storage' to make sure that cross-volume symlinks remain
+valid and point to the appropriate local mount point.
+.TP
 .BI xattr_mode=MODE
 Set the extended attributes mode of the volume to \fBMODE\fR.
 .br

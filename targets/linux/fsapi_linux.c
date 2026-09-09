@@ -6386,12 +6386,6 @@ static const char* fsapi_linux_symlink_inode_op_get_link(
 		goto out;
 	}
 
-	refs_util_transform_win32_symlink_to_posix(
-		/* char *symlink_data */
-		attributes.symlink_target,
-		/* size_t symlink_data_length */
-		attributes.symlink_target_length);
-
 	/* Can be used to clean up the link data when no longer used. */
 	callback->fn = fsapi_linux_symlink_inode_cleanup_link;
 	callback->arg = attributes.symlink_target;
