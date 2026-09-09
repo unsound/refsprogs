@@ -658,19 +658,16 @@ int fsapi_options_parse_custom_mount_options(
 							 * in place of the
 							 * escape character. */
 							--escaped_length;
-							value_alloc[
-								escaped_length]
-								= c;
+
 							/* Reset 'escape' state
 							 * variable. */
 							escape = SYS_FALSE;
 						}
 						else if(c == '\\') {
-							value_alloc[
-								escaped_length]
-								= c;
 							escape = SYS_TRUE;
 						}
+
+						value_alloc[escaped_length] = c;
 
 						++escaped_length;
 					}
