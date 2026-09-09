@@ -251,7 +251,7 @@ typedef struct {
 	/**
 	 * The target of a symlink, as a string.
 	 *
-	 * If returned, and @p symlink_target is @ NULL then the target is
+	 * If returned, and @p symlink_target is @p NULL then the target is
 	 * returned as a @p NULL terminated string with the length matching
 	 * @p size (excludes the @p NULL terminator).
 	 *
@@ -268,7 +268,7 @@ typedef struct {
 	 * a @p NULL terminator.
 	 *
 	 * In the case of a preallocated buffer, set this to the buffer size
-	 * before calling @ref fsapi_node_get_attributes. A @p NULLterminator
+	 * before calling @ref fsapi_node_get_attributes. A @p NULL terminator
 	 * will be inserted if there is room in the buffer, but in the case of a
 	 * preallocated buffer it is not guaranteed.
 	 * If the caller needs to guarantee a @p NULL terminated buffer, pass
@@ -396,7 +396,7 @@ int fsapi_iohandler_buffer_get_data(
 int fsapi_volume_mount(
 		sys_device *dev,
 		sys_bool read_only,
-		const void *custom_mount_options,
+		void *custom_mount_options,
 		fsapi_volume **out_vol,
 		fsapi_node **out_root_node,
 		fsapi_volume_attributes *out_attrs);

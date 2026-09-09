@@ -98,6 +98,31 @@ Set the user ID (uid) of all files in the mounted volume to \fBNUMBER\fR.
 .BI gid=NUMBER
 Set the group ID (gid) of all files in the mounted volume to \fBNUMBER\fR.
 .TP
+.BI umask=NUMBER
+Set the permission bitmask for all files and directories to \fBNUMBER\fR.
+.sp
+The permission bitmask is a value from 0 to 07777 which represents the
+permissions in the mode that will be masked out, i.e. it is a bitmask of
+permissions to \fIdeny\fR.
+.br
+Since refs\-fuse has an allow-all access mask by default, this bitmask can be
+used to revoke some of those permissions.
+.TP
+.BI fmask=NUMBER
+Set the permission bitmask for all files to \fBNUMBER\fR.
+.TP
+.BI dmask=NUMBER
+Set the permission bitmask for all directories to \fBNUMBER\fR.
+.BI drive_[a-z]=PATH
+Redirect any of the Windows drive letters (A: to Z:) to the path \fBPATH\fR in
+the filesystem.
+.br
+This allows retargeting symbolic links and junction points to appropriate
+locations in the local directory hierarchy, e.g. if the volume mapped to the
+Windows drive 'D:' is mounted at "/mnt/storage" you can supply the mount
+option 'drive_d=/mnt/storage' to make sure that cross-volume symlinks remain
+valid and point to the appropriate local mount point.
+.TP
 .BI xattr_mode=MODE
 Set the extended attributes mode of the volume to \fBMODE\fR.
 .br
