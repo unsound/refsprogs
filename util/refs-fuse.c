@@ -3217,6 +3217,12 @@ out:
 	}
 #endif /* FUSE_VERSION >= 30 */
 
+	if(args.allocated) {
+		fuse_opt_free_args(
+			/* struct fuse_args *args */
+			&args);
+	}
+
 	if(context.ino_tree) {
 		refs_rb_tree_dealloc(
 			/* struct refs_rb_tree *self */
