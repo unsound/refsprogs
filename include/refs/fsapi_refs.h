@@ -23,12 +23,18 @@ typedef struct {
 	struct {
 		sys_bool uid;
 		sys_bool gid;
+		sys_bool umask;
+		sys_bool fmask;
+		sys_bool dmask;
 		sys_bool xattr_mode;
 		sys_bool symlink_mode;
 	} valid;
 
 	u64 uid;
 	u64 gid;
+	u64 umask;
+	u64 fmask;
+	u64 dmask;
 	fsapi_refs_xattr_mode xattr_mode;
 	fsapi_refs_symlink_mode symlink_mode;
 

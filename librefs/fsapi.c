@@ -55,6 +55,8 @@ struct fsapi_volume {
 	sys_bool gid_defined;
 	u64 uid;
 	u64 gid;
+	u64 fmask;
+	u64 dmask;
 	size_t drive_mappings_length;
 	fsapi_refs_drive_mapping *drive_mappings;
 
@@ -123,6 +125,21 @@ static sys_bool fsapi_options_parse_gid_value(
 		const char *const value,
 		const size_t value_length);
 
+static sys_bool fsapi_options_parse_umask_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length);
+
+static sys_bool fsapi_options_parse_fmask_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length);
+
+static sys_bool fsapi_options_parse_dmask_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length);
+
 static sys_bool fsapi_options_parse_xattr_mode_value(
 		void *const custom_mount_options,
 		const char *const value,
@@ -154,6 +171,18 @@ static fsapi_option_specification_entry fsapi_options_entries[] =
 	{
 		.option_name = "gid",
 		.parse_value = fsapi_options_parse_gid_value
+	},
+	{
+		.option_name = "umask",
+		.parse_value = fsapi_options_parse_umask_value
+	},
+	{
+		.option_name = "fmask",
+		.parse_value = fsapi_options_parse_fmask_value
+	},
+	{
+		.option_name = "dmask",
+		.parse_value = fsapi_options_parse_dmask_value
 	},
 	{
 		.option_name = "xattr_mode",
@@ -190,6 +219,7 @@ static sys_bool fsapi_options_parse_generic_unsigned_integer_value(
 		sys_bool *const out_value_valid)
 {
 	sys_bool res = SYS_FALSE;
+	u8 base;
 	size_t i;
 	u64 parsed_value = 0;
 
@@ -204,15 +234,40 @@ static sys_bool fsapi_options_parse_generic_unsigned_integer_value(
 		goto out;
 	}
 
-	for(i = 0; i < value_length; ++i) {
-		if(value[i] < '0' || value[i] > '9') {
+	if(value_length > 2 && value[0] == '0' && value[1] == 'x') {
+		base = 16;
+		i = 2;
+	}
+	else if(value_length > 1 && value[0] == '0') {
+		base = 8;
+		i = 1;
+	}
+	else {
+		base = 10;
+		i = 0;
+	}
+
+	for(; i < value_length; ++i) {
+		const char c = value[i];
+		u8 digit;
+
+		if(c >= '0' && c <= '9') {
+			digit = c - '0';
+		}
+		else if(base > 10 && c >= 'A' && c <= 'F') {
+			digit = 10 + (c - 'A');
+		}
+		else if(base > 10 && c >= 'a' && c <= 'f') {
+			digit = 10 + (c - 'a');
+		}
+		else {
 			fsapi_options_log_invalid_value(value_length, value,
 				name,
 				" (non-digits in integer value)");
 			goto out;
 		}
 
-		parsed_value = parsed_value * 10 + (u64) (value[i] - '0');
+		parsed_value = parsed_value * ((u64) base) + ((u64) digit);
 	}
 
 	if(max_value && parsed_value > max_value) {
@@ -272,6 +327,75 @@ static sys_bool fsapi_options_parse_gid_value(
 		&custom_mount_options->gid,
 		/* sys_bool *out_value_valid */
 		&custom_mount_options->valid.gid);
+}
+
+static sys_bool fsapi_options_parse_umask_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length)
+{
+	fsapi_refs_custom_mount_options *const custom_mount_options =
+		(fsapi_refs_custom_mount_options*) _custom_mount_options;
+
+	return fsapi_options_parse_generic_unsigned_integer_value(
+		/* const char *name */
+		"umask",
+		/* u64 max_value */
+		07777U,
+		/* const char *value */
+		value,
+		/* size_t value_length */
+		value_length,
+		/* u64 *out_value */
+		&custom_mount_options->umask,
+		/* sys_bool *out_value_valid */
+		&custom_mount_options->valid.umask);
+}
+
+static sys_bool fsapi_options_parse_fmask_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length)
+{
+	fsapi_refs_custom_mount_options *const custom_mount_options =
+		(fsapi_refs_custom_mount_options*) _custom_mount_options;
+
+	return fsapi_options_parse_generic_unsigned_integer_value(
+		/* const char *name */
+		"fmask",
+		/* u64 max_value */
+		07777U,
+		/* const char *value */
+		value,
+		/* size_t value_length */
+		value_length,
+		/* u64 *out_value */
+		&custom_mount_options->fmask,
+		/* sys_bool *out_value_valid */
+		&custom_mount_options->valid.fmask);
+}
+
+static sys_bool fsapi_options_parse_dmask_value(
+		void *const _custom_mount_options,
+		const char *const value,
+		const size_t value_length)
+{
+	fsapi_refs_custom_mount_options *const custom_mount_options =
+		(fsapi_refs_custom_mount_options*) _custom_mount_options;
+
+	return fsapi_options_parse_generic_unsigned_integer_value(
+		/* const char *name */
+		"dmask",
+		/* u64 max_value */
+		07777U,
+		/* const char *value */
+		value,
+		/* size_t value_length */
+		value_length,
+		/* u64 *out_value */
+		&custom_mount_options->dmask,
+		/* sys_bool *out_value_valid */
+		&custom_mount_options->valid.dmask);
 }
 
 static sys_bool fsapi_options_parse_xattr_mode_value(
@@ -3071,7 +3195,10 @@ static int fsapi_node_get_attributes_common(
 		attributes->inode_number = node->attributes.inode_number;
 	}
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_MODE) {
-		attributes->mode = node->attributes.mode;
+		attributes->mode =
+			node->attributes.mode &
+			~(node->attributes.is_directory ? vol->dmask :
+			vol->fmask);
 	}
 	if(provided_mask & FSAPI_NODE_ATTRIBUTE_TYPE_UID) {
 		attributes->uid = node->attributes.uid;
@@ -3430,6 +3557,26 @@ int fsapi_volume_mount(
 	if(refs_mount_options && refs_mount_options->valid.gid) {
 		vol->gid = refs_mount_options->gid;
 		vol->gid_defined = SYS_TRUE;
+	}
+
+	if(refs_mount_options && refs_mount_options->valid.fmask) {
+		vol->fmask = refs_mount_options->fmask;
+	}
+	else if(refs_mount_options && refs_mount_options->valid.umask) {
+		vol->fmask = refs_mount_options->umask;
+	}
+	else {
+		vol->fmask = 0;
+	}
+
+	if(refs_mount_options && refs_mount_options->valid.dmask) {
+		vol->dmask = refs_mount_options->dmask;
+	}
+	else if(refs_mount_options && refs_mount_options->valid.umask) {
+		vol->dmask = refs_mount_options->umask;
+	}
+	else {
+		vol->dmask = 0;
 	}
 
 	if(refs_mount_options && refs_mount_options->drive_mappings) {
