@@ -2534,12 +2534,13 @@ static int refs_fuse_parse_fuse_option(
 	for(i = 0; i < context->default_options_length; ++i) {
 		char *const default_option_name =
 			context->default_option_names[i];
-		const size_t default_option_name_length =
-			strlen(default_option_name);
+		size_t default_option_name_length;
 
 		if(!default_option_name) {
 			continue;
 		}
+
+		default_option_name_length = strlen(default_option_name);
 
 		if(default_option_name_length ==
 			name_length - (negative_option ? 2 : 0) &&
