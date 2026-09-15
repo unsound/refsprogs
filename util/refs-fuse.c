@@ -2638,6 +2638,7 @@ int main(int argc, char **argv)
 	memset(&fuse_options_context, 0, sizeof(fuse_options_context));
 #if REFS_FUSE_USE_LOWLEVEL_API
 	memset(&context, 0, sizeof(context));
+	memset(&args, 0, sizeof(args));
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	if(argc < 3) {
