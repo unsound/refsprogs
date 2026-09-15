@@ -2534,12 +2534,13 @@ static int refs_fuse_parse_fuse_option(
 	for(i = 0; i < context->default_options_length; ++i) {
 		char *const default_option_name =
 			context->default_option_names[i];
-		const size_t default_option_name_length =
-			strlen(default_option_name);
+		size_t default_option_name_length;
 
 		if(!default_option_name) {
 			continue;
 		}
+
+		default_option_name_length = strlen(default_option_name);
 
 		if(default_option_name_length ==
 			name_length - (negative_option ? 2 : 0) &&
@@ -2638,6 +2639,7 @@ int main(int argc, char **argv)
 	memset(&fuse_options_context, 0, sizeof(fuse_options_context));
 #if REFS_FUSE_USE_LOWLEVEL_API
 	memset(&context, 0, sizeof(context));
+	memset(&args, 0, sizeof(args));
 #endif /* REFS_FUSE_USE_LOWLEVEL_API */
 
 	if(argc < 3) {
