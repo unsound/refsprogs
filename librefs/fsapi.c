@@ -161,6 +161,11 @@ static int fsapi_node_path_element_compare(
 		const fsapi_node_path_element *const a,
 		const fsapi_node_path_element *const b);
 
+static int fsapi_lookup_by_posix_path_compare(
+		struct refs_rb_tree *const tree,
+		struct refs_rb_node *const a,
+		struct refs_rb_node *const b);
+
 
 static fsapi_option_specification_entry fsapi_options_entries[] =
 {
@@ -1613,6 +1618,16 @@ static int fsapi_node_cache_enter(
 	int err = 0;
 	fsapi_node *new_node = NULL;
 	fsapi_node_path_element *new_path_element = NULL;
+
+	if(!vol->cache_tree) {
+		vol->cache_tree = refs_rb_tree_create(
+			/* refs_rb_tree_node_cmp_f cmp */
+			fsapi_lookup_by_posix_path_compare);
+		if(!vol->cache_tree) {
+			err = ENOMEM;
+			goto out;
+		}
+	}
 
 	if(vol->cached_nodes_count >= cached_nodes_max) {
 		/* Reuse the existing node at the tail of the list, i.e. the one
