@@ -3400,11 +3400,13 @@ static int refs_node_parse_checkpoint_block_level2_node_reference_list(
 	}
 
 	if(REFS_VERSION_MIN(context->bs->version_major,
-		context->bs->version_minor, 3, 14))
+		context->bs->version_minor, 3, 12))
 	{
 		/* Note: The offset (from the start of the node) of the level 2
 		 * block list appears to be stored at the first offset in ReFS
-		 * 3.14. Not sure what the other numbers are yet. */
+		 * 3.12 and later (3.14 being the first "production" version
+		 * with this change). Not sure what the other numbers are
+		 * yet. */
 		node_reference_list_start = read_le32(&block[offset]);
 
 		emit(prefix, indent, "Level 2 blocks start offset @ "
