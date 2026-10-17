@@ -24,6 +24,10 @@
 
 #include "sys.h"
 
+#ifndef FSAPI_VISIBILITY
+#define FSAPI_VISIBILITY
+#endif
+
 typedef struct fsapi_volume fsapi_volume;
 
 typedef struct {
@@ -323,6 +327,7 @@ extern fsapi_options_specification fsapi_options_spec;
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_iohandler_buffer_handle_io(
 		void *context,
 		sys_device *dev,
@@ -342,6 +347,7 @@ int fsapi_iohandler_buffer_handle_io(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_iohandler_buffer_copy_data(
 		void *context,
 		const void *buffer,
@@ -360,6 +366,7 @@ int fsapi_iohandler_buffer_copy_data(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_iohandler_buffer_get_data(
 		void *context,
 		void *buffer,
@@ -393,6 +400,7 @@ int fsapi_iohandler_buffer_get_data(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_volume_mount(
 		sys_device *dev,
 		sys_bool read_only,
@@ -410,6 +418,7 @@ int fsapi_volume_mount(
  *      (out) Pointer to a field that will receive a pointer to the
  *      @ref fsapi_node of the root directory of the volume.
  */
+FSAPI_VISIBILITY
 void fsapi_volume_get_root_node(
 		fsapi_volume *vol,
 		fsapi_node **out_root_node);
@@ -428,10 +437,12 @@ void fsapi_volume_get_root_node(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_volume_get_attributes(
 		fsapi_volume *vol,
 		fsapi_volume_attributes *out_attrs);
 
+FSAPI_VISIBILITY
 int fsapi_volume_sync(
 		fsapi_volume *vol);
 
@@ -446,10 +457,12 @@ int fsapi_volume_sync(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_volume_unmount(
 		fsapi_volume **vol);
 
 #if 0 /* Unnecessary if mount returns the root node. */
+FSAPI_VISIBILITY
 int fsapi_root(
 		fsapi_volume *vol,
 		fsapi_node **out_node);
@@ -480,6 +493,7 @@ int fsapi_root(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_lookup(
 		fsapi_volume *vol,
 		fsapi_node *parent_node,
@@ -501,6 +515,7 @@ int fsapi_node_lookup(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_release(
 		fsapi_volume *vol,
 		fsapi_node **node,
@@ -539,6 +554,7 @@ int fsapi_node_release(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_list(
 		fsapi_volume *vol,
 		fsapi_node *directory_node,
@@ -567,6 +583,7 @@ int fsapi_node_list(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_get_attributes(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -592,6 +609,7 @@ int fsapi_node_get_attributes(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_set_attributes(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -611,6 +629,7 @@ int fsapi_node_set_attributes(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_get_raw_data(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -633,6 +652,7 @@ int fsapi_node_get_raw_data(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_read(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -640,6 +660,7 @@ int fsapi_node_read(
 		size_t size,
 		fsapi_iohandler *iohandler);
 
+FSAPI_VISIBILITY
 int fsapi_node_write(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -647,6 +668,7 @@ int fsapi_node_write(
 		size_t size,
 		fsapi_iohandler *iohandler);
 
+FSAPI_VISIBILITY
 int fsapi_node_sync(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -654,6 +676,7 @@ int fsapi_node_sync(
 		u64 length,
 		sys_bool data_only);
 
+FSAPI_VISIBILITY
 int fsapi_node_create(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -662,6 +685,7 @@ int fsapi_node_create(
 		fsapi_node_attributes *attributes,
 		fsapi_node **out_node);
 
+FSAPI_VISIBILITY
 int fsapi_node_hardlink(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -670,6 +694,7 @@ int fsapi_node_hardlink(
 		size_t link_name_length,
 		fsapi_node_attributes *out_attributes);
 
+FSAPI_VISIBILITY
 int fsapi_node_rename(
 		fsapi_volume *vol,
 		fsapi_node *source_dir_node,
@@ -680,6 +705,7 @@ int fsapi_node_rename(
 		size_t target_name_length,
 		fsapi_rename_flags flags);
 
+FSAPI_VISIBILITY
 int fsapi_node_remove(
 		fsapi_volume *vol,
 		fsapi_node *parent_node,
@@ -699,6 +725,7 @@ typedef enum {
 	FSAPI_NODE_FALLOCATE_FLAG_WRITE_ZEROES = 0x80,
 } fsapi_node_fallocate_flags;
 
+FSAPI_VISIBILITY
 int fsapi_node_fallocate(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -720,6 +747,7 @@ int fsapi_node_fallocate(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_list_extended_attributes(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -757,6 +785,7 @@ int fsapi_node_list_extended_attributes(
  *
  * @return 0 on success and a non-0 @p errno value on failure.
  */
+FSAPI_VISIBILITY
 int fsapi_node_read_extended_attribute(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -767,6 +796,7 @@ int fsapi_node_read_extended_attribute(
 		fsapi_iohandler *iohandler,
 		u64 *out_xattr_size);
 
+FSAPI_VISIBILITY
 int fsapi_node_write_extended_attribute(
 		fsapi_volume *vol,
 		fsapi_node *node,
@@ -777,6 +807,7 @@ int fsapi_node_write_extended_attribute(
 		size_t size,
 		fsapi_iohandler *iohandler);
 
+FSAPI_VISIBILITY
 int fsapi_node_remove_extended_attribute(
 		fsapi_volume *vol,
 		fsapi_node *node,
