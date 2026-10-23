@@ -1,7 +1,7 @@
 /*-
  * sys_user.h - Lightweight abstractions for system functionality (userspace).
  *
- * Copyright (c) 2022-2025 Erik Larsson
+ * Copyright (c) 2022-2026 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -58,6 +58,25 @@
 #elif defined(HAVE_PTHREAD_H)
 #include <pthread.h>
 #endif /* defined(_WIN32) ... defined(HAVE_PTHREAD_H) */
+#ifdef __GNU__
+#include <hurd.h>
+#include <hurd/store.h>
+#endif
+
+#define U8_MAX UINT8_MAX
+#define U16_MAX UINT16_MAX
+#define U32_MAX UINT32_MAX
+#define U64_MAX UINT64_MAX
+
+#define S8_MIN INT8_MIN
+#define S16_MIN INT16_MIN
+#define S32_MIN INT32_MIN
+#define S64_MIN INT64_MIN
+
+#define S8_MAX INT8_MAX
+#define S16_MAX INT16_MAX
+#define S32_MAX INT32_MAX
+#define S64_MAX INT64_MAX
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -808,6 +827,42 @@ static inline int sys_device_get_sector_size(sys_device *const dev,
 	}
 #endif
 
+#ifdef __GNU__
+	io_t f = getdport(
+		/* int fd */
+		(int) ((intptr_t) dev));
+	if(f == MACH_PORT_NULL) {
+		err = (err = errno) ? err : ENOMEM;
+	}
+	else {
+		struct store *store = NULL;
+
+		err = store_create(
+			/* file_t source */
+			f,
+			/* int flags */
+			0,
+			/* const struct store_class *const *classes */
+			NULL,
+			/* struct store **store */
+			&store);
+		if(!err) {
+			*out_sector_size = store->block_size;
+
+			store_free(
+				/* struct store *store */
+				store);
+		}
+		else {
+			mach_port_deallocate(
+				/* mach_port_t task */
+				mach_task_self(),
+				/* mach_port_name_t name */
+				f);
+		}
+	}
+#endif
+
 	return err;
 }
 
@@ -958,6 +1013,43 @@ static inline int sys_device_get_size(sys_device *const dev,
 		else {
 			err = 0;
 			*out_size = (u64) info.Length.QuadPart;
+		}
+	}
+#endif
+
+
+#ifdef __GNU__
+	io_t f = getdport(
+		/* int fd */
+		(int) ((intptr_t) dev));
+	if(f == MACH_PORT_NULL) {
+		err = (err = errno) ? err : ENOMEM;
+	}
+	else {
+		struct store *store = NULL;
+
+		err = store_create(
+			/* file_t source */
+			f,
+			/* int flags */
+			0,
+			/* const struct store_class *const *classes */
+			NULL,
+			/* struct store **store */
+			&store);
+		if(!err) {
+			*out_size = store->size;
+
+			store_free(
+				/* struct store *store */
+				store);
+		}
+		else {
+			mach_port_deallocate(
+				/* mach_port_t task */
+				mach_task_self(),
+				/* mach_port_name_t name */
+				f);
 		}
 	}
 #endif

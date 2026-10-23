@@ -1,7 +1,7 @@
 /*-
  * refsimage.c - Create a filesystem/metadata image of an ReFS volume.
  *
- * Copyright (c) 2025 Erik Larsson
+ * Copyright (c) 2025-2026 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published

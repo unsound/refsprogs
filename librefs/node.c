@@ -1,7 +1,7 @@
 /*-
  * node.c - ReFS node handling definitions.
  *
- * Copyright (c) 2022-2025 Erik Larsson
+ * Copyright (c) 2022-2026 Erik Larsson
  *
  * This program/include file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as published
@@ -3400,11 +3400,13 @@ static int refs_node_parse_checkpoint_block_level2_node_reference_list(
 	}
 
 	if(REFS_VERSION_MIN(context->bs->version_major,
-		context->bs->version_minor, 3, 14))
+		context->bs->version_minor, 3, 12))
 	{
 		/* Note: The offset (from the start of the node) of the level 2
 		 * block list appears to be stored at the first offset in ReFS
-		 * 3.14. Not sure what the other numbers are yet. */
+		 * 3.12 and later (3.14 being the first "production" version
+		 * with this change). Not sure what the other numbers are
+		 * yet. */
 		node_reference_list_start = read_le32(&block[offset]);
 
 		emit(prefix, indent, "Level 2 blocks start offset @ "
@@ -12713,6 +12715,9 @@ static int refs_node_parse_reparse_point_attribute(
 			break;
 		case 0xA000000CUL:
 			reparse_tag_string = "IO_REPARSE_TAG_SYMLINK";
+			break;
+		case 0x8000001BUL:
+			reparse_tag_string = "IO_REPARSE_TAG_APPEXECLINK";
 			break;
 		case 0xA000001DUL:
 			reparse_tag_string = "IO_REPARSE_TAG_LX_SYMLINK";
