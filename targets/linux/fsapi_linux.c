@@ -307,6 +307,36 @@
 #define FSAPI_IFELSE_LINUX_7_0(a, b) b
 #endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,1,0))
+#define FSAPI_IF_LINUX_7_1(...) __VA_ARGS__
+#define FSAPI_NOT_LINUX_7_1(...)
+#define FSAPI_IFELSE_LINUX_7_1(a, b) a
+#else
+#define FSAPI_IF_LINUX_7_1(...)
+#define FSAPI_NOT_LINUX_7_1(...) __VA_ARGS__
+#define FSAPI_IFELSE_LINUX_7_1(a, b) b
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0))
+#define FSAPI_IF_LINUX_7_2(...) __VA_ARGS__
+#define FSAPI_NOT_LINUX_7_2(...)
+#define FSAPI_IFELSE_LINUX_7_2(a, b) a
+#else
+#define FSAPI_IF_LINUX_7_2(...)
+#define FSAPI_NOT_LINUX_7_2(...) __VA_ARGS__
+#define FSAPI_IFELSE_LINUX_7_2(a, b) b
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7,3,0))
+#define FSAPI_IF_LINUX_7_3(...) __VA_ARGS__
+#define FSAPI_NOT_LINUX_7_3(...)
+#define FSAPI_IFELSE_LINUX_7_3(a, b) a
+#else
+#define FSAPI_IF_LINUX_7_3(...)
+#define FSAPI_NOT_LINUX_7_3(...) __VA_ARGS__
+#define FSAPI_IFELSE_LINUX_7_3(a, b) b
+#endif
+
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0))
 #define SSIZE_MAX LONG_MAX
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)) */
@@ -1719,8 +1749,11 @@ static int fsapi_linux_dir_inode_op_create(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *,
 		struct dentry *,
-		umode_t,
-		bool);
+		umode_t
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7,3,0))
+		, bool
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,3,0)) */
+		);
 
 static int fsapi_linux_dir_inode_op_link(
 		struct dentry *,
@@ -1878,11 +1911,12 @@ static const struct inode_operations fsapi_linux_dir_inode_operations = {
 	 *     int) */
 	.readlink = NULL,
 	/* int (*create)(
-	 *     struct user_namespace *,
+	 *     struct mnt_idmap * (>= 6.3),
+	 *     struct user_namespace * (< 6.3, >= 5.12),
 	 *     struct inode *,
 	 *     struct dentry *,
 	 *     umode_t,
-	 *     bool) */
+	 *     bool (< 7.3)) */
 	.create = fsapi_linux_dir_inode_op_create,
 	/* int (*link)(
 	 *     struct dentry *,
@@ -5042,8 +5076,11 @@ static int fsapi_linux_dir_inode_op_create(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)) ... */
 		struct inode *target_inode,
 		struct dentry *dent,
-		umode_t mode,
-		bool excl)
+		umode_t mode
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7,3,0))
+		, bool excl
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(7,3,0)) */
+		)
 {
 	fsapi_volume *const vol = fsapi_linux_sb_to_fsapi_volume(
 		/* struct super_block *sb */
@@ -5063,13 +5100,13 @@ static int fsapi_linux_dir_inode_op_create(
 		FSAPI_IF_LINUX_5_12("namespace=%p, ")
 		"target_inode=%p, "
 		"dent=%" PRIdentry ", "
-		"mode=0%" PRIo32 ", "
-		"excl=%d",
+		"mode=0%" PRIo32
+		FSAPI_NOT_LINUX_7_3(", excl=%d"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		target_inode,
 		PRAdentry(dent),
-		PRAo32(mode),
-		excl);
+		PRAo32(mode)
+		FSAPI_NOT_LINUX_7_3(,excl));
 
 	memset(&attributes, 0, sizeof(attributes));
 
@@ -5177,12 +5214,12 @@ out:
 		"target_inode=%p, "
 		"dent=%" PRIdentry ", "
 		"mode=0%" PRIo32 ", "
-		"excl=%d",
+		FSAPI_NOT_LINUX_7_3(", excl=%d"),
 		FSAPI_IF_LINUX_5_12(namespace,)
 		target_inode,
 		PRAdentry(dent),
-		PRAo32(mode),
-		excl);
+		PRAo32(mode)
+		FSAPI_NOT_LINUX_7_3(,excl));
 
 	return ret;
 }
