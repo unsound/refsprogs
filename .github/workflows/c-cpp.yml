@@ -55,6 +55,28 @@ jobs:
     - name: make
       run: cd targets/linux && make
 
+  build-debian-kernels:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic gcc-15-for-host cpp-15-for-host || exit 1
+        for i in \
+          '7.1.13-1 7.1.13+deb14 20260915T022413Z sid' \
+          '7.0.14-1 7.0.14+deb14 20260705T075902Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
   build-macos:
 
     runs-on: macos-latest
