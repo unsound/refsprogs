@@ -78,6 +78,8 @@ jobs:
           '6.19.14-1 6.19.14+deb14 20260429T083731Z sid' \
           '7.0.14-1 7.0.14+deb14 20260705T075902Z sid' \
           '7.1.13-1 7.1.13+deb14 20260915T022413Z sid' \
+          '7.2.12-1 7.2.12+deb14 20261024T203415Z sid' \
+          '7.3~rc7-1~exp1 7.3 20261024T203415Z experimental' \
         ; do
             read package kernel timestamp suite <<< "${i}"
             echo "Attempting to build against kernel ${kernel}..."
