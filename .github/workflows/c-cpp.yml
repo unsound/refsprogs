@@ -64,10 +64,20 @@ jobs:
     - name: make
       run: |
         sudo apt update || exit 1
-        sudo apt install -y apt-transport-https build-essential linux-headers-generic gcc-15-for-host cpp-15-for-host || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
         for i in \
-          '7.1.13-1 7.1.13+deb14 20260915T022413Z sid' \
+          '6.13.11-1~exp1 6.13 20250417T203629Z experimental' \
+          '6.14.3-1~exp1 6.14 20250501T023311Z experimental' \
+          '6.15.4-1~exp1 6.15 20250630T203427Z experimental' \
+          '6.16.12-2 6.16.12+deb14+1 20251030T024657Z sid' \
+          '6.17.13-1 6.17.13+deb14 20251231T202918Z sid' \
+          '6.18.15-1 6.18.15+deb14 20260305T082937Z sid' \
+          '6.19.14-1 6.19.14+deb14 20260429T083731Z sid' \
           '7.0.14-1 7.0.14+deb14 20260705T075902Z sid' \
+          '7.1.13-1 7.1.13+deb14 20260915T022413Z sid' \
         ; do
             read package kernel timestamp suite <<< "${i}"
             echo "Attempting to build against kernel ${kernel}..."
