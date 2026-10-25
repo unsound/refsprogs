@@ -28,67 +28,6 @@ jobs:
     - name: make distcheck
       run: make distcheck
 
-  build-ubuntu-resolute-kernel:
-
-    runs-on: ubuntu-26.04
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: make
-      run: cd targets/linux && make
-
-  build-ubuntu-noble-kernel:
-
-    runs-on: ubuntu-24.04
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: make
-      run: cd targets/linux && make
-
-  build-ubuntu-jammy-kernel:
-
-    runs-on: ubuntu-22.04
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: make
-      run: cd targets/linux && make
-
-  build-debian-kernels:
-
-    runs-on: ubuntu-26.04
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: make
-      run: |
-        sudo apt update || exit 1
-        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
-        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
-        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
-        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
-        for i in \
-          '6.13.11-1~exp1 6.13 20250417T203629Z experimental' \
-          '6.14.3-1~exp1 6.14 20250501T023311Z experimental' \
-          '6.15.4-1~exp1 6.15 20250630T203427Z experimental' \
-          '6.16.12-2 6.16.12+deb14+1 20251030T024657Z sid' \
-          '6.17.13-1 6.17.13+deb14 20251231T202918Z sid' \
-          '6.18.15-1 6.18.15+deb14 20260305T082937Z sid' \
-          '6.19.14-1 6.19.14+deb14 20260429T083731Z sid' \
-          '7.0.14-1 7.0.14+deb14 20260705T075902Z sid' \
-          '7.1.13-1 7.1.13+deb14 20260915T022413Z sid' \
-          '7.2.12-1 7.2.12+deb14 20261024T203415Z sid' \
-          '7.3~rc7-1~exp1 7.3 20261024T203415Z experimental' \
-        ; do
-            read package kernel timestamp suite <<< "${i}"
-            echo "Attempting to build against kernel ${kernel}..."
-            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
-            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
-            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
-            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
-        done
-
   build-macos:
 
     runs-on: macos-latest
@@ -306,3 +245,294 @@ jobs:
           make
           make check
           make distcheck
+
+  build-ubuntu-resolute-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: cd targets/linux && make
+
+  build-ubuntu-noble-kernel:
+
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: cd targets/linux && make
+
+  build-ubuntu-jammy-kernel:
+
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: cd targets/linux && make
+
+  build-debian-6_13-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '6.13.11-1~exp1 6.13 20250417T203629Z experimental' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-6_14-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '6.14.3-1~exp1 6.14 20250501T023311Z experimental' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-6_15-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '6.15.4-1~exp1 6.15 20250630T203427Z experimental' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-6_16-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '6.16.12-2 6.16.12+deb14+1 20251030T024657Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-6_17-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '6.17.13-1 6.17.13+deb14 20251231T202918Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-6_18-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '6.18.15-1 6.18.15+deb14 20260305T082937Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-6_19-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '6.19.14-1 6.19.14+deb14 20260429T083731Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-7_0-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '7.0.14-1 7.0.14+deb14 20260705T075902Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-7_1-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '7.1.13-1 7.1.13+deb14 20260915T022413Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-7_2-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '7.2.12-1 7.2.12+deb14 20261024T203415Z sid' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
+
+  build-debian-7_3-kernel:
+
+    runs-on: ubuntu-26.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: |
+        sudo apt update || exit 1
+        sudo apt install -y apt-transport-https build-essential linux-headers-generic || exit 1
+        sudo sh -c 'echo "Package: *" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin: release o=Debian" >> /etc/apt/preferences.d/debian-low-priority'
+        sudo sh -c 'echo "Pin-Priority: 100" >> /etc/apt/preferences.d/debian-low-priority'
+        for i in \
+          '7.3~rc7-1~exp1 7.3 20261024T203415Z experimental' \
+        ; do
+            read package kernel timestamp suite <<< "${i}"
+            echo "Attempting to build against kernel ${kernel}..."
+            sudo sh -c "echo 'deb https://snapshot.debian.org/archive/debian/${timestamp}/ ${suite} main' >> /etc/apt/sources.list" || exit 1
+            sudo apt -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true -o Acquire::AllowUnauthenticated=true -o Acquire::Check-Valid-Until=false update || exit 1
+            sudo apt install -y --allow-unauthenticated linux-headers-${kernel}-amd64 || exit 1
+            ( cd targets/linux && make KDIR=/lib/modules/${kernel}-amd64/build ) || exit 1
+        done
