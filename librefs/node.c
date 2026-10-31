@@ -25,6 +25,7 @@
 
 #include "node.h"
 
+#include "crc.h"
 #include "rb_tree.h"
 #include "layout.h"
 #include "util.h"
@@ -32,6 +33,29 @@
 
 
 /* Macros. */
+
+/* The on-disk size of a version 3 node reference. The fields that checksum
+ * verification reads (the flags at offset 32 and the checksum value at offset
+ * 40) occupy the last 16 bytes, so this is both the amount that must be zeroed
+ * when recomputing a block's self checksum and the minimum that must be
+ * present for the reference to be readable at all. */
+#define REFS_V3_NODE_REFERENCE_SIZE 48
+
+/* The outcome of verifying the self checksum of a checkpoint block. */
+typedef enum {
+	/* The checksum was computed and differs from the stored one, or the
+	 * block was rejected before its checksum could be considered. The
+	 * block is unusable. */
+	REFS_NODE_CHECKSUM_MISMATCH = 0,
+	/* The checksum was computed and matches the stored one. */
+	REFS_NODE_CHECKSUM_VERIFIED,
+	/* A version 3 block on a 4096-byte cluster volume whose checksum
+	 * should be reproducible but could not be computed. */
+	REFS_NODE_CHECKSUM_UNVERIFIABLE,
+	/* Verification is not attempted: the checksum layout is only known
+	 * for version 3 volumes with a 4096-byte cluster size. */
+	REFS_NODE_CHECKSUM_NOT_APPLICABLE
+} refs_node_checksum_state;
 
 #define emit_entry_header(prefix, indent, title, entry_index, num_entries, \
 		entry_offset, type) \
@@ -3491,6 +3515,72 @@ out:
 	return err;
 }
 
+/**
+ * Compute the self checksum of a block that carries a self reference.
+ *
+ * The blocks that carry a self reference (the superblock and the checkpoint
+ * blocks) store the checksum of their own first cluster, computed with the
+ * bytes of the self reference itself zeroed out. Blocks from level 2 and up
+ * have no self reference at all; their checksum is stored in the referencing
+ * parent instead.
+ *
+ * Note that the checksummed range is the first cluster of the block rather
+ * than the whole block. This has so far only been observed on volumes with
+ * a 4096-byte cluster size.
+ *
+ * @return SYS_TRUE if a checksum was computed, SYS_FALSE if this block's
+ *         checksum cannot be reproduced (unknown checksum type, or a self
+ *         reference that does not lie inside the checksummed range).
+ */
+static sys_bool refs_node_compute_self_checksum(
+		const u8 *const block,
+		const u32 block_size,
+		const u32 cluster_size,
+		const u32 self_reference_offset,
+		const u32 self_reference_size,
+		const u8 checksum_type,
+		u64 *const out_checksum)
+{
+	static const u8 zeroes[REFS_V3_NODE_REFERENCE_SIZE] = { 0 };
+
+	const u32 checksummed_size = sys_min(cluster_size, block_size);
+
+	u32 tail_offset = 0;
+	u32 crc = 0;
+
+	/* The checksummed range has only been confirmed on volumes with a
+	 * 4096-byte cluster size, where it is the first cluster of the block.
+	 * Whether a larger cluster size widens the range or keeps it at 4096 is
+	 * unknown, and guessing wrong would reject an intact block, so decline
+	 * to verify rather than risk failing a mountable volume. */
+	if(cluster_size != 4096) {
+		return SYS_FALSE;
+	}
+
+	if(!self_reference_size || self_reference_size > sizeof(zeroes) ||
+		self_reference_offset >= checksummed_size ||
+		self_reference_size >
+		checksummed_size - self_reference_offset)
+	{
+		return SYS_FALSE;
+	}
+
+	if(checksum_type != REFS_CHECKSUM_TYPE_CRC32C) {
+		return SYS_FALSE;
+	}
+
+	tail_offset = self_reference_offset + self_reference_size;
+
+	crc = refs_crc32c(crc, block, self_reference_offset);
+	crc = refs_crc32c(crc, zeroes, self_reference_size);
+	crc = refs_crc32c(crc, &block[tail_offset],
+		checksummed_size - tail_offset);
+
+	*out_checksum = crc;
+
+	return SYS_TRUE;
+}
+
 static int refs_node_parse_checkpoint_block(
 		refs_node_crawl_context *const context,
 		refs_node_walk_visitor *const visitor,
@@ -3501,7 +3591,9 @@ static int refs_node_parse_checkpoint_block(
 		const u32 block_size,
 		refs_node_block_queue_element **const
 		out_level2_node_references,
-		size_t *const out_level2_node_references_count)
+		size_t *const out_level2_node_references_count,
+		u64 *const out_checkpoint_number,
+		refs_node_checksum_state *const out_checksum_state)
 {
 	static const char *const prefix = "\t";
 	static const size_t indent = 0;
@@ -3544,6 +3636,14 @@ static int refs_node_parse_checkpoint_block(
 		out_level2_node_references_count,
 		PRAuz(out_level2_node_references_count ?
 			*out_level2_node_references_count : 0));
+
+	/* Every early exit before the checksum is evaluated leaves the block
+	 * unusable: the block header checks (signature and block number) run
+	 * first. Exits after that point return no level 2 node references,
+	 * which also makes the block unusable. */
+	if(out_checksum_state) {
+		*out_checksum_state = REFS_NODE_CHECKSUM_MISMATCH;
+	}
 
 	err = refs_node_parse_block_header(
 		/* refs_node_walk_visitor *visitor */
@@ -3594,6 +3694,109 @@ static int refs_node_parse_checkpoint_block(
 		&header[0x3C]);
 	print_le64_dechex("Checkpoint number", prefix, indent, block,
 		&header[0x40]);
+	if(out_checkpoint_number) {
+		*out_checkpoint_number = read_le64(&header[0x40]);
+	}
+
+	if(out_checksum_state) {
+		/* The checksum layout has only been confirmed against version
+		 * 3 volumes with a 4096-byte cluster size. Verifying anything
+		 * else with the wrong rules would reject both checkpoint
+		 * blocks and turn a mountable volume into an unmountable one,
+		 * so leave those unverified. Applicability is decided by the
+		 * volume, not by the block: a block on a version 3 volume
+		 * whose own header does not look like version 3 is damaged,
+		 * not a different kind of block. */
+		if(context->bs->version_major < 2 ||
+			context->cluster_size != 4096)
+		{
+			*out_checksum_state = REFS_NODE_CHECKSUM_NOT_APPLICABLE;
+		}
+		else if(!is_v3) {
+			*out_checksum_state = REFS_NODE_CHECKSUM_UNVERIFIABLE;
+			sys_log_warning("Unable to verify the checksum of "
+				"checkpoint block %" PRIu64 ": the block "
+				"header has the version 1 layout on a "
+				"version 3 volume.",
+				PRAu64(block_number));
+		}
+		else if(self_reference_offset > block_size ||
+			REFS_V3_NODE_REFERENCE_SIZE >
+			block_size - self_reference_offset)
+		{
+			/* Not a block that has been positively determined to
+			 * be damaged, but not a verified one either. */
+			*out_checksum_state = REFS_NODE_CHECKSUM_UNVERIFIABLE;
+			sys_log_warning("Unable to verify the checksum of "
+				"checkpoint block %" PRIu64 ": the self "
+				"reference at offset %" PRIu32 " does not fit "
+				"in the block.",
+				PRAu64(block_number),
+				PRAu32(self_reference_offset));
+		}
+		else {
+			const u8 *const self_reference =
+				&block[self_reference_offset];
+			const u64 reference_flags =
+				read_le64(&self_reference[32]);
+			const u8 checksum_type =
+				REFS_CHECKSUM_TYPE_FROM_FLAGS(reference_flags);
+			const u64 stored_checksum =
+				read_le64(&self_reference[40]);
+
+			u64 computed_checksum = 0;
+
+			if(!refs_node_compute_self_checksum(
+				/* const u8 *block */
+				block,
+				/* u32 block_size */
+				block_size,
+				/* u32 cluster_size */
+				context->cluster_size,
+				/* u32 self_reference_offset */
+				self_reference_offset,
+				/* u32 self_reference_size */
+				self_reference_size,
+				/* u8 checksum_type */
+				checksum_type,
+				/* u64 *out_checksum */
+				&computed_checksum))
+			{
+				*out_checksum_state =
+					REFS_NODE_CHECKSUM_UNVERIFIABLE;
+				sys_log_warning("Unable to verify the checksum "
+					"of checkpoint block %" PRIu64 ": self "
+					"reference offset %" PRIu32 ", size "
+					"%" PRIu32 ", checksum type "
+					"%" PRIu32 ".",
+					PRAu64(block_number),
+					PRAu32(self_reference_offset),
+					PRAu32(self_reference_size),
+					PRAu32((u32) checksum_type));
+			}
+			else if((u32) computed_checksum !=
+				(u32) stored_checksum)
+			{
+				/* Only the low 32 bits are meaningful; the
+				 * stored value always occupies a 64-bit
+				 * field. */
+				sys_log_warning("Checksum mismatch in checkpoint "
+					"block %" PRIu64 ": computed "
+					"0x%" PRIX64 " but expected "
+					"0x%" PRIX64 ".",
+					PRAu64(block_number),
+					PRAX64(computed_checksum),
+					PRAX64(stored_checksum &
+					0xFFFFFFFFU));
+				*out_checksum_state =
+					REFS_NODE_CHECKSUM_MISMATCH;
+			}
+			else {
+				*out_checksum_state =
+					REFS_NODE_CHECKSUM_VERIFIED;
+			}
+		}
+	}
 	if(is_v3) {
 		print_le64_dechex("First checkpoint number (?)", prefix, indent,
 			block, &header[0x48]);
@@ -14721,6 +14924,19 @@ static int refs_node_crawl_volume_metadata(
 	size_t primary_level2_blocks_count = 0;
 	refs_node_block_queue_element *secondary_level2_blocks = NULL;
 	size_t secondary_level2_blocks_count = 0;
+	refs_node_block_queue_element *chosen_level2_blocks = NULL;
+	size_t chosen_level2_blocks_count = 0;
+	int primary_err = 0;
+	int secondary_err = 0;
+	u64 primary_checkpoint_number = 0;
+	u64 secondary_checkpoint_number = 0;
+	refs_node_checksum_state primary_checksum_state =
+		REFS_NODE_CHECKSUM_MISMATCH;
+	refs_node_checksum_state secondary_checksum_state =
+		REFS_NODE_CHECKSUM_MISMATCH;
+	sys_bool primary_usable = SYS_FALSE;
+	sys_bool secondary_usable = SYS_FALSE;
+	sys_bool use_primary = SYS_TRUE;
 	refs_node_block_queue level2_queue;
 	refs_node_block_queue level3_queue;
 	size_t i = 0;
@@ -14964,10 +15180,13 @@ static int refs_node_crawl_volume_metadata(
 				/* u8 **out_data */
 				&block);
 			if(err) {
-				goto out;
+				sys_log_pwarning(err, "Error while reading "
+					"primary checkpoint block %" PRIu64,
+					PRAu64(primary_checkpoint_block_number));
+				primary_err = err;
+				err = 0;
 			}
-
-			if(primary_checkpoint_block) {
+			else if(primary_checkpoint_block) {
 				u8 *new_block = NULL;
 
 				err = sys_malloc(block_allocated_size,
@@ -14982,29 +15201,40 @@ static int refs_node_crawl_volume_metadata(
 			}
 		}
 
-		err = refs_node_parse_checkpoint_block(
-			/* refs_node_crawl_context *context */
-			&crawl_context,
-			/* refs_node_walk_visitor *visitor */
-			visitor,
-			/* u64 block_number */
-			primary_checkpoint_block_number,
-			/* u64 cluster_number */
-			primary_checkpoint_block_number,
-			/* u64 block_queue_index */
-			0,
-			/* const u8 *block */
-			(primary_checkpoint_block &&
-			*primary_checkpoint_block) ?
-			(const u8*) *primary_checkpoint_block : block,
-			/* u32 block_size */
-			block_size,
-			/* refs_node_block_queue_element **out_level2_extents */
-			&primary_level2_blocks,
-			/* size_t *out_level2_extents_count */
-			&primary_level2_blocks_count);
-		if(err) {
-			goto out;
+		if(!primary_err) {
+			err = refs_node_parse_checkpoint_block(
+				/* refs_node_crawl_context *context */
+				&crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* u64 block_number */
+				primary_checkpoint_block_number,
+				/* u64 cluster_number */
+				primary_checkpoint_block_number,
+				/* u64 block_queue_index */
+				0,
+				/* const u8 *block */
+				(primary_checkpoint_block &&
+				*primary_checkpoint_block) ?
+				(const u8*) *primary_checkpoint_block : block,
+				/* u32 block_size */
+				block_size,
+				/* refs_node_block_queue_element
+				 * **out_level2_node_references */
+				&primary_level2_blocks,
+				/* size_t *out_level2_node_references_count */
+				&primary_level2_blocks_count,
+				/* u64 *out_checkpoint_number */
+				&primary_checkpoint_number,
+				/* refs_node_checksum_state *out_checksum_state */
+				&primary_checksum_state);
+			if(err) {
+				sys_log_pwarning(err, "Error while parsing "
+					"primary checkpoint block %" PRIu64,
+					PRAu64(primary_checkpoint_block_number));
+				primary_err = err;
+				err = 0;
+			}
 		}
 	}
 
@@ -15036,10 +15266,14 @@ static int refs_node_crawl_volume_metadata(
 				/* u8 **out_data */
 				&block);
 			if(err) {
-				goto out;
+				sys_log_pwarning(err, "Error while reading "
+					"secondary checkpoint block %" PRIu64,
+					PRAu64(
+					secondary_checkpoint_block_number));
+				secondary_err = err;
+				err = 0;
 			}
-
-			if(secondary_checkpoint_block) {
+			else if(secondary_checkpoint_block) {
 				u8 *new_block = NULL;
 
 				err = sys_malloc(block_allocated_size,
@@ -15054,48 +15288,132 @@ static int refs_node_crawl_volume_metadata(
 			}
 		}
 
-		err = refs_node_parse_checkpoint_block(
-			/* refs_node_crawl_context *context */
-			&crawl_context,
-			/* refs_node_walk_visitor *visitor */
-			visitor,
-			/* u64 cluster_number */
-			primary_checkpoint_block_number,
-			/* u64 block_number */
-			secondary_checkpoint_block_number,
-			/* u64 block_queue_index */
-			1,
-			/* const u8 *block */
-			(secondary_checkpoint_block &&
-			*secondary_checkpoint_block) ?
-			(const u8*) *secondary_checkpoint_block : block,
-			/* u32 block_size */
-			block_size,
-			/* refs_node_block_queue_element **out_level2_extents */
-			&secondary_level2_blocks,
-			/* size_t *out_level2_extents_count */
-			&secondary_level2_blocks_count);
-		if(err) {
-			goto out;
+		if(!secondary_err) {
+			err = refs_node_parse_checkpoint_block(
+				/* refs_node_crawl_context *context */
+				&crawl_context,
+				/* refs_node_walk_visitor *visitor */
+				visitor,
+				/* u64 cluster_number */
+				primary_checkpoint_block_number,
+				/* u64 block_number */
+				secondary_checkpoint_block_number,
+				/* u64 block_queue_index */
+				1,
+				/* const u8 *block */
+				(secondary_checkpoint_block &&
+				*secondary_checkpoint_block) ?
+				(const u8*) *secondary_checkpoint_block : block,
+				/* u32 block_size */
+				block_size,
+				/* refs_node_block_queue_element
+				 * **out_level2_node_references */
+				&secondary_level2_blocks,
+				/* size_t *out_level2_node_references_count */
+				&secondary_level2_blocks_count,
+				/* u64 *out_checkpoint_number */
+				&secondary_checkpoint_number,
+				/* refs_node_checksum_state *out_checksum_state */
+				&secondary_checksum_state);
+			if(err) {
+				sys_log_pwarning(err, "Error while parsing "
+					"secondary checkpoint block %" PRIu64,
+					PRAu64(
+					secondary_checkpoint_block_number));
+				secondary_err = err;
+				err = 0;
+			}
 		}
 	}
 
-	if(!primary_level2_blocks || !secondary_level2_blocks) {
-		sys_log_critical("No %s%s%s level 2 blocks parsed!",
-			!primary_level2_blocks ? "primary" : "",
-			(!primary_level2_blocks && !secondary_level2_blocks) ?
-				"/" : "",
-			!secondary_level2_blocks ? "secondary" : "");
-		err = EINVAL;
+	/* A checkpoint is usable if it was read and parsed and its checksum
+	 * did not positively mismatch. The two checkpoint blocks hold
+	 * alternating generations of the filesystem rather than two copies of
+	 * one generation, so the usable one with the highest checkpoint number
+	 * is the most recent committed state. Falling back to the older
+	 * generation is what allows a volume that was not cleanly unmounted to
+	 * be mounted at all. */
+	primary_usable = (!primary_err && primary_level2_blocks &&
+		primary_checksum_state != REFS_NODE_CHECKSUM_MISMATCH) ?
+		SYS_TRUE : SYS_FALSE;
+	secondary_usable = (!secondary_err && secondary_level2_blocks &&
+		secondary_checksum_state != REFS_NODE_CHECKSUM_MISMATCH) ?
+		SYS_TRUE : SYS_FALSE;
+
+	if(!primary_usable && !secondary_usable) {
+		sys_log_critical("Neither the primary nor the secondary "
+			"checkpoint block is usable. The volume is too damaged "
+			"to mount.");
+		err = primary_err ? primary_err :
+			(secondary_err ? secondary_err : EINVAL);
 		goto out;
 	}
+	else if(!primary_usable || !secondary_usable) {
+		use_primary = primary_usable;
+		sys_log_warning("The %s checkpoint block is unusable, mounting "
+			"from the %s block (checkpoint %" PRIu64 "). The "
+			"volume was not cleanly unmounted and this view of it "
+			"may be out of date.",
+			primary_usable ? "secondary" : "primary",
+			primary_usable ? "primary" : "secondary",
+			PRAu64(use_primary ? primary_checkpoint_number :
+			secondary_checkpoint_number));
+	}
+	else if((primary_checksum_state == REFS_NODE_CHECKSUM_UNVERIFIABLE) !=
+		(secondary_checksum_state == REFS_NODE_CHECKSUM_UNVERIFIABLE) &&
+		(primary_checksum_state == REFS_NODE_CHECKSUM_VERIFIED ||
+		secondary_checksum_state == REFS_NODE_CHECKSUM_VERIFIED))
+	{
+		/* The checkpoint number of a block whose checksum could not be
+		 * verified cannot be trusted, so the verified block wins over
+		 * the checkpoint number comparison. */
+		use_primary = (primary_checksum_state ==
+			REFS_NODE_CHECKSUM_VERIFIED) ? SYS_TRUE : SYS_FALSE;
+		sys_log_warning("The %s checkpoint block could not be "
+			"verified, preferring the verified %s block "
+			"(checkpoint %" PRIu64 ").",
+			use_primary ? "secondary" : "primary",
+			use_primary ? "primary" : "secondary",
+			PRAu64(use_primary ? primary_checkpoint_number :
+			secondary_checkpoint_number));
+	}
+	else if(primary_checkpoint_number == secondary_checkpoint_number) {
+		/* The two checkpoint blocks hold successive checkpoints, so
+		 * equal checkpoint numbers are not a state that should occur.
+		 * Say so rather than silently reinstating the unconditional
+		 * preference for the primary block that this selection exists
+		 * to replace. */
+		sys_log_warning("Both checkpoint blocks report checkpoint "
+			"%" PRIu64 ". This is unexpected; proceeding with the "
+			"primary block.",
+			PRAu64(primary_checkpoint_number));
+		use_primary = SYS_TRUE;
+	}
+	else {
+		use_primary = (primary_checkpoint_number >
+			secondary_checkpoint_number) ? SYS_TRUE : SYS_FALSE;
+	}
 
-	if(primary_level2_blocks_count != secondary_level2_blocks_count) {
+	if(use_primary) {
+		chosen_level2_blocks = primary_level2_blocks;
+		chosen_level2_blocks_count = primary_level2_blocks_count;
+	}
+	else {
+		chosen_level2_blocks = secondary_level2_blocks;
+		chosen_level2_blocks_count = secondary_level2_blocks_count;
+	}
+
+	if(!primary_usable || !secondary_usable) {
+		/* Only one generation was parsed, so there is nothing to
+		 * compare it against. */
+	}
+	else if(primary_level2_blocks_count != secondary_level2_blocks_count) {
 		sys_log_warning("Mismatching level 2 block count in checkpoint "
 			"blocks: %" PRIu32 " != %" PRIu32 " Proceeding with "
-			"primary...",
+			"%s...",
 			PRAu32(primary_level2_blocks_count),
-			PRAu32(secondary_level2_blocks_count));
+			PRAu32(secondary_level2_blocks_count),
+			use_primary ? "primary" : "secondary");
 	}
 	else {
 		refs_node_block_queue_element *cur_primary =
@@ -15127,26 +15445,34 @@ static int refs_node_crawl_volume_metadata(
 		else if(!mismatch);
 		else if(block_map && *block_map) {
 			sys_log_debug("Mismatching level 2 block data in "
-				"checkpoint blocks. Proceeding with "
-				"primary...");
+				"checkpoint blocks. Proceeding with %s...",
+				use_primary ? "primary" : "secondary");
 		}
 		else {
 			sys_log_warning("Mismatching level 2 block data in "
-				"checkpoint blocks. Proceeding with "
-				"primary...");
+				"checkpoint blocks. Proceeding with %s...",
+				use_primary ? "primary" : "secondary");
 		}
 	}
 
-	level2_queue.queue = primary_level2_blocks;
+	level2_queue.queue = chosen_level2_blocks;
 	/* Find the tail. */
-	level2_queue.queue_tail = primary_level2_blocks;
+	level2_queue.queue_tail = chosen_level2_blocks;
 	while(level2_queue.queue_tail->next) {
 		level2_queue.queue_tail = level2_queue.queue_tail->next;
 	}
-	level2_queue.block_queue_length = primary_level2_blocks_count;
+	level2_queue.block_queue_length = chosen_level2_blocks_count;
 
-	primary_level2_blocks = NULL;
-	primary_level2_blocks_count = 0;
+	/* Ownership of the chosen list has moved to the queue. The list that
+	 * was not chosen is still owned here and released via 'out'. */
+	if(use_primary) {
+		primary_level2_blocks = NULL;
+		primary_level2_blocks_count = 0;
+	}
+	else {
+		secondary_level2_blocks = NULL;
+		secondary_level2_blocks_count = 0;
+	}
 
 	if(block_map && *block_map) {
 		mappings = *block_map;
