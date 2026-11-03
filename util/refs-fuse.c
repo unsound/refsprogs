@@ -576,6 +576,7 @@ static int refs_fuse_op_statfs(const char *path, struct statvfs *stvbuf)
 
 	if(attributes.valid & FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS) {
 		stvbuf->f_bfree = attributes.free_blocks;
+		stvbuf->f_bavail = attributes.free_blocks;
 	}
 out:
 	sys_log_debug("%s(path=\"%s\", stvbuf=%p): %d (%s)",
@@ -1795,6 +1796,7 @@ static void refs_fuse_ll_op_statfs(
 
 	if(attributes.valid & FSAPI_VOLUME_ATTRIBUTE_TYPE_FREE_BLOCKS) {
 		stvbuf.f_bfree = attributes.free_blocks;
+		stvbuf.f_bavail = attributes.free_blocks;
 	}
 out:
 	sys_log_debug("%s(req=%p, ino=0x%" PRIX64 "): %d (%s)",
